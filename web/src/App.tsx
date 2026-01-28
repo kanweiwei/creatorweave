@@ -40,23 +40,8 @@ function App() {
 
       const handle = await selectFolder()
 
-      // Collect all files
-      const files: any[] = []
-      for await (const file of traverseDirectory(handle)) {
-        files.push(file)
-
-        // Update progress every 10 files
-        if (files.length % 10 === 0) {
-          updateProgress(
-            files.length,
-            files.reduce((sum, f) => sum + f.size, 0),
-            file.path
-          )
-        }
-      }
-
-      // Analyze files
-      const analysisResult = await analyzeFiles(files, (count, size, path) => {
+      // Stream files directly to analyzer - no need to collect all in memory
+      const analysisResult = await analyzeFiles(traverseDirectory(handle), (count, size, path) => {
         updateProgress(count, size, path)
       })
 

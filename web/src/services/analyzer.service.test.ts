@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { analyzeFiles } from './analyzer.service'
+import { analyzeFiles, analyzeFilesArray } from './analyzer.service'
 
 // Mock WASM loader
 vi.mock('@/lib/wasm-loader', () => ({
@@ -52,7 +52,7 @@ describe('analyzer.service', () => {
     ]
 
     const progressCallback = vi.fn()
-    const result = await analyzeFiles(files, progressCallback)
+    const result = await analyzeFilesArray(files, progressCallback)
 
     expect(result.fileCount).toBe(3)
     expect(result.totalSize).toBe(3072)
@@ -69,9 +69,9 @@ describe('analyzer.service', () => {
     }))
 
     const progressCallback = vi.fn()
-    await analyzeFiles(files, progressCallback)
+    await analyzeFilesArray(files, progressCallback)
 
-    // Should be called multiple times (every 100 files)
+    // Should be called multiple times (every 50 files)
     expect(progressCallback).toHaveBeenCalled()
   })
 
@@ -101,7 +101,7 @@ describe('analyzer.service', () => {
     ]
 
     const progressCallback = vi.fn()
-    const result = await analyzeFiles(files, progressCallback)
+    const result = await analyzeFilesArray(files, progressCallback)
 
     expect(result.maxFile).toEqual({
       name: 'large.txt',
@@ -113,7 +113,7 @@ describe('analyzer.service', () => {
   it('should handle empty file list', async () => {
     const files: any[] = []
     const progressCallback = vi.fn()
-    const result = await analyzeFiles(files, progressCallback)
+    const result = await analyzeFilesArray(files, progressCallback)
 
     expect(result.fileCount).toBe(0)
     expect(result.totalSize).toBe(0)
@@ -134,9 +134,30 @@ describe('analyzer.service', () => {
     }))
 
     const progressCallback = vi.fn()
-    await analyzeFiles(files, progressCallback)
+    await analyzeFilesArray(files, progressCallback)
 
     // Should use add_files for batching
     expect(analyzer.add_files).toHaveBeenCalled()
+  })
+
+  it('should process files in streaming fashion', async () => {
+    // Create an async generator
+    async function* createFileStream(count: number) {
+      for (let i = 0; i < count; i++) {
+        yield {
+          name: `file${i}.txt`,
+          size: 100,
+          path: `/file${i}.txt`,
+          type: 'file' as const,
+          lastModified: 1234567890,
+        }
+      }
+    }
+
+    const progressCallback = vi.fn()
+    const result = await analyzeFiles(createFileStream(100), progressCallback)
+
+    expect(result.fileCount).toBe(100)
+    expect(progressCallback).toHaveBeenCalled()
   })
 })

@@ -17,6 +17,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    target: 'es2015',
     sourcemap: true,
     rollupOptions: {
       output: {

@@ -16,13 +16,17 @@ export interface AnalyzerConfig {
 }
 
 /**
- * Analyze files using WASM analyzer
- * @param files - Array of file metadata
+ * Analyze files using WASM analyzer with streaming processing
+ *
+ * Processes files in batches as they arrive from the async generator,
+ * avoiding the need to load all file metadata into memory at once.
+ *
+ * @param fileGenerator - Async generator that yields file metadata
  * @param progressCallback - Optional progress callback
  * @returns Analysis result
  */
 export async function analyzeFiles(
-  files: FileMetadata[],
+  fileGenerator: AsyncGenerator<FileMetadata>,
   progressCallback?: ProgressCallback
 ): Promise<AnalysisResult> {
   const startTime = performance.now()
@@ -30,62 +34,91 @@ export async function analyzeFiles(
 
   let maxFile: MaxFile | null = null
   let folderCount = 0
+  let totalCount = 0
 
-  // Batch size for processing files (reduced to avoid WASM memory issues)
+  // Batch size for processing files
   const batchSize = 50
 
-  try {
-    // Process files in batches
-    for (let i = 0; i < files.length; i += batchSize) {
-      const batch = files.slice(i, i + batchSize)
+  // Buffer for collecting a batch of file sizes
+  let batchBuffer: bigint[] = []
+  let batchFiles: FileMetadata[] = []
 
-      // Prepare sizes array for WASM
-      const sizes = new BigUint64Array(batch.map((f) => BigInt(f.size)))
+  // Reset analyzer state for new analysis
+  analyzer.reset()
 
-      // Add batch to analyzer
+  // Process files as they arrive from the generator
+  for await (const file of fileGenerator) {
+    batchBuffer.push(BigInt(file.size))
+    batchFiles.push(file)
+    totalCount++
+
+    // Track max file and count directories
+    if (!maxFile || file.size > maxFile.size) {
+      maxFile = {
+        name: file.name,
+        size: file.size,
+        path: file.path,
+      }
+    }
+
+    if (file.type === 'directory') {
+      folderCount++
+    }
+
+    // When batch is full, send to WASM
+    if (batchBuffer.length >= batchSize) {
+      const sizes = new BigUint64Array(batchBuffer)
       analyzer.add_files(sizes)
 
-      // Track max file
-      for (const file of batch) {
-        if (!maxFile || file.size > maxFile.size) {
-          maxFile = {
-            name: file.name,
-            size: file.size,
-            path: file.path,
-          }
-        }
-      }
-
-      // Count directories
-      for (const file of batch) {
-        if (file.type === 'directory') {
-          folderCount++
-        }
-      }
+      // Clear buffer
+      batchBuffer = []
+      batchFiles = []
 
       // Report progress
       if (progressCallback) {
         const totalSize = Number(analyzer.get_total())
-        progressCallback(i + batch.length, totalSize, batch[batch.length - 1]?.path)
+        progressCallback(totalCount, totalSize, file.path)
       }
     }
-
-    // Get final results
-    const totalSize = Number(analyzer.get_total())
-    const fileCount = Number(analyzer.get_count())
-    const averageSize = analyzer.get_average()
-    const duration = performance.now() - startTime
-
-    return {
-      fileCount,
-      totalSize,
-      averageSize,
-      maxFile,
-      folderCount,
-      duration: Math.round(duration),
-    }
-  } finally {
-    // Clean up
-    analyzer.free()
   }
+
+  // Process remaining files in the buffer
+  if (batchBuffer.length > 0) {
+    const sizes = new BigUint64Array(batchBuffer)
+    analyzer.add_files(sizes)
+  }
+
+  // Get final results
+  const totalSize = Number(analyzer.get_total())
+  const fileCount = Number(analyzer.get_count())
+  const averageSize = analyzer.get_average()
+  const duration = performance.now() - startTime
+
+  return {
+    fileCount,
+    totalSize,
+    averageSize,
+    maxFile,
+    folderCount,
+    duration: Math.round(duration),
+  }
+}
+
+/**
+ * Legacy interface for backward compatibility
+ * Takes an array and converts it to an async generator
+ *
+ * @deprecated Use the async generator version instead
+ */
+export async function analyzeFilesArray(
+  files: FileMetadata[],
+  progressCallback?: ProgressCallback
+): Promise<AnalysisResult> {
+  async function* arrayToGenerator(): AsyncGenerator<FileMetadata> {
+    for (const file of files) {
+      yield file
+    }
+  }
+
+  return analyzeFiles(arrayToGenerator(), progressCallback)
 }
