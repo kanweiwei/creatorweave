@@ -40,6 +40,14 @@ export async function* traverseDirectory(
           continue
         }
       } else if (handle.kind === 'directory') {
+        // Yield directory metadata first
+        yield {
+          name: handle.name,
+          size: 0, // Directories don't have a size
+          type: 'directory',
+          lastModified: 0,
+          path: entryPath,
+        }
         // Recursively traverse subdirectories
         yield* traverseDirectory(handle as FileSystemDirectoryHandle, entryPath)
       }
