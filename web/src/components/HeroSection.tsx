@@ -1,12 +1,20 @@
 import { Button } from '@/components/ui/button'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Puzzle } from 'lucide-react'
+import type { PluginInstance } from '@/types/plugin'
 
 interface HeroSectionProps {
   onSelectFolder: () => void
   isAnalyzing: boolean
+  selectedPlugins?: PluginInstance[]
 }
 
-export function HeroSection({ onSelectFolder, isAnalyzing }: HeroSectionProps) {
+export function HeroSection({
+  onSelectFolder,
+  isAnalyzing,
+  selectedPlugins = [],
+}: HeroSectionProps) {
+  const pluginCount = selectedPlugins.length
+
   return (
     <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl text-center">
@@ -14,6 +22,23 @@ export function HeroSection({ onSelectFolder, isAnalyzing }: HeroSectionProps) {
         <p className="mb-8 text-lg text-gray-600">
           Quickly understand file size distribution without uploading any data
         </p>
+
+        {/* Selected plugins notice */}
+        {pluginCount > 0 && (
+          <div className="mb-6 inline-flex items-center gap-4 rounded-xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600">
+              <Puzzle className="h-5 w-5 text-white" />
+            </div>
+            <div className="text-left">
+              <div className="text-xs font-medium text-green-600">ACTIVE PLUGINS</div>
+              <div className="text-sm font-semibold text-gray-900">
+                {pluginCount === 1
+                  ? selectedPlugins[0].metadata.name
+                  : `${pluginCount} plugins selected`}
+              </div>
+            </div>
+          </div>
+        )}
 
         <Button size="lg" onClick={onSelectFolder} disabled={isAnalyzing} className="gap-2">
           <FolderOpen className="h-5 w-5" />

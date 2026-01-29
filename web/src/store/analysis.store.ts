@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { PluginResult, PluginResultWithMetadata, FileOutput, FileResult } from '@/types/plugin'
 
 /**
  * Maximum file information
@@ -20,6 +21,10 @@ export interface AnalysisResult {
   maxFile: MaxFile | null
   folderCount: number
   duration: number
+  pluginResult?: PluginResult
+  pluginResults?: PluginResultWithMetadata[] // Results from multiple plugins with metadata
+  pluginsProcessed?: number // Number of plugins that were executed
+  fileResults?: FileResult[] // Individual file results with plugin output
 }
 
 /**

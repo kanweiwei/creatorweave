@@ -2,7 +2,9 @@
 members = [
     "crates/core",
     "crates/wasm-bindings",
-    # "crates/plugin-api",  # Phase 2 启用
+    "crates/plugin-api",           # Phase 2: 启用插件 API
+    "crates/example-plugins/md5-calculator",   # Phase 2 Week 6: 示例插件
+    "crates/example-plugins/line-counter",     # Phase 2 Week 6: 示例插件
 ]
 resolver = "2"
 

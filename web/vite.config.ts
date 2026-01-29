@@ -6,6 +6,10 @@ import path from 'path'
 export default defineConfig({
   base: './',
   plugins: [react()],
+  worker: {
+    format: 'es',
+    plugins: () => [react()],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -30,5 +34,15 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: [],
+  },
+  test: {
+    globals: true,
+    environment: 'happy-dom',
+    setupFiles: './src/test-setup.ts',
+    css: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+    },
   },
 })

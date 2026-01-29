@@ -1,22 +1,42 @@
 import { Progress } from '@/components/ui/progress'
 import { Card, CardContent } from '@/components/ui/card'
-import { Loader2, HardDrive, FileText } from 'lucide-react'
+import { Loader2, HardDrive, FileText, Puzzle } from 'lucide-react'
 import { formatNumber, formatBytes } from '@/lib/utils'
+import type { PluginInstance } from '@/types/plugin'
 
 interface ProgressPanelProps {
   progress: number
   fileCount: number
   totalSize: number
   currentPath: string | null
+  selectedPlugins?: PluginInstance[]
 }
 
-export function ProgressPanel({ progress, fileCount, totalSize, currentPath }: ProgressPanelProps) {
+export function ProgressPanel({
+  progress,
+  fileCount,
+  totalSize,
+  currentPath,
+  selectedPlugins = [],
+}: ProgressPanelProps) {
+  const pluginCount = selectedPlugins.length
+
   return (
     <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl">
         <div className="mb-6 text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <h3 className="mt-4 text-xl font-semibold text-gray-900">Analyzing...</h3>
+          {pluginCount > 0 && (
+            <div className="mt-2 flex items-center justify-center gap-2 text-sm text-green-600">
+              <Puzzle className="h-4 w-4" />
+              <span className="font-medium">
+                {pluginCount === 1
+                  ? `Using ${selectedPlugins[0].metadata.name}`
+                  : `Using ${pluginCount} plugins`}
+              </span>
+            </div>
+          )}
         </div>
 
         <Card>
@@ -53,6 +73,27 @@ export function ProgressPanel({ progress, fileCount, totalSize, currentPath }: P
                 <p className="truncate font-mono text-xs text-gray-700" title={currentPath}>
                   {currentPath}
                 </p>
+              </div>
+            )}
+
+            {pluginCount > 0 && (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
+                <div className="flex items-center gap-2">
+                  <Puzzle className="h-4 w-4 text-green-600" />
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-green-700">ACTIVE PLUGINS</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {selectedPlugins.map((p) => (
+                        <span
+                          key={p.metadata.id}
+                          className="inline-flex items-center text-xs text-gray-900"
+                        >
+                          {p.metadata.name} v{p.metadata.version}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>

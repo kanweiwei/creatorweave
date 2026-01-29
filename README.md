@@ -21,6 +21,7 @@
 - 💾 **智能缓存** - 支持 OPFS、IndexedDB、localStorage 三层存储
 - 🔄 **状态持久化** - Zustand + persist 中间件快速恢复状态
 - 🔐 **安全隔离** - 完全在浏览器沙盒中运行，不上传任何数据
+- 🧩 **插件系统** - 支持动态加载 WASM 插件扩展分析功能
 
 ## 🚀 快速开始
 
@@ -82,6 +83,19 @@ bash scripts/build.sh
 - 📦 总大小（自动转换为 KB/MB/GB）
 - 📈 平均文件大小
 - 🗂️ 文件类型分布
+
+### 4. 使用插件 (可选)
+
+1. 点击导航栏的"插件"按钮进入插件管理页面
+2. 选择要使用的插件（如行数统计、MD5 计算）
+3. 返回主页，选择文件夹进行分析
+4. 查看插件分析结果
+
+**内置插件**:
+- **行数统计** - 统计代码文件的行数、字符数、空行数
+- **MD5 计算** - 计算文件的 MD5 哈希值
+
+**开发自定义插件**: 参见 [插件开发指南](./plugins/README.md)
 
 ## 🛠️ 开发命令
 
@@ -185,11 +199,14 @@ cd web && npm test
 - ✅ WASM 累加计算
 - ✅ 实时显示结果
 
-### Phase 2: 进阶功能 (计划中)
+### Phase 2: 插件系统 ✅
 
-- 🔲 **动态插件系统** - 支持上传外部 WASM 插件
-- 🔲 **安全内容预览** - 使用 iframe 沙盒预览 HTML/MD
-- 🔲 **批量文件处理** - 批量重命名、添加版权头
+- ✅ **动态插件系统** - 支持加载外部 WASM 插件
+- ✅ **示例插件** - 内置行数统计、MD5 计算插件
+- ✅ **插件管理 UI** - 可视化插件管理界面
+- ✅ **并行执行** - 多插件并行处理文件
+- 🔲 **安全内容预览** - 使用 iframe 沙盒预览 HTML/MD（计划中）
+- 🔲 **批量文件处理** - 批量重命名、添加版权头（计划中）
 
 ## 📦 项目结构
 
@@ -198,18 +215,30 @@ browser-fs-analyzer/
 ├── wasm/                      # Rust + WASM
 │   ├── crates/
 │   │   ├── core/              # 核心库
-│   │   └── wasm-bindings/     # WASM 绑定
+│   │   ├── wasm-bindings/     # WASM 绑定
+│   │   ├── plugin-api/        # 插件 API 定义
+│   │   └── example-plugins/   # 示例插件
 │   └── scripts/               # 构建脚本
 │
 ├── web/                       # React 前端
 │   ├── src/
 │   │   ├── components/        # React 组件
+│   │   │   └── plugins/       # 插件 UI 组件
 │   │   ├── store/             # Zustand stores
 │   │   ├── hooks/             # 自定义 hooks
 │   │   ├── services/          # 业务逻辑
+│   │   │   └── plugin-*.ts    # 插件服务
+│   │   ├── workers/           # Web Workers
+│   │   ├── types/             # TypeScript 类型
 │   │   └── lib/               # 工具函数
+│   ├── tests/                 # 测试文件
+│   │   ├── e2e/               # E2E 测试
+│   │   └── unit/              # 单元测试
 │   ├── package.json
 │   └── vite.config.ts
+│
+├── plugins/                   # 插件开发文档
+│   └── README.md              # 插件开发指南
 │
 ├── scripts/                   # 开发脚本
 │   ├── setup.sh               # 首次设置
@@ -244,8 +273,7 @@ make test-web
 - [Rust/WASM 数据流](./docs/architecture/rust-wasm-flow.md) - WASM 集成详解
 - [Pre-Commit Hooks](./docs/development/pre-commit-hooks.md) - Git hooks 配置和使用
 - [快速开始](./docs/development/quick-start.md) - 5 分钟快速上手指南
-- [Pre-Commit Hooks](./docs/development/pre-commit-hooks.md) - Git hooks 配置和使用
-- [快速开始](./docs/development/quick-start.md) - 5 分钟快速上手指南
+- [插件开发指南](./plugins/README.md) - 如何开发和构建插件
 
 ## 🌐 浏览器兼容性
 
