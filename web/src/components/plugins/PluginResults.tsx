@@ -4,7 +4,7 @@
  * Displays aggregated results from plugin execution
  */
 
-import type { AggregateResult, AggregatedFileResult, PluginResult } from '../../types/plugin'
+import type { AggregateResult } from '../../types/plugin'
 
 interface PluginResultsProps {
   result: AggregateResult
@@ -57,8 +57,7 @@ function ResultsByPlugin({ byPlugin }: { byPlugin: AggregateResult['byPlugin'] }
         {Array.from(byPlugin.entries()).map(([id, result]) => (
           <div key={id} className="results-by-plugin__item">
             <div className="results-by-plugin__header">
-              <h4 className="results-by-plugin__name">{result.metadata.name}</h4>
-              <span className="results-by-plugin__version">{result.metadata.version}</span>
+              <h4 className="results-by-plugin__name">{id}</h4>
             </div>
             <div className="results-by-plugin__stats">
               <span>Processed: {result.filesProcessed}</span>

@@ -4,14 +4,7 @@
  * Executes plugins on files with timeout control and progress tracking
  */
 
-import type {
-  FileEntry,
-  FileInput,
-  FileOutput,
-  Plugin,
-  PluginResult,
-  ProcessingStatus,
-} from '../types/plugin'
+import type { FileEntry, FileInput, FileOutput, Plugin, PluginResult } from '../types/plugin'
 
 import { getPluginLoader } from './plugin-loader.service'
 
@@ -232,7 +225,7 @@ export class PluginExecutorService {
   async executeFile(
     plugin: Plugin,
     file: FileEntry,
-    timeout: number
+    _timeout: number
   ): Promise<FileExecutionResult> {
     const startTime = Date.now()
     console.log(
@@ -411,12 +404,14 @@ export class PluginExecutorService {
 
         results.set(pluginId, {
           pluginId,
-          metadata: { name: 'Unknown', version: '0.0.0' },
           results: [],
           summary: 'Execution failed',
-          duration: 0,
-          errors: [outcome.reason?.message || 'Unknown error'],
-        })
+          filesProcessed: 0,
+          filesSkipped: 0,
+          filesWithErrors: 1,
+          metrics: {},
+          warnings: [outcome.reason?.message || 'Unknown error'],
+        } as any)
       }
     }
 

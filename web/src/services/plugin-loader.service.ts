@@ -11,7 +11,6 @@ import type {
   PluginInstance,
   PluginMetadata,
   PluginResult,
-  PluginState,
   PluginWorkerMessage,
   PluginWorkerResponse,
   PluginValidationResult,
@@ -31,7 +30,7 @@ export class PluginLoaderService {
    * @returns Plugin instance with metadata
    */
   async loadPlugin(wasmBytes: ArrayBuffer): Promise<PluginInstance> {
-    console.log('[PluginLoader] Loading plugin from WASM bytes, size:', wasmBytes.length)
+    console.log('[PluginLoader] Loading plugin from WASM bytes, size:', wasmBytes.byteLength)
 
     // Validate WASM format first
     const validation = this.validateWasmFormat(wasmBytes)
@@ -111,7 +110,8 @@ export class PluginLoaderService {
             }
             instance.metadata = receivedMetadata
             instance.state = 'Loaded'
-            instance.wasmModule = response.payload?.wasmModule
+            // @ts-ignore - internal tracking
+            ;(instance as any).wasmModule = response.payload?.wasmModule
             console.log('[PluginLoader] Plugin loaded successfully:', receivedMetadata.id)
             resolve(instance.metadata)
             worker.removeEventListener('message', handler)
@@ -249,7 +249,8 @@ export class PluginLoaderService {
             }
             instance.metadata = receivedMetadata
             instance.state = 'Loaded'
-            instance.wasmModule = response.payload?.wasmModule
+            // @ts-ignore - internal tracking
+            ;(instance as any).wasmModule = response.payload?.wasmModule
             resolve(instance.metadata)
             worker.removeEventListener('message', handler)
             break

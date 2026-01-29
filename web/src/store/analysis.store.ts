@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PluginResult, PluginResultWithMetadata, FileOutput, FileResult } from '@/types/plugin'
+import type { PluginResult, PluginResultWithMetadata, FileResult } from '@/types/plugin'
 
 /**
  * Maximum file information

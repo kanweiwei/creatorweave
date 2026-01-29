@@ -1,11 +1,12 @@
 /**
- * Plugin List Component - Neo-Brutal Tech Design
+ * Plugin List Component
  *
- * Grid/list layout with tech styling
+ * Unified design matching the main app
  */
 
-import type { PluginInstance } from '../../types/plugin'
 import { PluginCard } from './PluginCard'
+import type { PluginInstance } from '../../types/plugin'
+import { Inbox } from 'lucide-react'
 
 type ViewMode = 'grid' | 'list'
 type SortBy = 'name' | 'version' | 'date'
@@ -57,34 +58,22 @@ export function PluginList({
   // Empty state
   if (sortedPlugins.length === 0) {
     return (
-      <div className="npl-empty">
-        <div className="npl-empty-icon">
-          <svg
-            width="64"
-            height="64"
-            viewBox="0 0 64 64"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-          >
-            <rect x="8" y="8" width="48" height="48" rx="4" opacity="0.3" />
-            <path d="M24 32h16M32 24v16" opacity="0.5" />
-          </svg>
+      <div className="plugin-list-empty">
+        <div className="plugin-list-empty-icon">
+          <Inbox className="h-8 w-8" />
         </div>
-        <div className="npl-empty-title">
-          {filter ? 'NO_MODULES_FOUND' : 'NO_MODULES_INSTALLED'}
+        <div className="plugin-list-empty-title">
+          {filter ? 'No plugins found' : 'No plugins installed'}
         </div>
-        <div className="npl-empty-subtitle">
-          {filter
-            ? `NO_RESULTS_FOR_SEARCH_QUERY: "${filter.toUpperCase()}"`
-            : 'UPLOAD_A_WASM_MODULE_TO_BEGIN'}
+        <div className="plugin-list-empty-subtitle">
+          {filter ? `No results for "${filter}"` : 'Upload a WASM module to get started'}
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`npl-list npl-list--${viewMode}`}>
+    <div className={`plugin-list plugin-list--${viewMode}`}>
       {sortedPlugins.map((plugin) => (
         <PluginCard
           key={plugin.metadata.id}

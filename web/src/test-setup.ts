@@ -40,7 +40,7 @@ const indexedDBMock = {
 global.indexedDB = indexedDBMock as any
 
 // Mock File System Access API
-global.showDirectoryPicker = vi.fn(() => Promise.resolve({}))
+;(globalThis as any).showDirectoryPicker = vi.fn(() => Promise.resolve({}))
 
 // Mock URL.createObjectURL and revokeObjectURL
 global.URL.createObjectURL = vi.fn(() => 'blob:mock-url')

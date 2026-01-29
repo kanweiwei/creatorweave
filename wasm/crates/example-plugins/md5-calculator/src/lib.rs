@@ -3,11 +3,11 @@
 //! This plugin calculates MD5 hashes for files.
 //! Uses wasm-bindgen automatic type conversion for safer memory management.
 
-use wasm_bindgen::prelude::*;
+use hex::encode;
+use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use md5::{Md5, Digest};
-use hex::encode;
+use wasm_bindgen::prelude::*;
 
 // =============================================================================
 // Types (local to avoid complex dependencies)
@@ -69,7 +69,7 @@ pub struct FileInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutput {
     pub path: String,
-    pub status: String,  // "Success", "Skipped", "Error"
+    pub status: String, // "Success", "Skipped", "Error"
     pub data: serde_json::Value,
     #[serde(default)]
     pub error: Option<String>,

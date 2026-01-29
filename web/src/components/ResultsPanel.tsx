@@ -17,7 +17,8 @@ import {
 } from 'lucide-react'
 import { formatNumber, formatBytes, formatDuration } from '@/lib/utils'
 import type { AnalysisResult } from '@/store/analysis.store'
-import type { PluginInstance, PluginResultWithMetadata, FileResult } from '@/types/plugin'
+import type { PluginInstance } from '@/types/plugin'
+import { PluginHTMLRenderer } from './plugins/PluginHTMLRenderer'
 
 interface ResultsPanelProps {
   result: AnalysisResult
@@ -182,6 +183,32 @@ export function ResultsPanel({
 
               <div className="space-y-3">
                 {result.pluginResults.map((pluginResult) => {
+                  // Check if plugin returned HTML content (at top level OR in metrics)
+                  const isHtmlRender = (pluginResult as any).render_type === 'html'
+                  const htmlContent = isHtmlRender
+                    ? (pluginResult as any)
+                    : (pluginResult.metrics as any)?.render_type === 'html'
+                      ? (pluginResult.metrics as any)
+                      : null
+
+                  if (htmlContent?.render_type === 'html') {
+                    return (
+                      <PluginHTMLRenderer
+                        key={pluginResult.pluginId || 'html'}
+                        result={htmlContent}
+                        analysisData={result}
+                        onAction={(action, data) => {
+                          console.log('Plugin action:', action, data)
+                          if (action === 'export') {
+                            navigator.clipboard.writeText(JSON.stringify(pluginResult))
+                          } else if (action === 'copy') {
+                            navigator.clipboard.writeText(pluginResult.summary || '')
+                          }
+                        }}
+                      />
+                    )
+                  }
+
                   // Use the stored metadata from pluginResult, fallback to selectedPlugins
                   const pluginId = pluginResult.pluginId || ''
                   const pluginName =
@@ -205,7 +232,7 @@ export function ResultsPanel({
 
                       <p className="text-sm text-gray-700">{pluginResult.summary}</p>
 
-                      {pluginResult.metrics && (
+                      {pluginResult.metrics != null && (
                         <PluginMetrics metrics={pluginResult.metrics} pluginId={pluginId} />
                       )}
                     </div>

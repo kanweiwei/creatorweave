@@ -90,7 +90,7 @@ export class PluginResultAggregator {
    */
   aggregateByFile(
     pluginResults: Map<string, PluginResult>,
-    fileCount: number
+    _fileCount: number
   ): Map<string, AggregatedFileResult> {
     const byFile = new Map<string, AggregatedFileResult>()
 
@@ -302,7 +302,8 @@ export class PluginResultAggregator {
    * Export to CSV format
    */
   private exportToCSV(aggregateResult: AggregateResult): string {
-    const rows: string[] = [['Path', 'Size', 'Plugins', 'Statuses']]
+    const lines: string[] = []
+    lines.push(['Path', 'Size', 'Plugins', 'Statuses'].join(','))
 
     for (const [path, result] of aggregateResult.byFile) {
       const plugins = Array.from(result.pluginResults.keys()).join(';')
@@ -310,10 +311,10 @@ export class PluginResultAggregator {
         .map((o) => o.status)
         .join(';')
 
-      rows.push(`"${path}",${result.size},${plugins},"${statuses}"`)
+      lines.push(`"${path}",${result.size},${plugins},"${statuses}"`)
     }
 
-    return rows.join('\n')
+    return lines.join('\n')
   }
 
   /**

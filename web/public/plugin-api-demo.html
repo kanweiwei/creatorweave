@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BFSA Plugin API Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .sidebar {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .main {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0 0 20px 0;
+      color: #111827;
+      font-size: 24px;
+    }
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin: 0 0 12px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .api-section {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .api-section:last-child {
+      border-bottom: none;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    button:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+    button.primary {
+      background: #2563eb;
+      color: white;
+      border-color: #2563eb;
+    }
+    button.primary:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .description {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: -4px;
+      margin-bottom: 8px;
+    }
+    #responseLog {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #374151;
+    }
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+    .log-time {
+      color: #6b7280;
+    }
+    .log-type {
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    #iframeContainer iframe {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+    #modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal.active {
+      display: flex;
+    }
+    #modalContent {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 400px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+    }
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      background: #2563eb;
+      color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+    }
+    #toast.active {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    #toast.success { background: #16a34a; }
+    #toast.error { background: #dc2626; }
+    #toast.warning { background: #ca8a04; }
+  </style>
+</head>
+<body>
+  <h1 style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">🔌 BFSA Plugin API Demo</h1>
+
+  <div class="container">
+    <!-- Sidebar with API test buttons -->
+    <div class="sidebar">
+      <h2>Plugin Control</h2>
+      <button id="loadPlugin" class="primary">Load Plugin</button>
+      <button id="testHtml" disabled>Test HTML Render</button>
+
+      <h2 style="margin-top: 20px;">UI Operations</h2>
+      <button id="btnToast" disabled>
+        Show Toast
+        <div class="description">BFSA.ui.toast('Hello!')</div>
+      </button>
+      <button id="btnModal" disabled>
+        Show Modal
+        <div class="description">BFSA.ui.modal(content)</div>
+      </button>
+      <button id="btnConfirm" disabled>
+        Confirm Dialog
+        <div class="description">BFSA.confirm('Are you sure?')</div>
+      </button>
+      <button id="btnPrompt" disabled>
+        Prompt Dialog
+        <div class="description">BFSA.prompt('Enter name')</div>
+      </button>
+      <button id="btnFullscreen" disabled>
+        Toggle Fullscreen
+        <div class="description">BFSA.ui.fullscreen()</div>
+      </button>
+      <button id="btnResize" disabled>
+        Resize Iframe
+        <div class="description">BFSA.ui.resize(600)</div>
+      </button>
+
+      <h2 style="margin-top: 20px;">Data Operations</h2>
+      <button id="btnGetData" disabled>
+        Get Analysis Data
+        <div class="description">BFSA.data.getAnalysisResult()</div>
+      </button>
+      <button id="btnSetData" disabled>
+        Store Data
+        <div class="description">BFSA.data.setItem('key', value)</div>
+      </button>
+      <button id="btnGetData" disabled>
+        Retrieve Data
+        <div class="description">BFSA.data.getItem('key')</div>
+      </button>
+
+      <h2 style="margin-top: 20px;">Export Operations</h2>
+      <button id="btnExportJSON" disabled>
+        Export JSON
+        <div class="description">BFSA.export.json(data, 'file.json')</div>
+      </button>
+      <button id="btnCopy" disabled>
+        Copy to Clipboard
+        <div class="description">BFSA.export.copy(text)</div>
+      </button>
+
+      <h2 style="margin-top: 20px;">Theme & Info</h2>
+      <button id="btnGetTheme" disabled>
+        Get Theme
+        <div class="description">BFSA.theme.get()</div>
+      </button>
+      <button id="btnGetColors" disabled>
+        Get Color Palette
+        <div class="description">BFSA.theme.getColors()</div>
+      </button>
+      <button id="btnGetDevice" disabled>
+        Get Device Info
+        <div class="description">BFSA.theme.getDeviceInfo()</div>
+      </button>
+
+      <h2 style="margin-top: 20px;">Utilities</h2>
+      <button id="btnFormatBytes" disabled>
+        Format Bytes
+        <div class="description">BFSA.utils.formatBytes(1234567)</div>
+      </button>
+    </div>
+
+    <!-- Main content area -->
+    <div class="main">
+      <h2 style="font-size: 18px; margin-bottom: 16px;">Response Log</h2>
+      <div id="responseLog"></div>
+
+      <h2 style="font-size: 18px; margin-top: 24px; margin-bottom: 16px;">Plugin Output</h2>
+      <div id="iframeContainer"></div>
+    </div>
+  </div>
+
+  <!-- Modal for demo -->
+  <div id="modal">
+    <div id="modalContent">
+      <h3 style="margin: 0 0 12px 0;" id="modalTitle">Modal</h3>
+      <div id="modalBody"></div>
+      <button class="primary" onclick="document.getElementById('modal').classList.remove('active')" style="margin-top: 16px;">Close</button>
+    </div>
+  </div>
+
+  <!-- Toast for demo -->
+  <div id="toast"></div>
+
+  <script type="module">
+    // Mock analysis data
+    const mockAnalysisData = {
+      fileCount: 42,
+      totalSize: 1234567,
+      averageSize: 29399,
+      folderCount: 12,
+      duration: 1234,
+      files: [
+        { path: '/src/main.rs', name: 'main.rs', size: 1024, extension: 'rs' },
+        { path: '/src/utils.ts', name: 'utils.ts', size: 2048, extension: 'ts' }
+      ],
+      pluginResults: [
+        { pluginId: 'line-counter', pluginName: 'Line Counter', summary: 'Counted 1000 lines' }
+      ]
+    };
+
+    let wasmExports = null;
+    let iframeElement = null;
+
+    // Logging
+    function log(type, message, data = null) {
+      const logDiv = document.getElementById('responseLog');
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">[${time}]</span>
+        <span class="log-type">${type}</span>: ${message}
+        ${data ? '<pre style="margin: 4px 0 0 0; color: #9ca3af;">' + JSON.stringify(data, null, 2) + '</pre>' : ''}
+      `;
+      logDiv.insertBefore(entry, logDiv.firstChild);
+    }
+
+    // Enable all test buttons after plugin loads
+    function enableButtons() {
+      document.querySelectorAll('button[id]:not(#loadPlugin)').forEach(btn => {
+        btn.disabled = false;
+      });
+    }
+
+    // Listen for messages from iframe
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+
+      if (msg.type === 'bfsa-api-ready') {
+        log('API', `Plugin API v${msg.version} ready`);
+        enableButtons();
+      }
+
+      if (msg.type === 'bfsa-api-call') {
+        const { id, action, data } = msg;
+        log('API CALL', `${action}`, data);
+
+        const [category, method] = action.split('.');
+        const iframe = iframeElement?.contentWindow;
+
+        const sendResponse = (responseData, error = null) => {
+          if (iframe) {
+            iframe.postMessage({
+              type: 'bfsa-api-response',
+              id,
+              data: responseData,
+              error
+            }, '*');
+          }
+        };
+
+        // Handle different API categories
+        switch (category) {
+          case 'ui':
+            handleUI(method, data, sendResponse);
+            break;
+          case 'data':
+            handleData(method, data, sendResponse);
+            break;
+          case 'export':
+            handleExport(method, data, sendResponse);
+            break;
+          case 'plugin':
+            handlePlugin(method, data, sendResponse);
+            break;
+          default:
+            sendResponse(null, `Unknown action: ${action}`);
+        }
+      }
+    });
+
+    // UI handlers
+    function handleUI(method, data, sendResponse) {
+      switch (method) {
+        case 'fullscreen':
+          if (iframeElement) {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              iframeElement.requestFullscreen();
+            }
+          }
+          sendResponse();
+          break;
+
+        case 'modal':
+          document.getElementById('modalTitle').textContent = data.options?.title || 'Plugin Modal';
+          document.getElementById('modalBody').innerHTML = data.content || 'No content';
+          document.getElementById('modal').classList.add('active');
+          sendResponse();
+          break;
+
+        case 'closeModal':
+          document.getElementById('modal').classList.remove('active');
+          sendResponse();
+          break;
+
+        case 'toast':
+          showToast(data.message, data.type);
+          sendResponse();
+          break;
+
+        case 'confirm':
+          const confirmed = window.confirm(data.message);
+          sendResponse({ confirmed });
+          log('UI', `Confirm dialog: ${confirmed ? 'confirmed' : 'cancelled'}`);
+          break;
+
+        case 'prompt':
+          const value = window.prompt(data.message, data.defaultValue);
+          sendResponse({ value });
+          log('UI', `Prompt result: ${value}`);
+          break;
+
+        case 'resize':
+          if (iframeElement && data.height) {
+            iframeElement.style.height = data.height + 'px';
+          }
+          sendResponse();
+          break;
+
+        default:
+          sendResponse(null, `Unknown UI method: ${method}`);
+      }
+    }
+
+    // Data handlers
+    function handleData(method, data, sendResponse) {
+      switch (method) {
+        case 'getAnalysisResult':
+          sendResponse(mockAnalysisData);
+          break;
+        case 'getFileList':
+          sendResponse(mockAnalysisData.files);
+          break;
+        case 'setItem':
+          localStorage.setItem(`bfsa_plugin_${data.key}`, JSON.stringify(data.value));
+          sendResponse();
+          log('DATA', `Stored: ${data.key}`);
+          break;
+        case 'getItem':
+          try {
+            const value = localStorage.getItem(`bfsa_plugin_${data.key}`);
+            sendResponse(value ? JSON.parse(value) : null);
+          } catch {
+            sendResponse(null);
+          }
+          break;
+        default:
+          sendResponse(null, `Unknown data method: ${method}`);
+      }
+    }
+
+    // Export handlers
+    function handleExport(method, data, sendResponse) {
+      switch (method) {
+        case 'json':
+          downloadFile(data.filename || 'export.json', JSON.stringify(data.data, null, 2), 'application/json');
+          sendResponse();
+          log('EXPORT', `Downloaded: ${data.filename}`);
+          break;
+        case 'copy':
+          navigator.clipboard.writeText(String(data.text))
+            .then(() => {
+              sendResponse({ success: true });
+              log('EXPORT', 'Copied to clipboard');
+              showToast('Copied to clipboard!', 'success');
+            })
+            .catch(() => sendResponse(null, 'Failed to copy'));
+          break;
+        case 'download':
+          downloadFile(data.filename, data.content, data.mimeType);
+          sendResponse();
+          log('EXPORT', `Downloaded: ${data.filename}`);
+          break;
+        default:
+          sendResponse(null, `Unknown export method: ${method}`);
+      }
+    }
+
+    // Plugin handlers
+    function handlePlugin(method, data, sendResponse) {
+      switch (method) {
+        case 'getInfo':
+          sendResponse({ id: 'html-demo', name: 'HTML Demo Plugin', version: '0.1.0' });
+          break;
+        case 'getLoadedPlugins':
+          sendResponse(mockAnalysisData.pluginResults);
+          break;
+        default:
+          sendResponse(null, `Unknown plugin method: ${method}`);
+      }
+    }
+
+    // Helper functions
+    function downloadFile(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = type;
+      toast.classList.add('active');
+      setTimeout(() => toast.classList.remove('active'), 3000);
+    }
+
+    // Button handlers
+    document.getElementById('loadPlugin').addEventListener('click', async () => {
+      try {
+        const module = await import('/wasm/html-demo/html_demo.js');
+        await module.default();
+        wasmExports = module;
+        log('PLUGIN', 'WASM module loaded');
+        document.getElementById('loadPlugin').textContent = 'Plugin Loaded';
+        document.getElementById('loadPlugin').disabled = true;
+      } catch (e) {
+        log('ERROR', e.message);
+      }
+    });
+
+    document.getElementById('testHtml').addEventListener('click', () => {
+      if (!wasmExports) return;
+
+      // Process a mock file and get HTML output
+      const mockFile = {
+        name: "demo.js",
+        path: "/src/demo.js",
+        size: 1024,
+        mimeType: "text/javascript",
+        lastModified: Date.now() / 1000,
+        content: Array.from(new TextEncoder().encode('console.log("Hello");'))
+      };
+
+      const output = JSON.parse(wasmExports.process_file(JSON.stringify(mockFile)));
+      const finalize = JSON.parse(wasmExports.finalize(JSON.stringify([output])));
+
+      if (finalize.render_type === 'html') {
+        const iframe = document.createElement('iframe');
+        iframe.height = finalize.height || 500;
+        iframe.style.border = '1px solid #e5e7eb';
+        iframe.style.borderRadius = '8px';
+
+        const htmlContent = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: ui-sans-serif, system-ui, sans-serif; padding: 16px; margin: 0; }
+              .bfsa-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+              .bfsa-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+              .bfsa-metric { background: #f9fafb; border-radius: 6px; padding: 12px; }
+              .bfsa-metric-label { font-size: 12px; color: #6b7280; }
+              .bfsa-metric-value { font-size: 18px; font-weight: 600; color: #111827; }
+              .bfsa-table { width: 100%; border-collapse: collapse; }
+              .bfsa-table th { padding: 8px 12px; text-align: left; background: #f9fafb; font-weight: 600; }
+              .bfsa-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+              .bfsa-badge { padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+              .bfsa-badge-success { background: #dcfce7; color: #166534; }
+              .bfsa-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
+              .bfsa-btn-primary { background: #2563eb; color: white; }
+              .bfsa-btn:hover { opacity: 0.9; }
+            </style>
+          </head>
+          <body>${finalize.content}</body>
+          </html>
+        `;
+
+        document.getElementById('iframeContainer').innerHTML = '';
+        document.getElementById('iframeContainer').appendChild(iframe);
+        iframeElement = iframe;
+        iframe.srcdoc = htmlContent;
+
+        log('RENDER', 'HTML rendered in iframe');
+      }
+    });
+
+    // UI operation buttons
+    document.getElementById('btnToast').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.toast("Hello from the plugin!", "success")'
+      }, '*');
+    });
+
+    document.getElementById('btnModal').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.modal("<h3>Plugin Modal</h3><p>This is a modal from the plugin!</p>")'
+      }, '*');
+    });
+
+    document.getElementById('btnConfirm').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.confirm("Do you want to proceed?").then(result => console.log("Confirmed:", result))'
+      }, '*');
+    });
+
+    document.getElementById('btnPrompt').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.prompt("Enter your name:", "Guest").then(name => BFSA.ui.toast("Hello, " + name + "!"))'
+      }, '*');
+    });
+
+    document.getElementById('btnFullscreen').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.fullscreen()'
+      }, '*');
+    });
+
+    document.getElementById('btnResize').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.ui.resize(300)'
+      }, '*');
+    });
+
+    document.getElementById('btnGetData').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.data.getAnalysisResult().then(data => console.log("Analysis Data:", data))'
+      }, '*');
+    });
+
+    document.getElementById('btnSetData').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.data.setItem("myKey", { foo: "bar", timestamp: Date.now() })'
+      }, '*');
+    });
+
+    document.getElementById('btnExportJSON').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.export.json({ test: "data", numbers: [1,2,3] }, "test-export.json")'
+      }, '*');
+    });
+
+    document.getElementById('btnCopy').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.export.copy("Copied from plugin iframe!")'
+      }, '*');
+    });
+
+    document.getElementById('btnGetTheme').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.theme.get().then(t => console.log("Theme:", t))'
+      }, '*');
+    });
+
+    document.getElementById('btnGetColors').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.theme.getColors().then(c => console.log("Colors:", c))'
+      }, '*');
+    });
+
+    document.getElementById('btnGetDevice').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'BFSA.theme.getDeviceInfo().then(d => console.log("Device:", d))'
+      }, '*');
+    });
+
+    document.getElementById('btnFormatBytes').addEventListener('click', () => {
+      if (!iframeElement) return;
+      iframeElement.contentWindow.postMessage({
+        type: 'bfsa-api-instruction',
+        instruction: 'console.log("Bytes formatted:", BFSA.utils.formatBytes(1234567))'
+      }, '*');
+    });
+
+    log('INIT', 'BFSA Plugin API Demo loaded');
+  </script>
+</body>
+</html>

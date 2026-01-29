@@ -126,7 +126,7 @@ export class PluginDispatcher {
     const allowedExtensions = new Set(capabilities.file_extensions.map((ext) => ext.toLowerCase()))
 
     return files.filter((file) => {
-      const ext = file.extension.toLowerCase()
+      const ext = file.extension?.toLowerCase() || ''
       return allowedExtensions.has(ext) || allowedExtensions.has('*')
     })
   }
@@ -207,6 +207,7 @@ export function filesToFileEntries(files: File[]): FileEntry[] {
       mimeType: file.type,
       lastModified: file.lastModified || 0,
       extension,
+      type: 'file' as const,
     }
   })
 }

@@ -29,15 +29,15 @@ impl SecurityValidator {
         let mut blocked: HashSet<String> = HashSet::new();
         // Dangerous imports that could be used to escape the sandbox
         blocked.extend(vec![
-            "eval".to_string(),          // JavaScript eval (for potential WASI/JS interop)
-            "function".to_string(),      // Function constructor
-            "call".to_string(),          // Direct function calls that bypass host
-            "syscall".to_string(),       // System calls
-            "instantiate".to_string(),   // WebAssembly.instantiate (could load more code)
-            "fetch".to_string(),         // Network access
-            "xmlhttp".to_string(),       // XHR network access
-            "websocket".to_string(),     // WebSocket network access
-            "worker".to_string(),        // Worker creation (could bypass isolation)
+            "eval".to_string(),           // JavaScript eval (for potential WASI/JS interop)
+            "function".to_string(),       // Function constructor
+            "call".to_string(),           // Direct function calls that bypass host
+            "syscall".to_string(),        // System calls
+            "instantiate".to_string(),    // WebAssembly.instantiate (could load more code)
+            "fetch".to_string(),          // Network access
+            "xmlhttp".to_string(),        // XHR network access
+            "websocket".to_string(),      // WebSocket network access
+            "worker".to_string(),         // Worker creation (could bypass isolation)
             "import_scripts".to_string(), // Dynamic script imports
         ]);
 
@@ -58,7 +58,9 @@ impl SecurityValidator {
             "__indirect_function_table".to_string(),
             "__data_end".to_string(),
             "__heap_base".to_string(),
-        ].into_iter().collect();
+        ]
+        .into_iter()
+        .collect();
 
         Self {
             max_plugin_size: 10 * 1024 * 1024, // 10MB default
@@ -101,10 +103,7 @@ impl SecurityValidator {
 
         for blocked in &self.blocked_imports {
             if wasm_str.contains(blocked) {
-                errors.push(format!(
-                    "Blocked import pattern detected: {}",
-                    blocked
-                ));
+                errors.push(format!("Blocked import pattern detected: {}", blocked));
             }
         }
 
@@ -134,8 +133,8 @@ impl SecurityValidator {
             "js:",
             "javascript:",
             "node:",
-            "fs.",     // File system access
-            "path.",   // Path manipulation
+            "fs.",    // File system access
+            "path.",  // Path manipulation
             "child_", // Child processes
             "exec",   // Execution
             "shell",  // Shell access
@@ -143,10 +142,7 @@ impl SecurityValidator {
 
         for pattern in suspicious_patterns {
             if wasm_str.contains(pattern) {
-                warnings.push(format!(
-                    "Suspicious import pattern detected: {}",
-                    pattern
-                ));
+                warnings.push(format!("Suspicious import pattern detected: {}", pattern));
             }
         }
 
@@ -167,7 +163,8 @@ impl SecurityValidator {
     pub fn check_loop_safety(&self, wasm_bytes: &[u8]) -> ValidationResult {
         // Count loop-related bytecode instructions
         // This is a very basic heuristic
-        let loop_count = wasm_bytes.iter()
+        let loop_count = wasm_bytes
+            .iter()
             .filter(|&&b| b == 0x0B || b == 0x0C || b == 0x0D) // loop, if, block
             .count();
 

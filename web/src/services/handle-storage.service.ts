@@ -27,7 +27,7 @@ async function initDB(): Promise<IDBDatabase> {
     request.onsuccess = () => resolve(request.result)
 
     request.onupgradeneeded = (event) => {
-      const db = event.target.result as IDBDatabase
+      const db = (event.target as IDBOpenDBRequest).result as IDBDatabase
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' })
       }
@@ -45,7 +45,7 @@ export async function saveDirectoryHandle(
   try {
     // Request persistent permission to access the directory
     // This allows the handle to be used across sessions
-    const permission = await handle.requestPermission({ mode: 'read' })
+    const permission = await (handle as any).requestPermission({ mode: 'read' })
 
     if (permission !== 'granted') {
       console.warn('[HandleStorage] Persistent permission not granted')

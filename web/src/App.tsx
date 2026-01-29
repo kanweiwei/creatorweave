@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAnalysisStore } from '@/store/analysis.store'
-import { isSupported, selectFolder, selectFolderOrUseSaved } from '@/services/fsAccess.service'
+import { isSupported, selectFolderOrUseSaved } from '@/services/fsAccess.service'
 import { traverseDirectory } from '@/services/traversal.service'
 import { analyzeFiles } from '@/services/analyzer.service'
 import { getPluginLoader } from '@/services/plugin-loader.service'
@@ -65,13 +65,18 @@ function App() {
 
   // Analyze a folder - use saved handle if available for reanalyze
   async function analyzeSelectedFolder(useSavedIfAvailable: boolean) {
+    console.log('[App] analyzeSelectedFolder called, useSavedIfAvailable:', useSavedIfAvailable)
     try {
       reset()
       startAnalysis()
 
+      // Always show picker for fresh selection (not reanalyze)
+      // useSavedIfAvailable=true means we're reanalyzing the same folder
       const dirHandle = useSavedIfAvailable
-        ? await selectFolderOrUseSaved()
-        : await selectFolder(true)
+        ? await selectFolderOrUseSaved(false)
+        : await selectFolderOrUseSaved(true) // forceNewSelection=true
+
+      console.log('[App] dirHandle:', dirHandle)
 
       if (!dirHandle) {
         setError('No folder selected')
@@ -80,8 +85,12 @@ function App() {
 
       await analyzeFolder(dirHandle)
     } catch (error) {
+      console.error('[App] Error in analyzeSelectedFolder:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(errorMessage)
+      // Ignore "File picker already active" errors - they're just rapid clicks
+      if (!errorMessage.includes('File picker already active')) {
+        setError(errorMessage)
+      }
     }
   }
 
@@ -274,7 +283,6 @@ function App() {
           <PluginManager
             selectedPlugins={selectedPlugins}
             onPluginsSelect={(plugins) => setSelectedPlugins(plugins)}
-            onSwitchToHome={() => setCurrentView('home')}
           />
         </div>
       </div>

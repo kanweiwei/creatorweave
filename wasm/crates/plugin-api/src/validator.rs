@@ -8,7 +8,7 @@
 //! - Resource limit validation
 
 use crate::abi::{BLOCKED_IMPORTS, REQUIRED_EXPORTS};
-use crate::types::{BFOSA_API_VERSION, PluginInfo, ValidationResult};
+use crate::types::{PluginInfo, ValidationResult, BFOSA_API_VERSION};
 use serde_json::Value;
 
 //=============================================================================
@@ -41,13 +41,19 @@ impl PluginValidator {
         // 2. Check required exports (parse from WASM)
         let missing_exports = Self::check_required_exports(wasm_bytes);
         for export in missing_exports {
-            errors.push(format!("MissingExport: Required export '{}' not found", export));
+            errors.push(format!(
+                "MissingExport: Required export '{}' not found",
+                export
+            ));
         }
 
         // 3. Check for suspicious/blocked imports
         let blocked = Self::check_blocked_imports(wasm_bytes);
         for import in blocked {
-            errors.push(format!("SuspiciousImport: Blocked import '{}' detected", import));
+            errors.push(format!(
+                "SuspiciousImport: Blocked import '{}' detected",
+                import
+            ));
         }
 
         // Note: We can't fully validate PluginInfo without instantiating
@@ -170,14 +176,12 @@ impl PluginValidator {
 
     /// Parse file output from JSON bytes
     pub fn parse_file_output(json: &[u8]) -> Result<crate::types::FileOutput, String> {
-        serde_json::from_slice(json)
-            .map_err(|e| format!("Failed to parse FileOutput: {}", e))
+        serde_json::from_slice(json).map_err(|e| format!("Failed to parse FileOutput: {}", e))
     }
 
     /// Parse plugin result from JSON bytes
     pub fn parse_plugin_result(json: &[u8]) -> Result<crate::types::PluginResult, String> {
-        serde_json::from_slice(json)
-            .map_err(|e| format!("Failed to parse PluginResult: {}", e))
+        serde_json::from_slice(json).map_err(|e| format!("Failed to parse PluginResult: {}", e))
     }
 }
 
@@ -201,10 +205,7 @@ impl RuntimeValidator {
             }
         } else {
             // If exports is not an object, all are missing
-            missing = REQUIRED_EXPORTS
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
+            missing = REQUIRED_EXPORTS.iter().map(|s| s.to_string()).collect();
         }
 
         if missing.is_empty() {
@@ -339,7 +340,7 @@ mod tests {
             description: "Test plugin".to_string(),
             author: "BFOSA Team".to_string(),
             capabilities: crate::types::PluginCapabilities {
-                metadata_only: true,   // Conflicts with:
+                metadata_only: true,    // Conflicts with:
                 requires_content: true, // this
                 supports_streaming: false,
                 max_file_size: 0,

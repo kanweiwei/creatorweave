@@ -81,7 +81,6 @@ export class StreamReader {
 
     let index = 0
     let offset = 0
-    let totalBytes = file.size
     let skipBOM = opts.skipBOM
 
     try {
@@ -182,11 +181,11 @@ export class StreamReader {
   /**
    * Estimate memory usage for streaming
    *
-   * @param fileSize - Size of file in bytes
+   * @param _fileSize - Size of file in bytes
    * @param chunkSize - Size of each chunk
    * @returns Estimated memory usage in bytes
    */
-  estimateMemoryUsage(fileSize: number, chunkSize: number): number {
+  estimateMemoryUsage(_fileSize: number, chunkSize: number): number {
     // Estimate: 2x chunk size for buffer + overhead
     return chunkSize * 2 + 1024 // +1KB overhead
   }
@@ -206,11 +205,11 @@ export class StreamReader {
   /**
    * Get optimal chunk size based on file size and memory limit
    *
-   * @param fileSize - Size of file in bytes
+   * @param _fileSize - Size of file in bytes
    * @param memoryLimit - Available memory in bytes
    * @returns Optimal chunk size
    */
-  getOptimalChunkSize(fileSize: number, memoryLimit = 16 * 1024 * 1024): number {
+  getOptimalChunkSize(_fileSize: number, memoryLimit = 16 * 1024 * 1024): number {
     // Use 1/8 of memory limit, min 4KB, max 1MB
     const chunkSize = Math.min(memoryLimit / 8, 1024 * 1024)
     return Math.max(chunkSize, 4 * 1024)

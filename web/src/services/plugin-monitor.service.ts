@@ -5,7 +5,7 @@
  * for timeout and memory constraints.
  */
 
-import type { PluginInstance, PluginResult } from '../types/plugin'
+import type { PluginInstance } from '../types/plugin'
 
 //=============================================================================
 // Types
@@ -23,6 +23,7 @@ export interface ResourceMetrics {
   filesProcessed: number
   lastActivityTime: number
   isActive: boolean
+  violations?: Violation[]
 }
 
 /**

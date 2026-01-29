@@ -51,6 +51,7 @@ export interface FileInput {
   mimeType?: string
   lastModified: number
   content?: Uint8Array
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -258,6 +259,16 @@ export interface FileResult {
   size: number
   output?: FileOutput
   success: boolean
+}
+
+/**
+ * HTML render result from plugin
+ */
+export interface PluginHTMLResult {
+  render_type: 'html'
+  content: string
+  height?: number
+  title?: string
 }
 
 /**

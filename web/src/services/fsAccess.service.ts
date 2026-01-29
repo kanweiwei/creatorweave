@@ -13,15 +13,25 @@ export function isSupported(): boolean {
  * @throws Error if API is not supported or user cancels
  */
 export async function selectFolder(saveHandle: boolean = true): Promise<FileSystemDirectoryHandle> {
+  console.log('[fsAccess] selectFolder called, saveHandle:', saveHandle)
   if (!isSupported()) {
     throw new Error('File System Access API is not supported')
   }
 
   try {
-    const handle = await window.showDirectoryPicker({
+    console.log('[fsAccess] Calling showDirectoryPicker...')
+    const handle = await (
+      window.showDirectoryPicker as (options?: {
+        mode?: 'read' | 'readwrite'
+        id?: string
+        startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos'
+      }) => Promise<FileSystemDirectoryHandle>
+    )({
       mode: 'read',
-      id: 'bfosa-folder', // Persistent identifier
+      // Don't use persistent id - it skips the picker dialog on subsequent calls
+      // id: 'bfosa-folder',
     })
+    console.log('[fsAccess] Folder selected:', handle.name)
 
     if (saveHandle) {
       const { saveDirectoryHandle } = await import('./handle-storage.service')
@@ -47,19 +57,31 @@ export async function selectFolder(saveHandle: boolean = true): Promise<FileSyst
 
 /**
  * Select a folder using a saved handle (if available)
+ * @param forceNewSelection - Force showing the picker even if a saved handle exists
  * @returns FileSystemDirectoryHandle or null
  */
-export async function selectFolderOrUseSaved(): Promise<FileSystemDirectoryHandle | null> {
+export async function selectFolderOrUseSaved(
+  forceNewSelection: boolean = false
+): Promise<FileSystemDirectoryHandle | null> {
+  console.log('[fsAccess] selectFolderOrUseSaved called, forceNewSelection:', forceNewSelection)
+
+  // If forcing new selection, always show picker
+  if (forceNewSelection) {
+    console.log('[fsAccess] Forcing new selection - calling selectFolder')
+    return selectFolder(true)
+  }
+
   const { loadDirectoryHandle, hasSavedHandle } = await import('./handle-storage.service')
 
   // Check if we have a saved handle
   if (await hasSavedHandle()) {
+    console.log('[fsAccess] Found saved handle, loading...')
     const saved = await loadDirectoryHandle()
     if (saved) {
       // Verify the handle is still accessible
       try {
         // Try to access the handle to verify it's still valid
-        for await (const _entry of saved.handle.values()) {
+        for await (const _entry of (saved.handle as any).values()) {
           // Just checking if we can iterate
           break
         }
@@ -73,5 +95,6 @@ export async function selectFolderOrUseSaved(): Promise<FileSystemDirectoryHandl
   }
 
   // No saved handle or handle is invalid, select new folder
+  console.log('[fsAccess] No saved handle, calling selectFolder')
   return selectFolder(true)
 }

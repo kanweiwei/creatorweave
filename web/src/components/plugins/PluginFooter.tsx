@@ -1,8 +1,10 @@
 /**
- * Plugin Footer Component - Neo-Brutal Tech Design
+ * Plugin Footer Component
  *
- * Status bar with tech decorations
+ * Unified design matching the main app
  */
+
+import './plugin-ui.css'
 
 interface PluginFooterProps {
   stats: {
@@ -15,60 +17,31 @@ interface PluginFooterProps {
 
 export function PluginFooter({ stats }: PluginFooterProps) {
   return (
-    <footer className="npf-footer">
-      {/* Top decorative line */}
-      <div className="npf-line-top">
-        <div className="npf-line-segment"></div>
-        <div className="npf-line-segment npf-line-segment--long"></div>
-        <div className="npf-line-segment"></div>
+    <footer className="plugin-footer">
+      <div className="plugin-footer-stats">
+        {stats.loaded > 0 && (
+          <div className="plugin-footer-stat">
+            <span className="plugin-footer-stat-dot plugin-footer-stat-dot--loaded"></span>
+            <span className="plugin-footer-stat-text">{stats.loaded} active</span>
+          </div>
+        )}
+        {stats.loading > 0 && (
+          <div className="plugin-footer-stat">
+            <span className="plugin-footer-stat-dot plugin-footer-stat-dot--loading"></span>
+            <span className="plugin-footer-stat-text">{stats.loading} loading</span>
+          </div>
+        )}
+        {stats.error > 0 && (
+          <div className="plugin-footer-stat">
+            <span className="plugin-footer-stat-dot plugin-footer-stat-dot--error"></span>
+            <span className="plugin-footer-stat-text">{stats.error} error</span>
+          </div>
+        )}
       </div>
 
-      <div className="npf-content">
-        <div className="npf-section">
-          <span className="npf-label">SYSTEM_STATUS</span>
-          <div className="npf-stats">
-            <div className="npf-stat">
-              <span className="npf-stat-dot npf-stat-dot--green"></span>
-              <span className="npf-stat-text">{stats.loaded} ACTIVE</span>
-            </div>
-            {stats.loading > 0 && (
-              <div className="npf-stat">
-                <span className="npf-stat-dot npf-stat-dot--cyan"></span>
-                <span className="npf-stat-text">{stats.loading} LOADING</span>
-              </div>
-            )}
-            {stats.error > 0 && (
-              <div className="npf-stat">
-                <span className="npf-stat-dot npf-stat-dot--red"></span>
-                <span className="npf-stat-text">{stats.error} FAULT</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="npf-section">
-          <span className="npf-label">MODULE_COUNT</span>
-          <span className="npf-count">{stats.total.toString().padStart(2, '0')}</span>
-        </div>
-
-        <div className="npf-section npf-section--right">
-          <div className="npf-decoration">
-            <span className="npf-deco-char">M</span>
-            <span className="npf-deco-char">O</span>
-            <span className="npf-deco-char">D</span>
-            <span className="npf-deco-char">U</span>
-            <span className="npf-deco-char">L</span>
-            <span className="npf-deco-char">E</span>
-            <span className="npf-deco-char">_</span>
-            <span className="npf-deco-char">S</span>
-            <span className="npf-deco-char">Y</span>
-            <span className="npf-deco-char">S</span>
-          </div>
-        </div>
+      <div className="plugin-footer-brand">
+        <span>BFOSA Plugin System v2.0</span>
       </div>
-
-      {/* Bottom scan effect */}
-      <div className="npf-scan"></div>
     </footer>
   )
 }

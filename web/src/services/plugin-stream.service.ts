@@ -16,7 +16,7 @@ import type {
 } from '../types/plugin'
 
 import { getPluginLoader } from './plugin-loader.service'
-import { getStreamReader, type StreamChunk, type StreamProgress } from './stream-reader.service'
+import { getStreamReader, type StreamChunk } from './stream-reader.service'
 
 //=============================================================================
 // Types
@@ -289,13 +289,17 @@ export class PluginStreamService {
     file: File
   ): Promise<FileOutput | null> {
     try {
+      // Convert string chunk data to Uint8Array for FileInput
+      const encoder = new TextEncoder()
+      const contentBytes = encoder.encode(chunk.data)
+
       const fileInput: FileInput = {
         name: file.name,
         path: (file as any).webkitRelativePath || file.name,
         size: chunk.bytes,
         mimeType: file.type,
         lastModified: file.lastModified || 0,
-        content: chunk.data,
+        content: contentBytes,
         metadata: {
           isChunk: true,
           chunkIndex: chunk.index,

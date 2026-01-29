@@ -1,10 +1,12 @@
 /**
- * Plugin Upload Component - Neo-Brutal Tech Design
+ * Plugin Upload Component
  *
- * Cyberpunk-styled upload zone with tech decorations
+ * Unified design matching the main app
  */
 
 import { useState, useRef, useCallback } from 'react'
+import { Upload, AlertCircle, Loader2 } from 'lucide-react'
+import './plugin-ui.css'
 
 interface PluginUploadProps {
   onUpload: (file: File) => Promise<void>
@@ -14,7 +16,6 @@ interface PluginUploadProps {
 export function PluginUpload({ onUpload, accept = '.wasm' }: PluginUploadProps) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -47,11 +48,10 @@ export function PluginUpload({ onUpload, accept = '.wasm' }: PluginUploadProps) 
 
   const validateAndUpload = async (file: File) => {
     setError(null)
-    setProgress(0)
 
     // Validate file extension
     if (!file.name.endsWith('.wasm')) {
-      setError('ERROR: ONLY .WASM FILES ACCEPTED')
+      setError('Only .wasm files are accepted')
       return
     }
 
@@ -65,25 +65,20 @@ export function PluginUpload({ onUpload, accept = '.wasm' }: PluginUploadProps) 
       const isValidMagic = magic.every((byte, i) => view[i] === byte)
 
       if (!isValidMagic) {
-        setError('ERROR: INVALID WASM MAGIC NUMBER')
+        setError('Invalid WASM format')
         return
       }
 
       // Upload
       setUploading(true)
-      setProgress(50)
-
       await onUpload(file)
 
-      setProgress(100)
       setTimeout(() => {
-        setProgress(0)
         setUploading(false)
       }, 500)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'UPLOAD_FAILED')
+      setError(err instanceof Error ? err.message : 'Upload failed')
       setUploading(false)
-      setProgress(0)
     }
   }
 
@@ -92,112 +87,53 @@ export function PluginUpload({ onUpload, accept = '.wasm' }: PluginUploadProps) 
   }
 
   return (
-    <div className="npu-container">
-      <div className="npu-label-line">
-        <span className="npu-label">MODULE_IMPORT</span>
-        <span className="npu-label-decoration">///</span>
-      </div>
+    <div className="upload-zone">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        onChange={handleChange}
+        style={{ display: 'none' }}
+      />
 
       <div
-        className={`npu-zone ${dragging ? 'npu-zone--dragging' : ''} ${uploading ? 'npu-zone--uploading' : ''} ${error ? 'npu-zone--error' : ''}`}
+        className={`upload-zone ${dragging ? 'upload-zone--dragging' : ''} ${error ? 'upload-zone--error' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={!uploading ? handleClick : undefined}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={accept}
-          onChange={handleChange}
-          style={{ display: 'none' }}
-        />
-
-        {/* Corner Decorations */}
-        <div className="npu-corner npu-corner--tl"></div>
-        <div className="npu-corner npu-corner--tr"></div>
-        <div className="npu-corner npu-corner--bl"></div>
-        <div className="npu-corner npu-corner--br"></div>
-
-        {/* Scan Line Effect */}
-        <div className="npu-scanline"></div>
-
-        {/* Content */}
-        <div className="npu-content">
+        <div className="upload-zone-content">
           {uploading ? (
             <>
-              <div className="npu-spinner">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                  <circle
-                    cx="24"
-                    cy="24"
-                    r="18"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="npu-spinner-track"
-                  />
-                  <path
-                    d="M24 6 A18 18 0 0 1 42 24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="npu-spinner-path"
-                  />
-                </svg>
-              </div>
-              <div className="npu-status">UPLOADING_MODULE...</div>
-              {progress > 0 && (
-                <div className="npu-progress-bar">
-                  <div className="npu-progress-fill" style={{ width: `${progress}%` }}></div>
-                </div>
-              )}
-              <div className="npu-progress-text">{progress}%</div>
+              <Loader2 className="h-12 w-12 animate-spin text-primary-600" />
+              <div className="upload-zone-title">Uploading module...</div>
             </>
           ) : error ? (
             <>
-              <div className="npu-error-icon">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polygon points="24 4 4 20 18 20 18 44 30 44 30 20 44 20 24 4" />
-                  <line x1="24" y1="28" x2="24" y2="36" />
-                  <line x1="24" y1="38" x2="24.01" y2="38" />
-                </svg>
-              </div>
-              <div className="npu-error-text">{error}</div>
+              <AlertCircle className="h-12 w-12 text-error" />
+              <div className="upload-zone-title">{error}</div>
+              <button
+                className="mt-2 text-sm text-primary-600 hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setError(null)
+                }}
+              >
+                Try again
+              </button>
             </>
           ) : (
             <>
-              <div className="npu-icon">
-                <svg
-                  width="56"
-                  height="56"
-                  viewBox="0 0 56 56"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <rect x="8" y="8" width="40" height="40" rx="2" />
-                  <path d="M28 20 L28 36" />
-                  <path d="M20 28 L36 28" />
-                  <circle cx="28" cy="28" r="14" className="npu-icon-pulse" />
-                </svg>
+              <div className="upload-zone-icon">
+                <Upload className="h-12 w-12" />
               </div>
-              <div className="npu-title">DROP_WASM_MODULE_HERE</div>
-              <div className="npu-subtitle">OR CLICK TO BROWSE FILE SYSTEM</div>
-              <div className="npu-hint">ACCEPTS .WASM BINARY FILES ONLY</div>
+              <div className="upload-zone-title">Drop WASM module here</div>
+              <div className="upload-zone-subtitle">or click to browse file system</div>
+              <div className="upload-zone-hint">Accepts .wasm binary files only</div>
             </>
           )}
         </div>
-      </div>
-
-      {/* Bottom decoration line */}
-      <div className="npu-bottom-line">
-        <span className="npu-bottom-text">WASM_BINARY_FORMAT / WebAssembly 1.0</span>
       </div>
     </div>
   )

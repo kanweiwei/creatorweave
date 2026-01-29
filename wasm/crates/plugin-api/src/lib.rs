@@ -131,16 +131,16 @@ pub mod abi;
 pub mod prelude {
     // Re-export all types
     pub use crate::types::{
-        FileInput, FileOutput, PluginCapabilities, PluginInfo, PluginResult,
-        ProcessingStatus, ResourceLimits, ValidationResult,
-        BFOSA_API_VERSION, DEFAULT_MAX_EXECUTION_TIME, DEFAULT_MAX_MEMORY,
+        FileInput, FileOutput, PluginCapabilities, PluginInfo, PluginResult, ProcessingStatus,
+        ResourceLimits, ValidationResult, BFOSA_API_VERSION, DEFAULT_MAX_EXECUTION_TIME,
+        DEFAULT_MAX_MEMORY,
     };
 }
 
 // Re-export commonly used types at crate root
 pub use types::{
-    FileInput, FileOutput, PluginCapabilities, PluginInfo, PluginResult,
-    ProcessingStatus, ResourceLimits, ValidationResult,
+    FileInput, FileOutput, PluginCapabilities, PluginInfo, PluginResult, ProcessingStatus,
+    ResourceLimits, ValidationResult,
 };
 
 pub use validator::{PluginValidator, RuntimeValidator};

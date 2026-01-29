@@ -13,7 +13,7 @@
  * Allocate memory in WASM linear memory
  * Called by plugin via bfosa_allocate
  */
-export function bfosa_allocate(size: number): number {
+export function bfosa_allocate(_size: number): number {
   // This would be implemented by the actual WebAssembly.Memory
   // For now, return a placeholder
   // In production, this would be a proper allocator
@@ -78,7 +78,8 @@ export function bfosa_report_progress(current: number, total: number): void {
 //=============================================================================
 
 // Global state for streaming (in worker context)
-declare const self: WorkerGlobalScope
+// @ts-ignore - DedicatedWorkerGlobalScope not in standard lib
+declare const self: any
 
 /**
  * Stream chunk storage for active streaming operations

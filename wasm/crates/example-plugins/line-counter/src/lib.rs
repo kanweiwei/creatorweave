@@ -3,9 +3,9 @@
 //! This plugin counts lines, characters, and blank lines in text files.
 //! Uses wasm-bindgen automatic type conversion for safer memory management.
 
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use wasm_bindgen::prelude::*;
 
 // =============================================================================
 // Types (local to avoid complex dependencies)
@@ -67,7 +67,7 @@ pub struct FileInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutput {
     pub path: String,
-    pub status: String,  // "Success", "Skipped", "Error"
+    pub status: String, // "Success", "Skipped", "Error"
     pub data: serde_json::Value,
     #[serde(default)]
     pub error: Option<String>,
@@ -107,9 +107,12 @@ pub fn get_plugin_info() -> String {
             supports_streaming: true,
             max_file_size: 50 * 1024 * 1024,
             file_extensions: vec![
-                ".txt", ".md", ".js", ".ts", ".jsx", ".tsx",
-                ".rs", ".go", ".py", ".java", ".c", ".cpp", ".h", ".hpp"
-            ].into_iter().map(|s| s.to_string()).collect(),
+                ".txt", ".md", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".py", ".java", ".c",
+                ".cpp", ".h", ".hpp",
+            ]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect(),
         },
         resource_limits: ResourceLimits {
             max_memory: 8 * 1024 * 1024,
@@ -208,7 +211,10 @@ pub fn finalize(outputs_json: String) -> String {
             if let Some(data) = output.data.as_object() {
                 total_lines += data.get("totalLines").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                 total_blank += data.get("blankLines").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                total_chars += data.get("charsWithSpaces").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                total_chars += data
+                    .get("charsWithSpaces")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
             }
         }
     }
@@ -217,7 +223,11 @@ pub fn finalize(outputs_json: String) -> String {
         files_processed: outputs.len() as u64,
         files_skipped: outputs.iter().filter(|o| o.status == "Skipped").count() as u64,
         files_with_errors: outputs.iter().filter(|o| o.status == "Error").count() as u64,
-        summary: format!("Counted {} lines across {} files", total_lines, outputs.len()),
+        summary: format!(
+            "Counted {} lines across {} files",
+            total_lines,
+            outputs.len()
+        ),
         metrics: json!({
             "total_lines": total_lines,
             "total_blank_lines": total_blank,

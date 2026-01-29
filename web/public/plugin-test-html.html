@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML Demo Plugin Test</title>
+  <script type="module" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script type="module" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f9fafb;
+    }
+    h1 { color: #111827; }
+    .test-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .test-section h2 {
+      margin-top: 0;
+    }
+    .output {
+      margin-top: 16px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 HTML Demo Plugin Test</h1>
+
+  <div class="test-section">
+    <h2>1. Load Plugin</h2>
+    <button id="loadPlugin">Load html-demo Plugin</button>
+    <div id="pluginInfo" class="output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2. Test Plugin Functions</h2>
+    <button id="testGetInfo">Test get_plugin_info()</button>
+    <button id="testProcess">Test process_file()</button>
+    <button id="testFinalize">Test finalize() with HTML</button>
+    <div id="functionOutput" class="output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. Render HTML Output</h2>
+    <div id="htmlRender" class="output"></div>
+  </div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Mock file data for testing
+    const mockFiles = [
+      {
+        name: "main.rs",
+        path: "/src/main.rs",
+        size: 1024,
+        mimeType: "text/plain",
+        lastModified: Date.now(),
+        content: new TextEncoder().encode(`fn main() {
+    println!("Hello, World!");
+    let x = 42;
+    let mut vec = Vec::new();
+    for i in 0..100 {
+        vec.push(i * 2);
+    }
+}`)
+      }
+    },
+      {
+        name: "utils.ts",
+        path: "/src/utils.ts",
+        size: 2048,
+        mimeType: "text/typescript",
+        lastModified: Date.now(),
+        content: new TextEncoder().encode(`export function formatName(name: string): string {
+  return name.toUpperCase();
+}
+
+export function calculateTax(amount: number): number {
+  return amount * 0.1;
+}`)
+      }
+      }
+    ];
+
+    function App() {
+      const [plugin, setPlugin] = useState(null);
+      const [pluginInfo, setPluginInfo] = useState(null);
+      const [testOutput, setTestOutput] = useState(null);
+      const [htmlResult, setHtmlResult] = useState(null);
+      const iframeRef = useRef(null);
+
+      // Load the plugin
+      const loadPlugin = async () => {
+        try {
+          const module = await import('/wasm/html-demo/html_demo.js');
+          await module.default();
+
+          // Create instance
+          const wasm = await WebAssembly.instantiateStreaming(
+            fetch('/wasm/html-demo/html_demo_bg.wasm')
+              .then(r => r.body.getReader())
+              .then(reader => {
+                const reader = reader;
+                const chunks = [];
+                return new ReadableStream({
+                  start(controller) {
+                    function pump() {
+                      return reader.read().then(({ done, value }) => {
+                        if (done) {
+                          controller.close();
+                          return;
+                        }
+                        chunks.push(value);
+                        controller.enqueue(new Uint8Array(value));
+                        pump();
+                      }
+                    };
+                  }
+                });
+              })
+          );
+
+          // Get exports
+          const wasmInstance = await WebAssembly.instantiate(wasm, {});
+          const exports = wasmInstance.exports;
+
+          setPlugin({
+            get_plugin_info: exports.get_plugin_info,
+            process_file: exports.process_file,
+            finalize: exports.finalize
+          });
+
+          // Get and display plugin info
+          const infoJson = exports.get_plugin_info();
+          const info = JSON.parse(infoJson);
+          setPluginInfo(info);
+
+          document.getElementById('pluginInfo').innerHTML = `
+            <h3>Plugin Loaded ✅</h3>
+            <pre>${JSON.stringify(info, null, 2)}</pre>
+          `;
+        } catch (e) {
+          console.error('Failed to load plugin:', e);
+          document.getElementById('pluginInfo').innerHTML = `
+            <p style="color: red;">Failed to load plugin: ${e.message}</p>
+          `;
+        }
+      };
+
+      // Test get_plugin_info
+      const testGetInfo = () => {
+        if (!plugin) return alert('Please load plugin first');
+        const info = JSON.parse(plugin.get_plugin_info());
+        setTestOutput({ function: 'get_plugin_info', result: info });
+      };
+
+      // Test process_file
+      const testProcess = () => {
+        if (!plugin) return alert('Please load plugin first');
+
+        const results = mockFiles.map(file => {
+          const input = {
+            name: file.name,
+            path: file.path,
+            size: file.size,
+            mimeType: file.mimeType,
+            lastModified: file.lastModified / 1000,
+            content: Array.from(file.content)
+          };
+          const outputJson = plugin.process_file(JSON.stringify(input));
+          return JSON.parse(outputJson);
+        });
+
+        setTestOutput({ function: 'process_file', results });
+      };
+
+      // Test finalize with HTML rendering
+      const testFinalize = () => {
+        if (!plugin) return alert('Please load plugin first');
+
+        // First process files
+        const outputs = mockFiles.map(file => {
+          const input = {
+            name: file.name,
+            path: file.path,
+            size: file.size,
+            mimeType: file.mimeType,
+            lastModified: file.lastModified / 1000,
+            content: Array.from(file.content)
+          };
+          const outputJson = plugin.process_file(JSON.stringify(input));
+          return JSON.parse(outputJson);
+        });
+
+        const outputsJson = JSON.stringify(outputs);
+        const finalizeJson = plugin.finalize(outputsJson);
+        const finalize = JSON.parse(finalizeJson);
+
+        console.log('Plugin finalize result:', finalize);
+
+        if (finalize.render_type === 'html') {
+          setHtmlResult(finalize);
+        } else {
+          setTestOutput({ function: 'finalize', result: finalize });
+        }
+      };
+
+      return (
+        <div>
+          <button onClick={loadPlugin} style={{padding: '8px 16px', marginRight: '8px'}}>
+            Load Plugin
+          </button>
+          <button onClick={testGetInfo} style={{padding: '8px 16px', marginRight: '8px'}}>
+            Test get_plugin_info()
+          </button>
+          <button onClick={testProcess} style={{padding: '8px 16px', marginRight: '8px'}}>
+            Test process_file()
+          </button>
+          <button onClick={testFinalize} style={{padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>
+            🎨 Test finalize() - Render HTML
+          </button>
+
+          {testOutput && (
+            <div style={{marginTop: '16px', background: '#f3f4f6', padding: '16px', borderRadius: '8px'}}>
+              <h3>Test Output: {testOutput.function}</h3>
+              <pre style={{background: 'white', padding: '12px', borderRadius: '4px', overflow: 'auto'}}>
+                {JSON.stringify(testOutput.result, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {htmlResult && (
+            <div style={{marginTop: '16px'}}>
+              <h3>🎨 Rendered HTML from Plugin:</h3>
+              <iframe
+                ref={iframeRef}
+                srcDoc={`
+                  <!DOCTYPE html>
+                  <html>
+                  <head>
+                    <style>
+                      body { font-family: ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+                      .bfsa-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+                      .bfsa-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+                      .bfsa-metric { background: #f9fafb; border-radius: 6px; padding: 12px; }
+                      .bfsa-metric-label { font-size: 12px; color: #6b7280; }
+                      .bfsa-metric-value { font-size: 18px; font-weight: 600; color: #111827; }
+                      .bfsa-table { width: 100%; border-collapse: collapse; }
+                      .bfsa-table th { padding: 8px 12px; text-align: left; background: #f9fafb; font-weight: 600; }
+                      .bfsa-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+                      .bfsa-badge { padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+                      .bfsa-badge-success { background: #dcfce7; color: #166534; }
+                      .bfsa-badge-warning { background: #fef9c3; color: #854d0e; }
+                      .bfsa-badge-error { background: #fee2e2; color: #991b1b; }
+                      .bfsa-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
+                      .bfsa-btn-primary { background: #2563eb; color: white; }
+                    </style>
+                  </head>
+                  <body>${htmlResult.content}</body>
+                  </html>
+                `}
+                sandbox="allow-scripts allow-same-origin"
+                style={{
+                  width: '100%',
+                  height: `${htmlResult.height || 600}px`,
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px'
+                }}
+                title="Plugin Output"
+              />
+              <div style={{marginTop: '12px', fontSize: '12px', color: '#6b7280'}}>
+                Plugin suggested height: {htmlResult.height}px
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+
+  <div id="root"></div>
+</body>
+</html>
