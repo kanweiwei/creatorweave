@@ -3,6 +3,7 @@
  *
  * Top: Conversation list (always visible)
  * Bottom: Resource tabs (Files/Plugins/Changes) - visible when a folder is selected
+ * Draggable divider between them for height adjustment.
  *
  * File preview is handled by WorkspaceLayout (push-squeeze panel in main area).
  */
@@ -16,6 +17,37 @@ import { UndoPanel } from '@/components/file-viewer/UndoPanel'
 import { getUndoManager } from '@/undo/undo-manager'
 
 type ResourceTab = 'files' | 'plugins' | 'changes'
+
+const STORAGE_KEY_RATIO = 'sidebar-conversation-ratio'
+
+const DEFAULT_CONVERSATION_RATIO = 50 // percentage
+const MIN_CONVERSATION_RATIO = 20 // minimum percentage
+const MAX_CONVERSATION_RATIO = 80 // maximum percentage
+
+// Load saved conversation ratio from localStorage
+function loadConversationRatio(): number {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_RATIO)
+    if (saved) {
+      const ratio = Number(saved)
+      if (ratio >= MIN_CONVERSATION_RATIO && ratio <= MAX_CONVERSATION_RATIO) {
+        return ratio
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return DEFAULT_CONVERSATION_RATIO
+}
+
+// Save conversation ratio to localStorage
+function saveConversationRatio(ratio: number): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_RATIO, String(ratio))
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 interface SidebarProps {
   /** Called when user clicks a file in the tree */
@@ -51,9 +83,23 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(260)
   const [resourceTab, setResourceTab] = useState<ResourceTab>('files')
+  const [conversationRatio, setConversationRatio] = useState(loadConversationRatio)
 
-  // Drag sidebar width
+  // Drag sidebar width (horizontal)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  // Drag conversation ratio (vertical)
+  const verticalDragRef = useRef<{
+    startY: number
+    startRatio: number
+    containerHeight: number
+  } | null>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+
+  // Save ratio when it changes
+  useEffect(() => {
+    saveConversationRatio(conversationRatio)
+  }, [conversationRatio])
 
   const handleFileSelect = useCallback(
     (path: string, handle: FileSystemFileHandle) => {
@@ -63,6 +109,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
     [onFileSelect]
   )
 
+  // Horizontal drag (sidebar width)
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
@@ -87,6 +134,42 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
     [width]
   )
 
+  // Vertical drag (conversation/resource split)
+  const handleVerticalDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const containerHeight = sidebarRef.current?.offsetHeight || 0
+      if (containerHeight === 0) return
+
+      verticalDragRef.current = {
+        startY: e.clientY,
+        startRatio: conversationRatio,
+        containerHeight,
+      }
+
+      const handleMove = (me: MouseEvent) => {
+        if (!verticalDragRef.current) return
+        const delta = me.clientY - verticalDragRef.current.startY
+        const deltaPercent = (delta / verticalDragRef.current.containerHeight) * 100
+        let newRatio = verticalDragRef.current.startRatio + deltaPercent
+
+        // Constrain to min/max values
+        newRatio = Math.max(MIN_CONVERSATION_RATIO, Math.min(MAX_CONVERSATION_RATIO, newRatio))
+        setConversationRatio(newRatio)
+      }
+
+      const handleUp = () => {
+        verticalDragRef.current = null
+        document.removeEventListener('mousemove', handleMove)
+        document.removeEventListener('mouseup', handleUp)
+      }
+
+      document.addEventListener('mousemove', handleMove)
+      document.addEventListener('mouseup', handleUp)
+    },
+    [conversationRatio]
+  )
+
   // Collapsed state
   if (collapsed) {
     return (
@@ -108,6 +191,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   return (
     <>
       <div
+        ref={sidebarRef}
         className="flex shrink-0 flex-col border-r border-neutral-200 bg-neutral-50"
         style={{ width }}
       >
@@ -127,7 +211,10 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
         </div>
 
         {/* Conversation list */}
-        <div className={`flex flex-col overflow-hidden ${hasResources ? 'h-1/2' : 'flex-1'}`}>
+        <div
+          className="flex flex-col overflow-hidden"
+          style={{ height: hasResources ? `${conversationRatio}%` : '100%' }}
+        >
           <div className="p-1.5">
             <button
               type="button"
@@ -166,9 +253,21 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
           </div>
         </div>
 
+        {/* Vertical drag divider (only when resources are visible) */}
+        {hasResources && (
+          <div
+            className="h-1 shrink-0 cursor-row-resize bg-neutral-200 hover:bg-primary-300 active:bg-primary-400"
+            onMouseDown={handleVerticalDragStart}
+            title="拖动调整高度"
+          />
+        )}
+
         {/* Resource tabs (only when folder is selected) */}
         {hasResources && (
-          <div className="flex flex-1 flex-col overflow-hidden border-t border-neutral-200">
+          <div
+            className="flex flex-1 flex-col overflow-hidden border-t border-neutral-200"
+            style={{ height: `${100 - conversationRatio}%` }}
+          >
             {/* Tab buttons */}
             <div className="flex items-center gap-0.5 border-b border-neutral-200 bg-white px-2 py-1">
               <button
@@ -238,7 +337,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
         )}
       </div>
 
-      {/* Drag divider */}
+      {/* Horizontal drag divider (sidebar width) */}
       <div
         className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary-300 active:bg-primary-400"
         onMouseDown={handleDragStart}
