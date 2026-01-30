@@ -1,0 +1,337 @@
+/**
+ * Remote Session Manager - orchestrates Host and Remote roles.
+ *
+ * Host: creates session, broadcasts Agent events, receives remote commands.
+ * Remote: joins session, receives Agent events, sends user messages.
+ */
+
+import { WSClient, type ConnectionState, type WSClientCallbacks } from './ws-client'
+import { E2EEncryption, generateSessionId } from './encryption'
+import type {
+  RemoteMessage,
+  WireMessage,
+  AgentStatusEvent,
+  FileChangeEvent,
+  StateSyncMessage,
+} from './remote-protocol'
+import { isEncryptedEnvelope } from './remote-protocol'
+
+export type SessionRole = 'host' | 'remote' | 'none'
+
+export interface RemoteSessionCallbacks {
+  /** Connection state changed */
+  onConnectionStateChange?: (state: ConnectionState) => void
+  /** Session role established */
+  onRoleChange?: (role: SessionRole) => void
+  /** Peer joined/left */
+  onPeerChange?: (peerCount: number) => void
+  /** Received a user message from remote peer (Host only) */
+  onRemoteMessage?: (content: string, messageId: string) => void
+  /** Received agent cancel from remote peer (Host only) */
+  onRemoteCancel?: () => void
+  /** Received agent event (Remote only) */
+  onAgentEvent?: (event: RemoteMessage) => void
+  /** Received state sync (Remote only) */
+  onStateSync?: (state: StateSyncMessage) => void
+  /** Error occurred */
+  onError?: (error: string) => void
+}
+
+const DEFAULT_RELAY_URL = 'wss://relay.example.com'
+
+export class RemoteSession {
+  private client: WSClient
+  private encryption = new E2EEncryption()
+  private callbacks: RemoteSessionCallbacks
+  private role: SessionRole = 'none'
+  private sessionId: string | null = null
+  private encryptionEnabled = true
+
+  constructor(relayUrl: string = DEFAULT_RELAY_URL, callbacks: RemoteSessionCallbacks = {}) {
+    this.callbacks = callbacks
+
+    const wsCallbacks: WSClientCallbacks = {
+      onStateChange: (state) => {
+        this.callbacks.onConnectionStateChange?.(state)
+      },
+      onMessage: (msg) => {
+        this.handleMessage(msg)
+      },
+      onError: (err) => {
+        this.callbacks.onError?.(err)
+      },
+    }
+
+    this.client = new WSClient(relayUrl, wsCallbacks)
+  }
+
+  /** Get current role */
+  getRole(): SessionRole {
+    return this.role
+  }
+
+  /** Get current session ID */
+  getSessionId(): string | null {
+    return this.sessionId
+  }
+
+  /** Get connection state */
+  getConnectionState(): ConnectionState {
+    return this.client.getState()
+  }
+
+  /**
+   * Create a new session as Host.
+   * Returns the session ID to share with remote peers.
+   */
+  async createSession(): Promise<string> {
+    this.sessionId = generateSessionId()
+    this.role = 'host'
+    this.callbacks.onRoleChange?.(this.role)
+
+    // Generate encryption key pair
+    const publicKey = await this.encryption.generateKeyPair()
+
+    // Connect to relay
+    this.client.connect()
+
+    // Wait for connection, then send create message
+    await this.waitForConnection()
+
+    this.client.send({
+      type: 'session:create',
+      sessionId: this.sessionId,
+      publicKey,
+    })
+
+    return this.sessionId
+  }
+
+  /**
+   * Join an existing session as Remote.
+   */
+  async joinSession(sessionId: string): Promise<void> {
+    this.sessionId = sessionId
+    this.role = 'remote'
+    this.callbacks.onRoleChange?.(this.role)
+
+    // Generate encryption key pair
+    const publicKey = await this.encryption.generateKeyPair()
+
+    // Connect to relay
+    this.client.connect()
+
+    // Wait for connection, then send join message
+    await this.waitForConnection()
+
+    this.client.send({
+      type: 'session:join',
+      sessionId,
+      publicKey,
+    })
+  }
+
+  /** Close the session */
+  close(): void {
+    if (this.sessionId) {
+      this.client.send({
+        type: 'session:close',
+        sessionId: this.sessionId,
+      })
+    }
+    this.client.close()
+    this.encryption.reset()
+    this.role = 'none'
+    this.sessionId = null
+    this.callbacks.onRoleChange?.(this.role)
+  }
+
+  /** Update relay server URL */
+  setRelayUrl(url: string): void {
+    this.client.setUrl(url)
+  }
+
+  /** Toggle encryption */
+  setEncryption(enabled: boolean): void {
+    this.encryptionEnabled = enabled
+  }
+
+  // ---- Host: broadcast Agent events ----
+
+  /** Broadcast an agent message event */
+  broadcastAgentMessage(role: 'user' | 'assistant', content: string, messageId: string): void {
+    this.sendSecure({
+      type: 'agent:message',
+      role,
+      content,
+      messageId,
+      timestamp: Date.now(),
+    })
+  }
+
+  /** Broadcast streaming thinking delta */
+  broadcastThinking(delta: string): void {
+    this.sendSecure({ type: 'agent:thinking', delta })
+  }
+
+  /** Broadcast tool call start */
+  broadcastToolCall(toolName: string, args: string, toolCallId: string): void {
+    this.sendSecure({ type: 'agent:tool_call', toolName, args, toolCallId })
+  }
+
+  /** Broadcast tool call result */
+  broadcastToolResult(toolCallId: string, result: string): void {
+    this.sendSecure({ type: 'agent:tool_result', toolCallId, result })
+  }
+
+  /** Broadcast agent status change */
+  broadcastStatus(status: AgentStatusEvent['status']): void {
+    this.sendSecure({ type: 'agent:status', status })
+  }
+
+  /** Broadcast file change */
+  broadcastFileChange(
+    path: string,
+    changeType: FileChangeEvent['changeType'],
+    preview?: string
+  ): void {
+    this.sendSecure({ type: 'file:change', path, changeType, preview })
+  }
+
+  /** Send full state sync to newly joined remote */
+  sendStateSync(state: StateSyncMessage): void {
+    this.sendSecure(state)
+  }
+
+  // ---- Remote: send commands ----
+
+  /** Send a user message from remote to host */
+  sendRemoteMessage(content: string, messageId: string): void {
+    this.sendSecure({
+      type: 'remote:send_message',
+      content,
+      messageId,
+      timestamp: Date.now(),
+    })
+  }
+
+  /** Send cancel command from remote to host */
+  sendRemoteCancel(): void {
+    this.sendSecure({ type: 'remote:cancel' })
+  }
+
+  // ---- Private ----
+
+  private async sendSecure(message: RemoteMessage): Promise<void> {
+    let wireMessage: WireMessage = message
+
+    if (this.encryptionEnabled && this.encryption.isReady()) {
+      try {
+        wireMessage = await this.encryption.encrypt(message)
+      } catch {
+        // Fallback to unencrypted if encryption fails
+      }
+    }
+
+    this.client.send(wireMessage)
+  }
+
+  private async handleMessage(raw: RemoteMessage): Promise<void> {
+    let message = raw
+
+    // Decrypt if needed
+    if (isEncryptedEnvelope(raw)) {
+      if (!this.encryption.isReady()) {
+        this.callbacks.onError?.('Received encrypted message but encryption not ready')
+        return
+      }
+      try {
+        message = await this.encryption.decrypt(raw)
+      } catch {
+        this.callbacks.onError?.('Failed to decrypt message')
+        return
+      }
+    }
+
+    switch (message.type) {
+      // Session lifecycle
+      case 'session:joined':
+        this.callbacks.onPeerChange?.(message.peerCount)
+        break
+
+      case 'session:error':
+        this.callbacks.onError?.(message.error)
+        break
+
+      case 'peer:disconnected':
+        this.callbacks.onPeerChange?.(0)
+        break
+
+      case 'session:create':
+      case 'session:join':
+        // Key exchange: derive shared key from peer's public key
+        if (message.publicKey) {
+          try {
+            await this.encryption.deriveSharedKey(message.publicKey)
+          } catch (e) {
+            this.callbacks.onError?.(
+              `Key exchange failed: ${e instanceof Error ? e.message : String(e)}`
+            )
+          }
+        }
+        break
+
+      // Remote commands (received by Host)
+      case 'remote:send_message':
+        this.callbacks.onRemoteMessage?.(message.content, message.messageId)
+        break
+
+      case 'remote:cancel':
+        this.callbacks.onRemoteCancel?.()
+        break
+
+      // Agent events (received by Remote)
+      case 'agent:message':
+      case 'agent:thinking':
+      case 'agent:tool_call':
+      case 'agent:tool_result':
+      case 'agent:status':
+      case 'file:change':
+        this.callbacks.onAgentEvent?.(message)
+        break
+
+      // State sync (received by Remote)
+      case 'sync:state':
+        this.callbacks.onStateSync?.(message)
+        break
+
+      default:
+        break
+    }
+  }
+
+  private waitForConnection(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.client.getState() === 'connected') {
+        resolve()
+        return
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'))
+      }, 10_000)
+
+      const checkInterval = setInterval(() => {
+        if (this.client.getState() === 'connected') {
+          clearTimeout(timeout)
+          clearInterval(checkInterval)
+          resolve()
+        } else if (this.client.getState() === 'disconnected') {
+          clearTimeout(timeout)
+          clearInterval(checkInterval)
+          reject(new Error('Connection failed'))
+        }
+      }, 100)
+    })
+  }
+}
