@@ -1,12 +1,15 @@
 /**
- * MessageBubble - renders a single message in the conversation.
+ * MessageBubble - renders a single message (user or assistant) with optional streaming state.
+ *
+ * Handles both user and assistant messages in one unified component.
+ * Streaming is just a transient state prop, not a different component.
  */
 
-import { useState } from 'react'
-import { User, Bot, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { User, Bot } from 'lucide-react'
 import type { Message } from '@/agent/message-types'
-import { ToolCallDisplay } from './ToolCallDisplay'
+import { ReasoningSection } from './ReasoningSection'
 import { MarkdownContent } from './MarkdownContent'
+import { ToolCallDisplay } from './ToolCallDisplay'
 
 /** Format token count: 999 → "999", 1234 → "1.2K" */
 function formatTokens(n: number): string {
@@ -14,102 +17,127 @@ function formatTokens(n: number): string {
   return (n / 1000).toFixed(n < 10000 ? 2 : 1) + 'K'
 }
 
+interface StreamingState {
+  /** Reasoning is actively streaming */
+  reasoning?: boolean
+  /** Content is actively streaming */
+  content?: boolean
+}
+
 interface MessageBubbleProps {
+  /** The message to display */
   message: Message
+
+  /** Optional streaming state (only applies when processing this message) */
+  streaming?: StreamingState
+
+  /** Whether to show avatar (default: true) */
+  showAvatar?: boolean
+
+  /** For assistant messages: collapse reasoning section when not streaming */
+  reasoningCollapsed?: boolean
+
+  /** For assistant messages: tool results map */
   toolResults?: Map<string, string>
 }
 
-export function MessageBubble({ message, toolResults }: MessageBubbleProps) {
-  const [reasoningOpen, setReasoningOpen] = useState(false)
-
-  if (message.role === 'system') return null
-  if (message.role === 'tool') return null // Tool results are shown inline with tool calls
-
+export function MessageBubble({
+  message,
+  streaming,
+  showAvatar = true,
+  reasoningCollapsed = true,
+  toolResults,
+}: MessageBubbleProps) {
   const isUser = message.role === 'user'
+  const isStreamingReasoning = streaming?.reasoning ?? false
+  const isStreamingContent = streaming?.content ?? false
 
-  return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-      {/* Avatar */}
-      <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-          isUser ? 'bg-primary-100 text-primary-700' : 'bg-neutral-100 text-neutral-700'
-        }`}
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+  // User message rendering
+  if (isUser) {
+    return (
+      <div className="flex flex-row-reverse gap-3">
+        {/* Avatar */}
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+          <User className="h-4 w-4" />
+        </div>
+
+        {/* Content */}
+        <div className="min-w-0 max-w-[80%] text-right">
+          <div className="inline-block rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          </div>
+
+          {/* Timestamp */}
+          <div className="mt-1 flex items-center justify-end gap-2 text-xs text-neutral-400">
+            <span>
+              {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+        </div>
       </div>
+    )
+  }
 
-      {/* Content */}
-      <div className={`min-w-0 max-w-[80%] ${isUser ? 'text-right' : ''}`}>
-        {/* Text content */}
-        {(message.content || message.reasoning) && (
-          <div
-            className={`inline-block rounded-lg px-4 py-2 text-sm ${
-              isUser
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-neutral-800 shadow-sm ring-1 ring-neutral-200'
-            }`}
-          >
-            {/* Reasoning (collapsible) */}
-            {!isUser && message.reasoning && (
-              <div className="mb-2 border-b border-neutral-100 pb-2">
-                <button
-                  type="button"
-                  onClick={() => setReasoningOpen(!reasoningOpen)}
-                  className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600"
-                >
-                  <Brain className="h-3 w-3" />
-                  <span>思考过程</span>
-                  {reasoningOpen ? (
-                    <ChevronDown className="h-3 w-3" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3" />
-                  )}
-                </button>
-                {reasoningOpen && (
-                  <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-400">
-                    {message.reasoning}
-                  </div>
-                )}
-              </div>
+  // Assistant message rendering
+  const hasReasoning = !!(message.reasoning && (!reasoningCollapsed || isStreamingReasoning))
+  const hasContent = !!message.content
+  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
+
+  // For assistant, avatar is on the left
+  return (
+    <div className="flex gap-3">
+      {/* Avatar */}
+      {showAvatar && (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
+          <Bot className="h-4 w-4" />
+        </div>
+      )}
+
+      {/* Content area */}
+      <div className="min-w-0 max-w-[80%] space-y-2">
+        {/* Reasoning */}
+        {hasReasoning && (
+          <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
+            <ReasoningSection reasoning={message.reasoning!} streaming={isStreamingReasoning} />
+          </div>
+        )}
+
+        {/* Content */}
+        {hasContent && (
+          <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
+            <div className="prose-sm max-w-none break-words">
+              <MarkdownContent content={message.content!} />
+            </div>
+            {/* Cursor when streaming */}
+            {isStreamingContent && (
+              <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-neutral-400 align-text-bottom" />
             )}
-            {isUser ? (
-              <div className="whitespace-pre-wrap break-words">{message.content}</div>
-            ) : message.content ? (
-              <div className="prose-sm max-w-none break-words">
-                <MarkdownContent content={message.content} />
-              </div>
-            ) : null}
           </div>
         )}
 
         {/* Tool calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mt-2 space-y-1">
-            {message.toolCalls.map((tc) => (
+        {hasToolCalls && (
+          <div className="space-y-1">
+            {message.toolCalls!.map((tc) => (
               <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults?.get(tc.id)} />
             ))}
           </div>
         )}
 
-        {/* Timestamp + Token usage */}
-        <div
-          className={`mt-1 flex items-center gap-2 text-xs text-neutral-400 ${isUser ? 'justify-end' : ''}`}
-        >
-          <span>
-            {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </span>
-          {!isUser && message.usage && (
+        {/* Token usage (only show for completed messages, not streaming) */}
+        {!isStreamingReasoning && !isStreamingContent && message.usage && (
+          <div className="flex items-center gap-2 text-xs text-neutral-400">
             <span
               title={`输入 ${message.usage.promptTokens} + 输出 ${message.usage.completionTokens} = ${message.usage.totalTokens} tokens`}
             >
               ↑{formatTokens(message.usage.promptTokens)} ↓
               {formatTokens(message.usage.completionTokens)}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

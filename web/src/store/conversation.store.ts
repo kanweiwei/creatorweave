@@ -1,8 +1,10 @@
 /**
  * Conversation store - manages chat history with IndexedDB persistence.
+ * Uses Immer middleware for automatic immutable updates.
  */
 
 import { create } from 'zustand'
+import { immer } from 'zustand/middleware/immer'
 import type { Conversation, Message } from '@/agent/message-types'
 import { createConversation } from '@/agent/message-types'
 
@@ -85,88 +87,98 @@ interface ConversationState {
   updateTitle: (id: string, title: string) => void
 }
 
-export const useConversationStore = create<ConversationState>()((set, get) => ({
-  conversations: [],
-  activeConversationId: null,
-  loaded: false,
+export const useConversationStore = create<ConversationState>()(
+  immer((set, get) => ({
+    conversations: [],
+    activeConversationId: null,
+    loaded: false,
 
-  activeConversation: () => {
-    const { conversations, activeConversationId } = get()
-    if (!activeConversationId) return null
-    return conversations.find((c) => c.id === activeConversationId) || null
-  },
+    activeConversation: () => {
+      const { conversations, activeConversationId } = get()
+      if (!activeConversationId) return null
+      return conversations.find((c) => c.id === activeConversationId) || null
+    },
 
-  loadFromDB: async () => {
-    try {
-      const conversations = await loadConversations()
-      // Auto-activate the most recently updated conversation
-      const activeId = conversations.length > 0 ? conversations[0].id : null
-      set({ conversations, activeConversationId: activeId, loaded: true })
-    } catch (error) {
-      console.error('[conversation.store] Failed to load conversations:', error)
-      set({ loaded: true })
-    }
-  },
+    loadFromDB: async () => {
+      try {
+        const conversations = await loadConversations()
+        // Auto-activate the most recently updated conversation
+        const activeId = conversations.length > 0 ? conversations[0].id : null
+        set((state) => {
+          state.conversations = conversations
+          state.activeConversationId = activeId
+          state.loaded = true
+        })
+      } catch (error) {
+        console.error('[conversation.store] Failed to load conversations:', error)
+        set((state) => {
+          state.loaded = true
+        })
+      }
+    },
 
-  createNew: (title?: string) => {
-    const conversation = createConversation(title)
-    set((state) => ({
-      conversations: [conversation, ...state.conversations],
-      activeConversationId: conversation.id,
-    }))
-    persistConversation(conversation).catch(console.error)
-    return conversation
-  },
+    createNew: (title?: string) => {
+      const conversation = createConversation(title)
+      set((state) => {
+        state.conversations.unshift(conversation)
+        state.activeConversationId = conversation.id
+      })
+      persistConversation(conversation).catch(console.error)
+      return conversation
+    },
 
-  setActive: (id) => set({ activeConversationId: id }),
+    setActive: (id) =>
+      set((state) => {
+        state.activeConversationId = id
+      }),
 
-  addMessage: (conversationId, message) => {
-    set((state) => {
-      const conversations = state.conversations.map((c) => {
-        if (c.id !== conversationId) return c
-        const updated = {
-          ...c,
-          messages: [...c.messages, message],
-          updatedAt: Date.now(),
+    addMessage: (conversationId, message) => {
+      set((state) => {
+        const conv = state.conversations.find((c) => c.id === conversationId)
+        if (conv) {
+          conv.messages.push(message)
+          conv.updatedAt = Date.now()
         }
-        persistConversation(updated).catch(console.error)
-        return updated
       })
-      return { conversations }
-    })
-  },
+      // Persist after state update (not inside to avoid cloning Immer draft)
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (conv) persistConversation(conv).catch(console.error)
+    },
 
-  updateMessages: (conversationId, messages) => {
-    set((state) => {
-      const conversations = state.conversations.map((c) => {
-        if (c.id !== conversationId) return c
-        const updated = { ...c, messages, updatedAt: Date.now() }
-        persistConversation(updated).catch(console.error)
-        return updated
+    updateMessages: (conversationId, messages) => {
+      set((state) => {
+        const conv = state.conversations.find((c) => c.id === conversationId)
+        if (conv) {
+          conv.messages = messages
+          conv.updatedAt = Date.now()
+        }
       })
-      return { conversations }
-    })
-  },
+      // Persist after state update (not inside to avoid cloning Immer draft)
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (conv) persistConversation(conv).catch(console.error)
+    },
 
-  deleteConversation: (id) => {
-    set((state) => {
-      const conversations = state.conversations.filter((c) => c.id !== id)
-      const activeConversationId =
-        state.activeConversationId === id ? null : state.activeConversationId
-      return { conversations, activeConversationId }
-    })
-    deleteConversationFromDB(id).catch(console.error)
-  },
-
-  updateTitle: (id, title) => {
-    set((state) => {
-      const conversations = state.conversations.map((c) => {
-        if (c.id !== id) return c
-        const updated = { ...c, title, updatedAt: Date.now() }
-        persistConversation(updated).catch(console.error)
-        return updated
+    deleteConversation: (id) => {
+      set((state) => {
+        state.conversations = state.conversations.filter((c) => c.id !== id)
+        if (state.activeConversationId === id) {
+          state.activeConversationId = null
+        }
       })
-      return { conversations }
-    })
-  },
-}))
+      deleteConversationFromDB(id).catch(console.error)
+    },
+
+    updateTitle: (id, title) => {
+      set((state) => {
+        const conv = state.conversations.find((c) => c.id === id)
+        if (conv) {
+          conv.title = title
+          conv.updatedAt = Date.now()
+        }
+      })
+      // Persist after state update (not inside to avoid cloning Immer draft)
+      const conv = get().conversations.find((c) => c.id === id)
+      if (conv) persistConversation(conv).catch(console.error)
+    },
+  }))
+)

@@ -11,6 +11,7 @@
  */
 
 import type { LLMProvider, TokenUsage } from './llm/llm-provider'
+import { produce } from 'immer'
 import { messagesToChatMessages } from './llm/llm-provider'
 import type { ToolContext } from './tools/tool-types'
 import type { Message, ToolCall, ToolResult, MessageUsage } from './message-types'
@@ -44,11 +45,17 @@ Always read files before editing them. Be concise and helpful.`
 export interface AgentCallbacks {
   /** Called when a new assistant message starts */
   onMessageStart?: () => void
+  /** Called when reasoning stream starts (first reasoning_content delta) */
+  onReasoningStart?: () => void
   /** Called with streaming reasoning/thinking deltas (GLM-4.7+) */
   onReasoningDelta?: (delta: string) => void
+  /** Called when reasoning stream completes (before content/tool_call starts) */
+  onReasoningComplete?: (reasoning: string) => void
+  /** Called when content stream starts (first content delta) */
+  onContentStart?: () => void
   /** Called with streaming content deltas */
   onContentDelta?: (delta: string) => void
-  /** Called when content streaming completes */
+  /** Called when content streaming completes (before tool_call starts) */
   onContentComplete?: (content: string) => void
   /** Called when the LLM requests a tool call */
   onToolCallStart?: (toolCall: ToolCall) => void
@@ -125,7 +132,8 @@ export class AgentLoop {
   async run(messages: Message[], callbacks?: AgentCallbacks): Promise<Message[]> {
     this.abortController = new AbortController()
     const signal = this.abortController.signal
-    const allMessages = [...messages]
+    // Start with input messages (keep as immutable, use concat to add new messages)
+    let allMessages = messages
 
     // Inject matching skills into system prompt
     this.injectSkills(messages)
@@ -140,10 +148,6 @@ export class AgentLoop {
 
         // Stream LLM response
         const tools = this.toolRegistry.getToolDefinitions()
-        console.log(
-          `[AgentLoop] Iteration ${iteration}, messages: ${trimmedMessages.length}, tools: ${tools.length}, tool names:`,
-          tools.map((t) => t.function.name)
-        )
         callbacks?.onMessageStart?.()
 
         let content = ''
@@ -151,6 +155,11 @@ export class AgentLoop {
         const toolCalls: ToolCall[] = []
         // Buffer for accumulating tool call deltas by index
         const toolCallBuffers = new Map<number, { id: string; name: string; arguments: string }>()
+
+        // Phase detection for reasoning lifecycle
+        let reasoningPhaseStarted = false
+        let contentPhaseStarted = false
+        let toolCallsPhaseStarted = false
 
         let finishReason: string | null = null
         let usage: TokenUsage | undefined
@@ -170,20 +179,46 @@ export class AgentLoop {
           const choice = chunk.choices[0]
           if (!choice) continue
 
-          // Accumulate reasoning content (GLM-4.7+ chain-of-thought)
+          // --- Reasoning phase (GLM-4.7+ chain-of-thought) ---
           if (choice.delta.reasoning_content) {
+            // First reasoning delta → reasoning phase starts
+            if (!reasoningPhaseStarted) {
+              reasoningPhaseStarted = true
+              callbacks?.onReasoningStart?.()
+            }
             reasoning += choice.delta.reasoning_content
             callbacks?.onReasoningDelta?.(choice.delta.reasoning_content)
           }
 
-          // Accumulate content
+          // --- Content phase ---
           if (choice.delta.content) {
+            // First content delta → content phase starts
+            if (!contentPhaseStarted) {
+              contentPhaseStarted = true
+              callbacks?.onContentStart?.()
+              // Transition: reasoning → content
+              if (reasoningPhaseStarted) {
+                callbacks?.onReasoningComplete?.(reasoning)
+              }
+            }
             content += choice.delta.content
             callbacks?.onContentDelta?.(choice.delta.content)
           }
 
-          // Accumulate tool calls
+          // --- Tool calls phase ---
           if (choice.delta.tool_calls) {
+            // First tool_call delta → tool_calls phase starts
+            if (!toolCallsPhaseStarted) {
+              toolCallsPhaseStarted = true
+              // Transition: reasoning → tool_calls
+              if (reasoningPhaseStarted) {
+                callbacks?.onReasoningComplete?.(reasoning)
+              }
+              // Transition: content → tool_calls
+              if (contentPhaseStarted) {
+                callbacks?.onContentComplete?.(content)
+              }
+            }
             for (const tcDelta of choice.delta.tool_calls) {
               let buffer = toolCallBuffers.get(tcDelta.index)
               if (!buffer) {
@@ -220,6 +255,16 @@ export class AgentLoop {
           }
         }
 
+        // Handle edge case: reasoning completed but no content/tool_calls after it
+        if (reasoningPhaseStarted && !toolCallsPhaseStarted) {
+          callbacks?.onReasoningComplete?.(reasoning)
+        }
+
+        // Handle edge case: content completed but no tool_calls after it
+        if (contentPhaseStarted && !toolCallsPhaseStarted) {
+          callbacks?.onContentComplete?.(content)
+        }
+
         // Build tool calls from buffers
         for (const [, buffer] of Array.from(toolCallBuffers.entries()).sort(([a], [b]) => a - b)) {
           toolCalls.push({
@@ -227,10 +272,6 @@ export class AgentLoop {
             type: 'function',
             function: { name: buffer.name, arguments: buffer.arguments },
           })
-        }
-
-        if (content) {
-          callbacks?.onContentComplete?.(content)
         }
 
         // Create assistant message with token usage
@@ -247,13 +288,12 @@ export class AgentLoop {
           msgUsage,
           reasoning || null
         )
-        allMessages.push(assistantMsg)
+        allMessages = produce(allMessages, (draft) => {
+          draft.push(assistantMsg)
+        })
         callbacks?.onMessagesUpdated?.(allMessages)
 
         // If no tool calls, we're done
-        console.log(
-          `[AgentLoop] finishReason: ${finishReason}, toolCalls: ${toolCalls.length}, content length: ${content.length}`
-        )
         if (finishReason !== 'tool_calls' || toolCalls.length === 0) {
           break
         }
@@ -271,17 +311,32 @@ export class AgentLoop {
             args = {}
           }
 
-          const result = await this.toolRegistry.execute(tc.function.name, args, this.toolContext)
+          try {
+            const result = await this.toolRegistry.execute(tc.function.name, args, this.toolContext)
+            callbacks?.onToolCallComplete?.(tc, result)
 
-          callbacks?.onToolCallComplete?.(tc, result)
-
-          const toolResult: ToolResult = {
-            toolCallId: tc.id,
-            name: tc.function.name,
-            content: result,
+            const toolResult: ToolResult = {
+              toolCallId: tc.id,
+              name: tc.function.name,
+              content: result,
+            }
+            allMessages = produce(allMessages, (draft) => {
+              draft.push(createToolMessage(toolResult))
+            })
+            callbacks?.onMessagesUpdated?.(allMessages)
+          } catch (toolError) {
+            console.error(`[AgentLoop] Tool ${tc.function.name} failed:`, toolError)
+            const errorMsg = toolError instanceof Error ? toolError.message : String(toolError)
+            const toolResult: ToolResult = {
+              toolCallId: tc.id,
+              name: tc.function.name,
+              content: `Error: ${errorMsg}`,
+            }
+            allMessages = produce(allMessages, (draft) => {
+              draft.push(createToolMessage(toolResult))
+            })
+            callbacks?.onMessagesUpdated?.(allMessages)
           }
-          allMessages.push(createToolMessage(toolResult))
-          callbacks?.onMessagesUpdated?.(allMessages)
         }
       }
 

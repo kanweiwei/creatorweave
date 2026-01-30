@@ -2,15 +2,14 @@
  * AgentPanel - main conversation interface for the AI agent.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, FolderOpen, Settings, Plus, Trash2, StopCircle, MessageSquare } from 'lucide-react'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { useSettingsStore } from '@/store/settings.store'
 import { MessageBubble } from './MessageBubble'
-import { StreamingBubble } from './StreamingBubble'
-import { ThinkingIndicator } from './ThinkingIndicator'
-import { ToolCallDisplay } from './ToolCallDisplay'
+import { AssistantTurnBubble } from './AssistantTurnBubble'
+import { groupMessagesIntoTurns } from './group-messages'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { createUserMessage } from '@/agent/message-types'
 import type { Message, ToolCall } from '@/agent/message-types'
@@ -34,6 +33,9 @@ export function AgentPanel() {
     status,
     streamingContent,
     streamingReasoning,
+    isReasoningStreaming,
+    completedReasoning,
+    completedContent,
     streamingToolArgs,
     currentToolCall,
     directoryHandle,
@@ -48,6 +50,11 @@ export function AgentPanel() {
     setDirectoryHandle,
     setError,
     reset: resetAgent,
+    resetStreamingReasoning,
+    setReasoningStreaming,
+    setCompletedReasoning,
+    setContentStreaming,
+    setCompletedContent,
   } = useAgentStore()
 
   const {
@@ -167,15 +174,32 @@ export function AgentPanel() {
       const resultMessages = await agentLoop.run(currentMessages, {
         onMessageStart: () => {
           resetStreamingContent()
+          resetStreamingReasoning()
+          setReasoningStreaming(false)
+          setCompletedReasoning('')
+          setContentStreaming(false)
+          setCompletedContent('')
           setStatus('streaming')
+        },
+        onReasoningStart: () => {
+          setReasoningStreaming(true)
         },
         onReasoningDelta: (delta) => {
           appendStreamingReasoning(delta)
         },
+        onReasoningComplete: (reasoning) => {
+          setReasoningStreaming(false)
+          setCompletedReasoning(reasoning)
+        },
+        onContentStart: () => {
+          setContentStreaming(true)
+        },
         onContentDelta: (delta) => {
           appendStreamingContent(delta)
         },
-        onContentComplete: () => {
+        onContentComplete: (content) => {
+          setContentStreaming(false)
+          setCompletedContent(content)
           resetStreamingContent()
         },
         onToolCallStart: (tc: ToolCall) => {
@@ -201,7 +225,8 @@ export function AgentPanel() {
         onComplete: (msgs) => {
           updateMessages(convId!, msgs)
           setToolResults(buildToolResultsMap(msgs))
-          resetAgent()
+          // Defer resetAgent to ensure UI has a chance to render the updated messages first
+          Promise.resolve().then(() => resetAgent())
         },
         onError: (err) => {
           setError(err.message)
@@ -234,7 +259,31 @@ export function AgentPanel() {
   }
 
   const isProcessing = status !== 'idle' && status !== 'error'
-  const messages = conversation?.messages || []
+
+  // Build streaming state for the last message when processing
+  const streamingState = useMemo(() => {
+    if (!isProcessing) return undefined
+    return {
+      reasoning: isReasoningStreaming,
+      content: status === 'streaming',
+    }
+  }, [isProcessing, isReasoningStreaming, status])
+
+  // When processing, we have streaming content/reasoning that should be displayed
+  // as part of the current assistant turn
+  const streamingContentMessage = useMemo(() => {
+    if (!isProcessing) return undefined
+    const reasoning = completedReasoning || streamingReasoning
+    const content = completedContent || streamingContent
+    if (!reasoning && !content) return undefined
+    return { reasoning, content }
+  }, [isProcessing, completedReasoning, streamingReasoning, completedContent, streamingContent])
+
+  const turns = useMemo(() => {
+    // Immer ensures messages reference changes properly
+    const messages = conversation?.messages || []
+    return groupMessagesIntoTurns(messages)
+  }, [conversation?.messages])
 
   return (
     <div className="flex h-full flex-col">
@@ -321,7 +370,7 @@ export function AgentPanel() {
         {/* Messages area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {messages.length === 0 && (
+            {turns.length === 0 && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center text-neutral-400">
                   <MessageSquare className="mx-auto mb-2 h-8 w-8" />
@@ -332,41 +381,37 @@ export function AgentPanel() {
               </div>
             )}
 
-            {messages
-              .filter((m) => m.role !== 'system' && m.role !== 'tool')
-              .map((msg) => (
-                <MessageBubble key={msg.id} message={msg} toolResults={toolResults} />
-              ))}
-
-            {/* Streaming reasoning bubble — shows model thinking process */}
-            {status === 'streaming' && streamingReasoning && !streamingContent && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-2xl rounded-tl-md bg-neutral-100 px-4 py-3 text-neutral-800">
-                  <div className="mb-1 text-xs font-medium text-neutral-400">思考中...</div>
-                  <div className="whitespace-pre-wrap text-sm text-neutral-500">
-                    {streamingReasoning}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Streaming assistant bubble */}
-            {status === 'streaming' && streamingContent && (
-              <StreamingBubble
-                content={streamingContent}
-                reasoning={streamingReasoning || undefined}
-              />
-            )}
-
-            {/* Thinking indicator */}
-            {status === 'thinking' && <ThinkingIndicator status={status} />}
-
-            {/* Tool calling — use ToolCallDisplay for consistent style */}
-            {status === 'tool_calling' && currentToolCall && (
-              <ToolCallDisplay
-                toolCall={currentToolCall}
-                streamingArgs={streamingToolArgs || undefined}
-              />
+            {turns.map((turn, idx) =>
+              turn.type === 'user' ? (
+                <MessageBubble key={turn.message.id} message={turn.message} />
+              ) : (
+                <AssistantTurnBubble
+                  key={turn.messages[0].id}
+                  turn={turn}
+                  toolResults={toolResults}
+                  isProcessing={isProcessing}
+                  streamingState={
+                    // Only pass streaming state to the last assistant turn when processing
+                    isProcessing && idx === turns.length - 1 ? streamingState : undefined
+                  }
+                  streamingContent={
+                    // Pass streaming content to the last assistant turn when processing
+                    isProcessing && idx === turns.length - 1 ? streamingContentMessage : undefined
+                  }
+                  currentToolCall={
+                    // Pass current tool call to the last assistant turn when in tool_calling phase
+                    isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                      ? currentToolCall
+                      : undefined
+                  }
+                  streamingToolArgs={
+                    // Pass streaming tool args to the last assistant turn when in tool_calling phase
+                    isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                      ? streamingToolArgs
+                      : undefined
+                  }
+                />
+              )
             )}
 
             <div ref={messagesEndRef} />

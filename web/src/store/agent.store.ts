@@ -1,11 +1,13 @@
 /**
  * Agent state store - manages Agent runtime status.
+ * Uses Immer middleware for automatic immutable updates.
  *
  * Directory handle is persisted in IndexedDB (supports structured clone).
  * On page reload, the handle is restored and permission is re-requested.
  */
 
 import { create } from 'zustand'
+import { immer } from 'zustand/middleware/immer'
 import type { ToolCall } from '@/agent/message-types'
 
 export type AgentStatus = 'idle' | 'thinking' | 'tool_calling' | 'streaming' | 'error'
@@ -20,6 +22,14 @@ interface AgentState {
   streamingContent: string
   /** Streaming reasoning/thinking content (GLM-4.7+) */
   streamingReasoning: string
+  /** Whether reasoning is actively streaming */
+  isReasoningStreaming: boolean
+  /** Complete reasoning content (available after reasoning completes) */
+  completedReasoning: string | null
+  /** Whether content is actively streaming */
+  isContentStreaming: boolean
+  /** Complete content (available after content streaming completes) */
+  completedContent: string | null
   /** Currently executing tool call */
   currentToolCall: ToolCall | null
   /** Current tool call result */
@@ -38,6 +48,11 @@ interface AgentState {
   appendStreamingContent: (delta: string) => void
   appendStreamingReasoning: (delta: string) => void
   resetStreamingContent: () => void
+  resetStreamingReasoning: () => void
+  setReasoningStreaming: (streaming: boolean) => void
+  setCompletedReasoning: (reasoning: string) => void
+  setContentStreaming: (streaming: boolean) => void
+  setCompletedContent: (content: string) => void
   setCurrentToolCall: (tc: ToolCall | null) => void
   setCurrentToolResult: (result: string | null) => void
   appendStreamingToolArgs: (delta: string) => void
@@ -99,55 +114,130 @@ async function verifyPermission(handle: FileSystemDirectoryHandle): Promise<bool
   return false
 }
 
-export const useAgentStore = create<AgentState>()((set) => ({
-  status: 'idle',
-  streamingContent: '',
-  streamingReasoning: '',
-  currentToolCall: null,
-  currentToolResult: null,
-  streamingToolArgs: '',
-  directoryHandle: null,
-  directoryName: null,
-  error: null,
+export const useAgentStore = create<AgentState>()(
+  immer((set) => ({
+    status: 'idle',
+    streamingContent: '',
+    streamingReasoning: '',
+    isReasoningStreaming: false,
+    completedReasoning: null,
+    isContentStreaming: false,
+    completedContent: null,
+    currentToolCall: null,
+    currentToolResult: null,
+    streamingToolArgs: '',
+    directoryHandle: null,
+    directoryName: null,
+    error: null,
 
-  setStatus: (status) => set({ status }),
-  appendStreamingContent: (delta) =>
-    set((state) => ({ streamingContent: state.streamingContent + delta })),
-  appendStreamingReasoning: (delta) =>
-    set((state) => ({ streamingReasoning: state.streamingReasoning + delta })),
-  resetStreamingContent: () => set({ streamingContent: '', streamingReasoning: '' }),
-  setCurrentToolCall: (currentToolCall) => set({ currentToolCall }),
-  setCurrentToolResult: (currentToolResult) => set({ currentToolResult }),
-  appendStreamingToolArgs: (delta) =>
-    set((state) => ({ streamingToolArgs: state.streamingToolArgs + delta })),
-  resetStreamingToolArgs: () => set({ streamingToolArgs: '' }),
-  setDirectoryHandle: (handle) => {
-    set({ directoryHandle: handle, directoryName: handle?.name || null })
-    persistHandle(handle).catch(console.error)
-  },
+    setStatus: (status) =>
+      set((state) => {
+        state.status = status
+      }),
 
-  restoreDirectoryHandle: async () => {
-    try {
-      const handle = await loadHandle()
-      if (!handle) return
-      const granted = await verifyPermission(handle)
-      if (granted) {
-        set({ directoryHandle: handle, directoryName: handle.name })
+    appendStreamingContent: (delta) =>
+      set((state) => {
+        state.streamingContent += delta
+      }),
+
+    appendStreamingReasoning: (delta) =>
+      set((state) => {
+        state.streamingReasoning += delta
+      }),
+
+    resetStreamingContent: () =>
+      set((state) => {
+        state.streamingContent = ''
+      }),
+
+    resetStreamingReasoning: () =>
+      set((state) => {
+        state.streamingReasoning = ''
+      }),
+
+    setReasoningStreaming: (isReasoningStreaming) =>
+      set((state) => {
+        state.isReasoningStreaming = isReasoningStreaming
+      }),
+
+    setCompletedReasoning: (completedReasoning) =>
+      set((state) => {
+        state.completedReasoning = completedReasoning
+      }),
+
+    setContentStreaming: (isContentStreaming) =>
+      set((state) => {
+        state.isContentStreaming = isContentStreaming
+      }),
+
+    setCompletedContent: (completedContent) =>
+      set((state) => {
+        state.completedContent = completedContent
+      }),
+
+    setCurrentToolCall: (currentToolCall) =>
+      set((state) => {
+        state.currentToolCall = currentToolCall
+      }),
+
+    setCurrentToolResult: (currentToolResult) =>
+      set((state) => {
+        state.currentToolResult = currentToolResult
+      }),
+
+    appendStreamingToolArgs: (delta) =>
+      set((state) => {
+        state.streamingToolArgs += delta
+      }),
+
+    resetStreamingToolArgs: () =>
+      set((state) => {
+        state.streamingToolArgs = ''
+      }),
+
+    setDirectoryHandle: (handle) => {
+      set((state) => {
+        state.directoryHandle = handle
+        state.directoryName = handle?.name || null
+      })
+      persistHandle(handle).catch(console.error)
+    },
+
+    restoreDirectoryHandle: async () => {
+      try {
+        const handle = await loadHandle()
+        if (!handle) return
+        const granted = await verifyPermission(handle)
+        if (granted) {
+          set((state) => {
+            state.directoryHandle = handle
+            state.directoryName = handle.name
+          })
+        }
+      } catch {
+        // Handle missing or permission denied — silently ignore
       }
-    } catch {
-      // Handle missing or permission denied — silently ignore
-    }
-  },
+    },
 
-  setError: (error) => set({ error, status: error ? 'error' : 'idle' }),
-  reset: () =>
-    set({
-      status: 'idle',
-      streamingContent: '',
-      streamingReasoning: '',
-      currentToolCall: null,
-      currentToolResult: null,
-      streamingToolArgs: '',
-      error: null,
-    }),
-}))
+    setError: (error) =>
+      set((state) => {
+        state.error = error
+        state.status = error ? 'error' : 'idle'
+      }),
+
+    reset: () =>
+      set((state) => {
+        state.status = 'idle'
+        state.streamingContent = ''
+        state.streamingReasoning = ''
+        state.isReasoningStreaming = false
+        state.completedReasoning = null
+        state.isContentStreaming = false
+        state.completedContent = null
+        state.currentToolCall = null
+        state.currentToolResult = null
+        state.streamingToolArgs = ''
+        state.error = null
+      }),
+  }))
+)
