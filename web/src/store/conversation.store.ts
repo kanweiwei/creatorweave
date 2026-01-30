@@ -69,6 +69,30 @@ async function deleteConversationFromDB(id: string): Promise<void> {
   })
 }
 
+/** Maximum title length */
+const MAX_TITLE_LENGTH = 30
+
+/** Truncate message content for use as title */
+function truncateTitle(content: string): string {
+  // Remove leading/trailing whitespace
+  let trimmed = content.trim()
+
+  // Remove newlines and multiple spaces
+  trimmed = trimmed.replace(/\s+/g, ' ')
+
+  // Truncate to max length
+  if (trimmed.length <= MAX_TITLE_LENGTH) {
+    return trimmed
+  }
+
+  return trimmed.slice(0, MAX_TITLE_LENGTH - 1) + '…'
+}
+
+/** Check if a conversation has the default auto-generated title */
+function isDefaultTitle(title: string): boolean {
+  return title.startsWith('Chat ')
+}
+
 interface ConversationState {
   conversations: Conversation[]
   activeConversationId: string | null
@@ -138,6 +162,17 @@ export const useConversationStore = create<ConversationState>()(
         if (conv) {
           conv.messages.push(message)
           conv.updatedAt = Date.now()
+
+          // Auto-update title from first user message if still using default title
+          if (message.role === 'user' && isDefaultTitle(conv.title) && message.content) {
+            const userMessages = conv.messages.filter((m) => m.role === 'user')
+            if (userMessages.length === 1) {
+              // This is the first user message - update the title
+              const newTitle = truncateTitle(message.content)
+              console.log('[conversation.store] Auto-updating title:', conv.title, '→', newTitle)
+              conv.title = newTitle
+            }
+          }
         }
       })
       // Persist after state update (not inside to avoid cloning Immer draft)
@@ -149,8 +184,25 @@ export const useConversationStore = create<ConversationState>()(
       set((state) => {
         const conv = state.conversations.find((c) => c.id === conversationId)
         if (conv) {
+          const prevUserMessageCount = conv.messages.filter((m) => m.role === 'user').length
+
           conv.messages = messages
           conv.updatedAt = Date.now()
+
+          // Auto-update title from first user message if still using default title
+          const currentUserMessageCount = messages.filter((m) => m.role === 'user').length
+          if (
+            currentUserMessageCount === 1 &&
+            prevUserMessageCount === 0 &&
+            isDefaultTitle(conv.title)
+          ) {
+            const firstUserMessage = messages.find((m) => m.role === 'user')
+            if (firstUserMessage?.content) {
+              const newTitle = truncateTitle(firstUserMessage.content)
+              console.log('[conversation.store] Auto-updating title:', conv.title, '→', newTitle)
+              conv.title = newTitle
+            }
+          }
         }
       })
       // Persist after state update (not inside to avoid cloning Immer draft)
