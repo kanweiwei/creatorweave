@@ -71,6 +71,15 @@ export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
   // Load full skill content when editing
   useEffect(() => {
     if (skill) {
+      // Sync metadata fields from skill prop
+      setName(skill.name || '')
+      setDescription(skill.description || '')
+      setCategory(skill.category || 'general')
+      setTags(skill.tags?.join(', ') || '')
+      setKeywords(skill.triggers?.keywords?.join(', ') || '')
+      setFileExtensions(skill.triggers?.fileExtensions?.join(', ') || '')
+
+      // Load full content for instruction, examples, templates
       skillsStore.getFullSkill(skill.id).then((fullSkill) => {
         if (fullSkill) {
           setInstruction(fullSkill.instruction || '')
@@ -78,6 +87,17 @@ export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
           setTemplates(fullSkill.templates || '')
         }
       })
+    } else {
+      // Reset form when skill is undefined (create mode)
+      setName('')
+      setDescription('')
+      setCategory('general')
+      setTags('')
+      setKeywords('')
+      setFileExtensions('')
+      setInstruction('')
+      setExamples('')
+      setTemplates('')
     }
   }, [skill, skillsStore])
 
