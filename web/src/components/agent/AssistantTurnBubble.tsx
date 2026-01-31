@@ -197,28 +197,41 @@ function AssistantStep({
   toolResults: Map<string, string>
   showDivider: boolean
 }) {
+  const hasReasoning = !!message.reasoning
+  const hasContent = !!message.content
+  const hasToolCalls = !!(message.toolCalls && message.toolCalls.length > 0)
+
   return (
     <>
       {showDivider && <div className="border-t border-neutral-100" />}
 
-      {/* Reasoning + text content */}
-      {(message.content || message.reasoning) && (
-        <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-          {message.reasoning && <ReasoningSection reasoning={message.reasoning} />}
-          {message.content && (
-            <div className="prose-sm max-w-none break-words">
-              <MarkdownContent content={message.content} />
+      {/* Unified container for reasoning, content, and tool calls */}
+      {(hasReasoning || hasContent || hasToolCalls) && (
+        <div className="space-y-2">
+          {/* Reasoning section */}
+          {hasReasoning && (
+            <div className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
+              <ReasoningSection reasoning={message.reasoning!} />
             </div>
           )}
-        </div>
-      )}
 
-      {/* Tool calls */}
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="space-y-1">
-          {message.toolCalls.map((tc) => (
-            <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults.get(tc.id)} />
-          ))}
+          {/* Content section */}
+          {hasContent && (
+            <div className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
+              <div className="prose-sm max-w-none break-words">
+                <MarkdownContent content={message.content!} />
+              </div>
+            </div>
+          )}
+
+          {/* Tool calls section */}
+          {hasToolCalls && (
+            <div className="space-y-1">
+              {message.toolCalls!.map((tc) => (
+                <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults.get(tc.id)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>
