@@ -6,14 +6,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, Eye, EyeOff, Save, FileCode, Sparkles, ChevronDown } from 'lucide-react'
+import { X, Eye, EyeOff, Save, FileCode, ChevronDown } from 'lucide-react'
 import { DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import type { SkillMetadata, SkillCategory } from '@/skills/skill-types'
 import { useSkillsStore } from '@/store/skills.store'
-import { MarkdownContent } from '@/components/agent/MarkdownContent'
 import { cn } from '@/lib/utils'
 
 interface SkillEditorProps {
@@ -494,13 +493,13 @@ function EditForm({
 
 function PreviewPanel({ content }: { content: string }) {
   const lineCount = content.split('\n').length
-  const wordCount = content.length
+  const charCount = content.length
 
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-amber-500" />
+          <FileCode className="h-4 w-4 text-blue-500" />
           <h3 className="text-sm font-semibold text-neutral-900">SKILL.md 预览</h3>
         </div>
         <div className="flex items-center gap-2">
@@ -508,32 +507,19 @@ function PreviewPanel({ content }: { content: string }) {
             {lineCount} 行
           </Badge>
           <Badge variant="outline" className="text-xs">
-            {wordCount} 字符
+            {charCount} 字符
           </Badge>
         </div>
       </div>
 
-      {/* Code Preview */}
-      <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-900">
-        <div className="flex items-center justify-between border-b border-neutral-700 bg-neutral-800 px-4 py-2">
-          <span className="text-xs font-medium text-neutral-300">SKILL.md</span>
-          <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-            <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-            <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-          </div>
+      {/* Code Preview - Light Theme */}
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4 py-2">
+          <span className="text-xs font-medium text-neutral-600">SKILL.md</span>
         </div>
-        <pre className="max-h-72 overflow-y-auto p-4 font-mono text-xs text-neutral-300">
+        <pre className="max-h-96 overflow-y-auto bg-white p-4 font-mono text-xs text-neutral-700">
           {content}
         </pre>
-      </div>
-
-      {/* Rendered Preview */}
-      <div>
-        <h4 className="mb-3 text-sm font-medium text-neutral-700">渲染效果预览:</h4>
-        <div className="max-h-80 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <MarkdownContent content={content} />
-        </div>
       </div>
     </div>
   )
