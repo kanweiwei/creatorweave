@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Plus, Trash2, PanelLeftClose, PanelLeft, FolderTree, Puzzle, History } from 'lucide-react'
+import { Scrollbar } from 'react-scrollbars-custom'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
 import { FileTreePanel } from '@/components/file-viewer/FileTreePanel'
@@ -227,38 +228,40 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
             </button>
           </div>
 
-          <div className="flex-1 space-y-0.5 overflow-y-auto px-1.5 pb-1.5">
-            {conversations.map((conv) => {
-              const isRunning = isConversationRunning(conv.id)
-              return (
-                <div
-                  key={conv.id}
-                  className={`group flex cursor-pointer items-center rounded-md px-2.5 py-1.5 text-xs ${
-                    conv.id === activeConversationId
-                      ? 'bg-primary-100 font-medium text-primary-700'
-                      : 'text-neutral-600 hover:bg-neutral-200'
-                  }`}
-                  onClick={() => setActive(conv.id)}
-                >
-                  {/* Running status indicator */}
-                  {isRunning && (
-                    <span className="mr-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-yellow-500" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{conv.title}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteConversation(conv.id)
-                    }}
-                    className="ml-1 hidden shrink-0 rounded p-0.5 text-neutral-400 hover:text-red-500 group-hover:block"
+          <Scrollbar className="flex-1">
+            <div className="space-y-0.5 px-1.5 pb-1.5">
+              {conversations.map((conv) => {
+                const isRunning = isConversationRunning(conv.id)
+                return (
+                  <div
+                    key={conv.id}
+                    className={`group flex cursor-pointer items-center rounded-md px-2.5 py-1.5 text-xs ${
+                      conv.id === activeConversationId
+                        ? 'bg-primary-100 font-medium text-primary-700'
+                        : 'text-neutral-600 hover:bg-neutral-200'
+                    }`}
+                    onClick={() => setActive(conv.id)}
                   >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
+                    {/* Running status indicator */}
+                    {isRunning && (
+                      <span className="mr-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-yellow-500" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{conv.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteConversation(conv.id)
+                      }}
+                      className="ml-1 hidden shrink-0 rounded p-0.5 text-neutral-400 hover:text-red-500 group-hover:block"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </Scrollbar>
         </div>
 
         {/* Vertical drag divider (only when resources are visible) */}
@@ -328,11 +331,13 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
               )}
 
               {resourceTab === 'plugins' && (
-                <div className="h-full overflow-y-auto p-2">
-                  <p className="text-xs text-neutral-500">
-                    插件管理功能将在此显示。请通过设置页面管理插件。
-                  </p>
-                </div>
+                <Scrollbar className="h-full">
+                  <div className="p-2">
+                    <p className="text-xs text-neutral-500">
+                      插件管理功能将在此显示。请通过设置页面管理插件。
+                    </p>
+                  </div>
+                </Scrollbar>
               )}
 
               {resourceTab === 'changes' && (

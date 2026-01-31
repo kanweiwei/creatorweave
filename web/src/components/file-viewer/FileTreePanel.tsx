@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
+import { Scrollbar } from 'react-scrollbars-custom'
 import { formatBytes } from '@/lib/utils'
 
 /** File tree node */
@@ -363,20 +364,22 @@ export function FileTreePanel({
       </div>
 
       {/* Tree */}
-      <div className="flex-1 overflow-y-auto py-1">
-        {loading && rootNodes.length === 0 ? (
-          <div className="p-3 text-center text-xs text-neutral-400">加载中...</div>
-        ) : (
-          <TreeBranch
-            nodes={rootNodes}
-            depth={0}
-            expandedPaths={expandedPaths}
-            selectedPath={selectedPath || null}
-            onToggle={handleToggle}
-            onFileSelect={handleFileSelect}
-          />
-        )}
-      </div>
+      <Scrollbar className="flex-1">
+        <div className="py-1">
+          {loading && rootNodes.length === 0 ? (
+            <div className="p-3 text-center text-xs text-neutral-400">加载中...</div>
+          ) : (
+            <TreeBranch
+              nodes={rootNodes}
+              depth={0}
+              expandedPaths={expandedPaths}
+              selectedPath={selectedPath || null}
+              onToggle={handleToggle}
+              onFileSelect={handleFileSelect}
+            />
+          )}
+        </div>
+      </Scrollbar>
     </div>
   )
 }

@@ -7,6 +7,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Plus, Search, RefreshCw, FolderOpen, User, Building, ChevronDown } from 'lucide-react'
+import { Scrollbar } from 'react-scrollbars-custom'
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -155,39 +156,41 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
         </div>
 
         {/* Skills List */}
-        <div className="-mx-6 flex-1 space-y-4 overflow-y-auto px-6">
-          {/* Project Skills */}
-          {projectSkills.length > 0 && (
+        <Scrollbar className="-mx-6 flex-1">
+          <div className="space-y-4 px-6">
+            {/* Project Skills */}
+            {projectSkills.length > 0 && (
+              <SkillGroup
+                title="项目技能"
+                icon={<FolderOpen className="h-4 w-4 text-neutral-500" />}
+                skills={projectSkills}
+                onToggle={handleToggle}
+                onEdit={handleEdit}
+                isReadOnly
+              />
+            )}
+
+            {/* User Skills */}
             <SkillGroup
-              title="项目技能"
-              icon={<FolderOpen className="h-4 w-4 text-neutral-500" />}
-              skills={projectSkills}
+              title="我的技能"
+              icon={<User className="h-4 w-4 text-neutral-500" />}
+              skills={userSkills}
+              onToggle={handleToggle}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+
+            {/* Builtin Skills */}
+            <SkillGroup
+              title="内置技能"
+              icon={<Building className="h-4 w-4 text-neutral-500" />}
+              skills={builtinSkills}
               onToggle={handleToggle}
               onEdit={handleEdit}
               isReadOnly
             />
-          )}
-
-          {/* User Skills */}
-          <SkillGroup
-            title="我的技能"
-            icon={<User className="h-4 w-4 text-neutral-500" />}
-            skills={userSkills}
-            onToggle={handleToggle}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
-
-          {/* Builtin Skills */}
-          <SkillGroup
-            title="内置技能"
-            icon={<Building className="h-4 w-4 text-neutral-500" />}
-            skills={builtinSkills}
-            onToggle={handleToggle}
-            onEdit={handleEdit}
-            isReadOnly
-          />
-        </div>
+          </div>
+        </Scrollbar>
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-neutral-100 pt-4">
