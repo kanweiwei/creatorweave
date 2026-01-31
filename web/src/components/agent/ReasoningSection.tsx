@@ -16,7 +16,7 @@ export function ReasoningSection({ reasoning, streaming }: ReasoningSectionProps
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="mb-2 border-b border-neutral-100 pb-2">
+    <div>
       <button
         type="button"
         onClick={() => setOpen(!open)}
