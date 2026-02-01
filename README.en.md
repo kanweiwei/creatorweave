@@ -21,6 +21,7 @@ English | [简体中文](./README.md)
 - 💾 **Smart Caching** - Three-tier storage (OPFS, IndexedDB, localStorage)
 - 🔄 **State Persistence** - Zustand + persist middleware for quick state recovery
 - 🔐 **Secure Sandbox** - Runs entirely in browser sandbox, no data uploaded
+- 📱 **Remote Control** - E2E encrypted remote session with mobile device support [See docs](./docs/remote-session-architecture.md)
 
 ## 🚀 Quick Start
 

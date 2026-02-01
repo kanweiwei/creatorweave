@@ -28,11 +28,14 @@
 |------|---------|------|
 | 前端框架 | React + TypeScript | 现代化 UI 框架，类型安全 |
 | 构建工具 | Vite | 快速开发服务器，优化的生产构建 |
-| UI 组件 | shadcn/ui | 基于 Radix UI 的组件库 |
+| UI 组件 | shadcn/ui + lucide-react | 基于 Radix UI 的组件库 + 图标库 |
 | 样式方案 | Tailwind CSS | 实用优先的 CSS 框架 |
 | 状态管理 | Zustand | 轻量级状态管理库，支持持久化 |
 | 计算层 | Rust + WASM | 高性能计算，通过 wasm-bindgen 与 JS 交互 |
 | 浏览器 API | File System Access API | 原生文件系统访问能力 |
+| 包管理器 | pnpm | Monorepo 工作区管理 |
+| 实时通信 | Socket.IO | Remote Session 的 WebSocket 通信 |
+| 加密 | Web Crypto API | E2E 加密 (ECDH + AES-GCM) |
 
 ---
 
@@ -74,6 +77,16 @@
 │  │  - traversal.ts (目录遍历)              │ │
 │  │  - storage.ts (IndexedDB 封装)         │ │
 │  │  - analyzer.ts (分析器)                │ │
+│  │  - remote-session.ts (远程会话)        │ │
+│  └────────────────────────────────────────┘ │
+└─────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────┐
+│           共享包 (Monorepo)                  │
+│  ┌────────────────────────────────────────┐ │
+│  │  @browser-fs-analyzer/encryption       │ │
+│  │  - E2EEncryption class                 │ │
+│  │  - ECDH + AES-GCM 加密                 │ │
 │  └────────────────────────────────────────┘ │
 └─────────────────────────────────────────────┘
                       ↓
@@ -470,7 +483,7 @@ cargo install wasm-pack
 # 下载: https://nodejs.org/
 
 # 4. 安装项目依赖
-cd web && npm install
+pnpm install
 ```
 
 ### 开发命令
@@ -496,7 +509,7 @@ make clean
 cd wasm && wasm-pack build --target web --out-dir ../web/public/wasm crates/wasm-bindings
 
 # 2. 构建前端
-cd web && vite build
+cd web && pnpm run build
 
 # 3. 产物输出到
 # - web/dist/
@@ -572,6 +585,56 @@ cd web && vite build
 - WASM 绑定层: ≥80%
 - 前端业务逻辑: ≥75%
 - E2E 关键路径: 100%
+
+---
+
+## 📱 Remote Session (远程控制)
+
+### 架构概览
+
+Remote Session 允许从移动设备远程控制 BFOSA，采用端到端加密确保通信安全。
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│     Host        │         │   Relay Server  │         │     Remote      │
+│  (Desktop Web)  │         │   (Node.js)     │         │  (Mobile Web)   │
+├─────────────────┤         ├─────────────────┤         ├─────────────────┤
+│ • Vite Dev      │◄───────►│ • Socket.IO     │◄───────►│ • Socket.IO     │
+│ • React + TS    │  WebSocket│ • Express      │  WebSocket│ • React + TS    │
+│ • E2EEncryption │         │ • Room Mgmt     │         │ • E2EEncryption │
+└─────────────────┘         └─────────────────┘         └─────────────────┘
+       :3000                       :3001                       :3002
+```
+
+### 组件说明
+
+| 组件 | 目录 | 端口 | 说明 |
+|------|------|------|------|
+| Host | `web/` | 3000 | 主应用，可创建远程会话 |
+| Relay | `relay-server/` | 3001 | WebSocket 消息中继服务器 |
+| Remote | `mobile-web/` | 3002 | 移动端控制界面 |
+
+### E2E 加密
+
+使用共享包 `@browser-fs-analyzer/encryption` 实现：
+
+- **密钥交换**: ECDH P-256
+- **加密算法**: AES-GCM 256-bit
+- **密钥派生**: HKDF
+
+**详细文档**: [Remote Session Architecture](../remote-session-architecture.md)
+
+### 快速启动
+
+```bash
+# 方式 1: 使用 Make
+make dev-all
+
+# 方式 2: 手动启动
+cd web && pnpm run dev
+cd relay-server && PORT=3001 pnpm run dev
+cd mobile-web && pnpm run dev --port 3002
+```
 
 ---
 
