@@ -9,8 +9,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { Lock, Unlock, AlertTriangle, Key, RefreshCw } from 'lucide-react'
+import { Lock, Unlock, AlertTriangle, Key, RefreshCw, AtSign, X, FileEdit } from 'lucide-react'
 import { E2EEncryption, type EncryptionState, isEncryptedEnvelope, type RemoteMessage, type EncryptedEnvelope } from '@browser-fs-analyzer/encryption'
+import { FilePicker } from './components/FilePicker'
+import { useRemoteStore } from './store/remote.store'
+import type { FileEntry } from './types/remote'
 
 // UUID validation regex (xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -80,6 +83,12 @@ const RELAY_SERVER_URL = import.meta.env.VITE_RELAY_SERVER_URL || 'ws://localhos
 export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
+
+  // Wrapper to sync connectionState with remote.store
+  const setConnectionStateSync = useCallback((state: ConnectionState) => {
+    setConnectionState(state)
+    useRemoteStore.getState().setConnectionState(state)
+  }, [])
   const [messages, setMessages] = useState<MessageEntry[]>([])
   const [input, setInput] = useState('')
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'tool_calling' | 'error'>('idle')
@@ -88,6 +97,27 @@ export function App() {
   // Encryption state
   const [encryptionState, setEncryptionState] = useState<EncryptionState>('none')
   const [encryptionError, setEncryptionError] = useState<string | null>(null)
+
+  // File change notifications
+  const [fileChanges, setFileChanges] = useState<Array<{
+    path: string
+    changeType: 'create' | 'modify' | 'delete'
+    preview?: string
+    timestamp: number
+  }>>([])
+  const [showFileChanges, setShowFileChanges] = useState(false)
+
+  // File discovery state from Zustand store
+  const {
+    selectedFiles,
+    filePickerOpen,
+    setFilePickerOpen,
+    toggleFileSelection,
+    setSocket
+  } = useRemoteStore()
+
+  // File preview expand/collapse state
+  const [filesExpanded, setFilesExpanded] = useState(false)
 
   // Session input form state
   const [sessionInput, setSessionInput] = useState('')
@@ -127,7 +157,7 @@ export function App() {
 
     console.log(`[Mobile] Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay}ms`)
 
-    setConnectionState('reconnecting')
+    setConnectionStateSync('reconnecting')
 
     reconnectTimeoutRef.current = setTimeout(() => {
       const savedSessionId = sessionIdRef.current
@@ -181,7 +211,7 @@ export function App() {
     // Now process the message
     switch (messageToProcess.type) {
       case 'session:joined':
-        setConnectionState('connected')
+        setConnectionStateSync('connected')
         setError(null) // Clear any errors when session is ready
         resetReconnectState() // Reset reconnect attempts on successful connection
         // Save session to localStorage for auto-reconnect
@@ -193,7 +223,7 @@ export function App() {
 
       case 'session:error':
         setError((messageToProcess as { type: 'session:error'; error: string }).error)
-        setConnectionState('disconnected')
+        setConnectionStateSync('disconnected')
         clearSession() // Clear invalid session
         resetReconnectState()
         break
@@ -204,7 +234,7 @@ export function App() {
         // Stop reconnecting and show input form
         resetReconnectState()
         clearSession()
-        setConnectionState('disconnected')
+        setConnectionStateSync('disconnected')
         setSessionId(null)
         setShowInputForm(true)
         break
@@ -298,6 +328,78 @@ export function App() {
         console.log('[Mobile] Encryption error from peer:', errMsg.error)
         setEncryptionError(`Peer encryption error: ${errMsg.error}`)
         break
+
+      // File discovery messages
+      case 'file:search-result': {
+        const searchResult = messageToProcess as { type: 'file:search-result'; query: string; results: FileEntry[]; hasMore: boolean }
+        console.log('[Mobile] Search results:', searchResult.results.length, 'files')
+        const store = useRemoteStore.getState()
+        store.setSearchResults(searchResult.results)
+        store.setIsSearching(false)
+        break
+      }
+
+      case 'files:recent': {
+        const recentMsg = messageToProcess as { type: 'files:recent'; files: FileEntry[]; trigger: 'modified' | 'accessed' }
+        console.log('[Mobile] Recent files updated:', recentMsg.files.length, 'files')
+        useRemoteStore.getState().setRecentFiles(recentMsg.files)
+        break
+      }
+
+      case 'file:change': {
+        const fileChangeMsg = messageToProcess as { type: 'file:change'; path: string; changeType: 'create' | 'modify' | 'delete'; preview?: string }
+        console.log('[Mobile] File change:', fileChangeMsg.changeType, fileChangeMsg.path)
+
+        // Add to file changes list
+        const newChange = {
+          path: fileChangeMsg.path,
+          changeType: fileChangeMsg.changeType,
+          preview: fileChangeMsg.preview,
+          timestamp: Date.now(),
+        }
+        setFileChanges((prev) => [newChange, ...prev].slice(0, 10)) // Keep last 10
+
+        // Show notification
+        setShowFileChanges(true)
+
+        // Also show in messages as a system message
+        const changeDesc = fileChangeMsg.changeType === 'create' ? '新建' : fileChangeMsg.changeType === 'delete' ? '删除' : '修改'
+        setMessages((prev) => [...prev, {
+          role: 'system',
+          content: `📄 文件已${changeDesc}: ${fileChangeMsg.path}`,
+          messageId: `file-change-${Date.now()}`,
+          timestamp: Date.now()
+        }])
+        break
+      }
+
+      case 'file:tree-update': {
+        const treeUpdateMsg = messageToProcess as { type: 'file:tree-update'; rootName: string | null }
+
+        const store = useRemoteStore.getState()
+
+        // Check if directory actually changed
+        const { hostRootName: prevRootName } = store
+        const newRootName = treeUpdateMsg.rootName
+        const dirChanged = prevRootName !== null && prevRootName !== newRootName
+
+        // Update the file tree in the remote store for local search/future use
+        store.setHostRootName(newRootName)
+        store.setDirectoryChanged(dirChanged)
+        store.setSearchResults([]) // Clear previous search results
+
+        // Notify user about directory change
+        const dirName = newRootName || '未知目录'
+        if (dirChanged) {
+          setMessages((prev) => [...prev, {
+            role: 'system',
+            content: `📁 Host 已切换到目录: ${dirName}，请重新搜索`,
+            messageId: `tree-update-${Date.now()}`,
+            timestamp: Date.now()
+          }])
+        }
+        break
+      }
     }
   }, [scheduleReconnect, resetReconnectState])
 
@@ -307,7 +409,7 @@ export function App() {
       console.log('[Mobile] Joining session:', sessionId)
       setError(null) // Clear any previous errors
       setEncryptionError(null)
-      setConnectionState('connecting')
+      setConnectionStateSync('connecting')
       setSessionId(sessionId)
       sessionIdRef.current = sessionId // Update ref immediately for closure-safe access
 
@@ -338,6 +440,8 @@ export function App() {
         console.log('[WS] Connected to relay server')
         // Clear any errors when connected to server
         setError(null)
+        // Set socket in store for file discovery
+        setSocket(ws)
         // Send join message with public key
         ws.emit('message', {
           type: 'session:join',
@@ -361,7 +465,7 @@ export function App() {
         console.log('[WS] Disconnected from server')
         // Only try to reconnect if we have a session ID
         if (sessionIdRef.current) {
-          setConnectionState('reconnecting')
+          setConnectionStateSync('reconnecting')
           scheduleReconnect()
         }
       })
@@ -369,9 +473,20 @@ export function App() {
       wsRef.current = ws
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join session')
-      setConnectionState('disconnected')
+      setConnectionStateSync('disconnected')
     }
   }, [handleWSMessage, scheduleReconnect])
+
+  // Parse @file references from input (defined before sendMessage which uses it)
+  const parseAtFiles = useCallback((text: string): string[] => {
+    const atRegex = /@([a-zA-Z0-9_\-.\/]+)/g
+    const matches: string[] = []
+    let match: RegExpExecArray | null
+    while ((match = atRegex.exec(text)) !== null) {
+      matches.push(match[1])
+    }
+    return matches
+  }, [])
 
   // Handle manual session join from input form
   const handleJoinSession = useCallback(() => {
@@ -394,16 +509,31 @@ export function App() {
     if (!input.trim() || !wsRef.current || connectionState !== 'connected') return
 
     const messageId = `msg-${Date.now()}`
+    const content = input.trim()
+
+    // Check for @file references
+    const atFiles = parseAtFiles(content)
+    if (atFiles.length > 0) {
+      // Send file selection messages
+      atFiles.forEach((filePath) => {
+        wsRef.current?.emit('message', {
+          type: 'file:selected',
+          path: filePath,
+        })
+      })
+    }
+
     const message = {
       type: 'remote:send_message',
-      content: input.trim(),
+      content,
       messageId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }
 
     // Encrypt if encryption is ready
     if (encryptionRef.current && encryptionRef.current.isReady()) {
-      encryptionRef.current.encrypt(message)
+      encryptionRef.current
+        .encrypt(message)
         .then((encrypted) => {
           wsRef.current?.emit('message', encrypted)
         })
@@ -419,15 +549,18 @@ export function App() {
     }
 
     // Add to local messages
-    setMessages((prev) => [...prev, {
-      role: 'user',
-      content: input.trim(),
-      messageId,
-      timestamp: Date.now()
-    }])
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'user',
+        content,
+        messageId,
+        timestamp: Date.now(),
+      },
+    ])
 
     setInput('')
-  }, [input, connectionState])
+  }, [input, connectionState, parseAtFiles, selectedFiles])
 
   // Disconnect session (manual disconnect by user)
   const disconnectSession = useCallback(() => {
@@ -672,7 +805,7 @@ export function App() {
                   <div
                     key={msg.messageId}
                     className={`flex ${
-                      msg.role === 'user' ? 'justify-end' : 'justify-start'
+                      msg.role === 'user' ? 'justify-end' : msg.role === 'system' ? 'justify-center' : 'justify-start'
                     }`}
                   >
                     <div
@@ -681,11 +814,16 @@ export function App() {
                           ? 'bg-primary-600 text-white rounded-br-sm'
                           : msg.role === 'tool'
                             ? 'bg-orange-100 text-gray-800 text-xs rounded-lg'
-                            : 'bg-white text-gray-800 rounded-bl-sm shadow-sm'
+                            : msg.role === 'system'
+                              ? 'bg-blue-100 text-gray-800 text-xs rounded-lg mx-auto'
+                              : 'bg-white text-gray-800 rounded-bl-sm shadow-sm'
                       }`}
                     >
                       {msg.role === 'tool' && (
                         <span className="text-xs text-orange-600 block mb-1">Tool Call</span>
+                      )}
+                      {msg.role === 'system' && (
+                        <span className="text-xs text-blue-600 block mb-1">系统通知</span>
                       )}
                       <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                       <span className="text-xs opacity-70 mt-1 block">
@@ -708,28 +846,171 @@ export function App() {
               </div>
             )}
 
-            {/* Input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="输入消息..."
-                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:outline-none text-sm"
-                disabled={connectionState !== 'connected'}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!input.trim() || connectionState !== 'connected'}
-                className="bg-primary-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                发送
-              </button>
+            {/* File changes notification */}
+            {fileChanges.length > 0 && showFileChanges && (
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-blue-100 border-b border-blue-200">
+                  <div className="flex items-center gap-2 text-sm text-blue-700">
+                    <FileEdit className="w-4 h-4" />
+                    <span className="font-medium">文件变更通知 ({fileChanges.length})</span>
+                  </div>
+                  <button
+                    onClick={() => setShowFileChanges(false)}
+                    className="text-blue-600 hover:text-blue-800 p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-2 space-y-1 max-h-40 overflow-y-auto">
+                  {fileChanges.slice(0, 5).map((change, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 text-sm px-2 py-1 rounded hover:bg-blue-100"
+                    >
+                      <span className="mt-0.5">
+                        {change.changeType === 'create' && '📄'}
+                        {change.changeType === 'modify' && '✏️'}
+                        {change.changeType === 'delete' && '🗑️'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-xs truncate">{change.path}</div>
+                        {change.preview && (
+                          <div className="text-xs text-gray-500 truncate">{change.preview}</div>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {new Date(change.timestamp).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                  {fileChanges.length > 5 && (
+                    <div className="text-center text-xs text-blue-600 pt-1">
+                      还有 {fileChanges.length - 5} 条变更...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Input area with expandable file preview */}
+            <div
+              className={`border rounded-xl overflow-hidden transition-colors ${
+                connectionState !== 'connected'
+                  ? 'bg-gray-100 border-gray-200'
+                  : 'bg-white border-gray-200'
+              }`}
+            >
+              {/* File preview header - always shown when files exist */}
+              {selectedFiles.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
+                    <button
+                      onClick={() => setFilePickerOpen(true)}
+                      className="text-xs text-gray-700 font-medium flex items-center gap-1"
+                    >
+                      <AtSign className="w-3 h-3" />
+                      {selectedFiles.length} 个文件
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => {
+                        selectedFiles.forEach(path => toggleFileSelection(path))
+                        setFilesExpanded(false)
+                      }}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      清空
+                    </button>
+                    {selectedFiles.length > 3 && (
+                      <button
+                        onClick={() => setFilesExpanded(!filesExpanded)}
+                        className="text-xs text-gray-400 hover:text-gray-600 p-1"
+                      >
+                        {filesExpanded ? '收起' : '展开'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* File chips - wrapped, shown when expanded or <= 3 files */}
+                  {(filesExpanded || selectedFiles.length <= 3) && (
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                      <div className="flex flex-wrap gap-1.5">
+                        {(filesExpanded ? selectedFiles : selectedFiles.slice(0, 3)).map((path) => {
+                          const name = path.split('/').pop() || path
+                          return (
+                            <span
+                              key={path}
+                              className="inline-flex items-center gap-1 bg-white text-blue-700 px-2 py-1 rounded-lg text-xs font-medium border border-gray-200"
+                            >
+                              <span className="truncate max-w-[120px]">@{name}</span>
+                              <button
+                                onClick={() => toggleFileSelection(path)}
+                                className="hover:text-blue-900 p-0.5 -mr-1"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          )
+                        })}
+                        {!filesExpanded && selectedFiles.length > 3 && (
+                          <span
+                            onClick={() => setFilesExpanded(true)}
+                            className="inline-flex items-center bg-gray-200 text-gray-600 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer hover:bg-gray-300"
+                          >
+                            +{selectedFiles.length - 3} 更多
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Input row */}
+              <div className="flex items-center gap-2 px-3 py-3">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                  placeholder="输入消息..."
+                  className="flex-1 bg-transparent border-none focus:outline-none text-sm"
+                  disabled={connectionState !== 'connected'}
+                />
+                <button
+                  onClick={() => setFilePickerOpen(true)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    connectionState !== 'connected'
+                      ? 'text-gray-400'
+                      : 'text-gray-500 hover:text-primary-600 hover:bg-primary-50'
+                  }`}
+                  disabled={connectionState !== 'connected'}
+                  title="选择文件"
+                >
+                  <AtSign className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={sendMessage}
+                  disabled={(!input.trim() && selectedFiles.length === 0) || connectionState !== 'connected'}
+                  className="px-5 py-2 rounded-lg text-sm font-medium transition-colors bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  发送
+                </button>
+              </div>
             </div>
           </>
         )}
       </main>
+
+      {/* File Picker Modal */}
+      <FilePicker
+        open={filePickerOpen}
+        onClose={() => setFilePickerOpen(false)}
+      />
     </div>
   )
 }

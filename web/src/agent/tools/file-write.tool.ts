@@ -1,11 +1,13 @@
 /**
  * file_write tool - Write content to a file, creating directories as needed.
  * Records modifications for undo support.
+ * Broadcasts file changes to remote sessions.
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { resolveFileHandle, createFileWithDirs } from '@/services/fsAccess.service'
 import { getUndoManager } from '@/undo/undo-manager'
+import { useRemoteStore } from '@/store/remote.store'
 
 export const fileWriteDefinition: ToolDefinition = {
   type: 'function',
@@ -58,6 +60,13 @@ export const fileWriteExecutor: ToolExecutor = async (args, context) => {
     const isNew = oldContent === null
     // Record modification for undo
     getUndoManager().recordModification(path, isNew ? 'create' : 'modify', oldContent, content)
+
+    // Broadcast file change to remote sessions
+    const session = useRemoteStore.getState().session
+    if (session) {
+      const preview = isNew ? `New file: ${path}` : `Modified: ${path} (${content.length} bytes)`
+      session.broadcastFileChange(path, isNew ? 'create' : 'modify', preview)
+    }
 
     return JSON.stringify({
       success: true,

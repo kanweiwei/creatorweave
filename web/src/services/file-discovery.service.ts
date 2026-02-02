@@ -180,6 +180,87 @@ class FileDiscoveryService {
   // ==========================================================================
 
   /**
+   * Build a hierarchical FileEntry tree from flat FileMetadata array
+   * This is used to convert traversal results into a searchable tree structure
+   */
+  buildFileTreeFromMetadata(
+    files: Array<{
+      name: string
+      size: number
+      type: 'file' | 'directory'
+      lastModified: number
+      path: string
+    }>
+  ): FileEntry | null {
+    if (files.length === 0) return null
+
+    // Create a map of path -> entry for O(1) lookup
+    const entryMap = new Map<string, FileEntry>()
+
+    // First pass: create all entries
+    for (const file of files) {
+      const extension = file.type === 'file' ? file.name.split('.').pop() || '' : undefined
+
+      const entry: FileEntry = {
+        path: file.path,
+        name: file.name,
+        type: file.type,
+        extension,
+        size: file.size,
+        modified: file.lastModified,
+        children: file.type === 'directory' ? [] : undefined,
+      }
+      entryMap.set(file.path, entry)
+    }
+
+    // Second pass: build hierarchy by linking children to parents
+    const rootEntries: FileEntry[] = []
+
+    for (const [path, entry] of entryMap) {
+      if (entry.type === 'directory') {
+        // Find all direct children of this directory
+        for (const [childPath, childEntry] of entryMap) {
+          if (childPath !== path && childPath.startsWith(path + '/')) {
+            // Check if this is a direct child (no other intermediate directory)
+            const relativePath = childPath.slice(path.length + 1)
+            const slashIndex = relativePath.indexOf('/')
+            const isDirectChild = slashIndex === -1
+
+            if (isDirectChild && entry.children) {
+              entry.children.push(childEntry)
+            }
+          }
+        }
+      }
+
+      // Check if this is a root-level entry (no parent in our set)
+      const parentPath = path.substring(0, path.lastIndexOf('/'))
+      if (!parentPath || !entryMap.has(parentPath)) {
+        rootEntries.push(entry)
+      }
+    }
+
+    // If we have multiple root entries, create a virtual root
+    if (rootEntries.length === 0) {
+      return null
+    }
+
+    if (rootEntries.length === 1) {
+      return rootEntries[0]
+    }
+
+    // Multiple root entries - return the first one that looks like a root directory
+    // or create a virtual root
+    const virtualRoot: FileEntry = {
+      path: '',
+      name: 'root',
+      type: 'directory',
+      children: rootEntries,
+    }
+    return virtualRoot
+  }
+
+  /**
    * Convert filesystem store tree to FileEntry format
    */
   convertToFileEntry(node: any): FileEntry {

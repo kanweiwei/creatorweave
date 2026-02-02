@@ -1,10 +1,12 @@
 /**
  * file_edit tool - Apply diff-based edits to a file using string replacement.
+ * Broadcasts file changes to remote sessions.
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { resolveFileHandle } from '@/services/fsAccess.service'
 import { getUndoManager } from '@/undo/undo-manager'
+import { useRemoteStore } from '@/store/remote.store'
 
 export const fileEditDefinition: ToolDefinition = {
   type: 'function',
@@ -71,6 +73,13 @@ export const fileEditExecutor: ToolExecutor = async (args, context) => {
 
     // Record modification for undo
     getUndoManager().recordModification(path, 'modify', content, newContent)
+
+    // Broadcast file change to remote sessions
+    const session = useRemoteStore.getState().session
+    if (session) {
+      const preview = `Edited: ${path} (${newText.length} chars added, ${oldText.length} chars removed)`
+      session.broadcastFileChange(path, 'modify', preview)
+    }
 
     return JSON.stringify({
       success: true,

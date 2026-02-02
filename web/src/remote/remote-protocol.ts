@@ -210,6 +210,18 @@ export interface FileSelectMessage {
   path: string
 }
 
+/** Host pushes file tree update to Remote (only rootName, Remote doesn't need full tree) */
+export interface FileTreeUpdateMessage {
+  type: 'file:tree-update'
+  /** Root directory name for display */
+  rootName: string | null
+}
+
+/** Remote requests current file tree from Host */
+export interface FileTreeRequestMessage {
+  type: 'file:tree-request'
+}
+
 // ============================================================================
 // Union type
 // ============================================================================
@@ -239,6 +251,8 @@ export type RemoteMessage =
   | FileSearchResult
   | RecentFilesMessage
   | FileSelectMessage
+  | FileTreeUpdateMessage
+  | FileTreeRequestMessage
 
 /** Envelope wrapping encrypted messages */
 export interface EncryptedEnvelope {

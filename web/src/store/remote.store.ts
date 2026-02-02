@@ -121,9 +121,12 @@ interface RemoteState {
   // File discovery actions
   setFileTree: (tree: FileEntry | null) => void
   setRecentFiles: (files: FileEntry[]) => void
-  handleFileSearch: (query: string, limit?: number) => FileEntry[]
+  handleFileSearch: (query: string, limit?: number) => Promise<FileEntry[]>
   handleFileSelect: (path: string) => void
   pushRecentFilesToRemote: () => void
+  buildFileTreeFromCurrentHandle: () => Promise<void>
+  refreshFileTree: () => Promise<void>
+  getRole: () => SessionRole
 }
 
 export const useRemoteStore = create<RemoteState>()((set, get) => ({
@@ -157,8 +160,14 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
   },
 
   createSession: async () => {
-    const { relayUrl } = get()
+    const { relayUrl, session: existingSession } = get()
     console.log('[RemoteStore] Creating session with relayUrl:', relayUrl)
+
+    // Close existing session if any
+    if (existingSession) {
+      console.log('[RemoteStore] Closing existing session before creating new one')
+      existingSession.close()
+    }
 
     const session = new RemoteSession(relayUrl, {
       onConnectionStateChange: (state) => {
@@ -211,6 +220,42 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
         const store = get()
         store._onFileSelect?.(path)
       },
+      onFileTreeRequest: async () => {
+        // Remote requested file tree - broadcast current tree
+        const store = get()
+        console.log(
+          '[RemoteStore] file:tree-request received, fileTree:',
+          store.fileTree ? 'exists' : 'null'
+        )
+
+        // Import agent.store to get directory name
+        const agentModule = (await import('./agent.store')) as any
+        const useAgentStore = agentModule.useAgentStore
+
+        // If no file tree, build it first and wait
+        if (!store.fileTree) {
+          await store.buildFileTreeFromCurrentHandle()
+          // Get updated store after build
+          const updatedStore = get()
+          // Always send a response, even if tree is null (no directory opened)
+          const rootName = useAgentStore?.getState?.()?.directoryName
+          store.session?.broadcastFileTreeUpdate(updatedStore.fileTree, rootName || null)
+          return
+        }
+
+        // Now broadcast the file tree
+        const rootName = useAgentStore?.getState?.()?.directoryName
+        store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+      },
+      onPeerJoined: async () => {
+        // Broadcast file tree to newly joined remote
+        const store = get()
+        if (store.fileTree) {
+          const { useAgentStore } = await import('./agent.store')
+          const rootName = useAgentStore.getState().directoryName
+          store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+        }
+      },
     })
 
     set({ session })
@@ -223,11 +268,22 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     // Save session to localStorage for auto-reconnect
     saveSessionToStorage(sessionId, 'host', get().relayUrl)
 
+    // Build file tree for file discovery (async, don't wait)
+    const store = get()
+    store.buildFileTreeFromCurrentHandle()
+
     return sessionId
   },
 
   joinSession: async (sessionId) => {
-    const { relayUrl } = get()
+    const { relayUrl, session: existingSession } = get()
+
+    // Close existing session if any
+    if (existingSession) {
+      console.log('[RemoteStore] Closing existing session before join')
+      existingSession.close()
+    }
+
     const session = new RemoteSession(relayUrl, {
       onConnectionStateChange: (state) => set({ connectionState: state }),
       onRoleChange: (role) => {
@@ -258,6 +314,13 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
 
   reconnect: async (sessionId, role, relayUrl) => {
     console.log('[RemoteStore] Reconnecting to session:', sessionId, 'as', role)
+
+    // Close existing session if any
+    const { session: existingSession } = get()
+    if (existingSession) {
+      console.log('[RemoteStore] Closing existing session before reconnect')
+      existingSession.close()
+    }
 
     const session = new RemoteSession(relayUrl, {
       onConnectionStateChange: (state) => {
@@ -298,6 +361,50 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
           remoteAgentStatus: state.agentStatus,
         })
       },
+      // File discovery callbacks (for Host role)
+      onFileSearch: (query, limit) => {
+        return get().handleFileSearch(query, limit)
+      },
+      onFileSelect: (path) => {
+        const store = get()
+        store._onFileSelect?.(path)
+      },
+      onFileTreeRequest: async () => {
+        // Remote requested file tree - broadcast current tree
+        const store = get()
+        console.log(
+          '[RemoteStore] file:tree-request received, fileTree:',
+          store.fileTree ? 'exists' : 'null'
+        )
+
+        // Import agent.store to get directory name
+        const agentModule = (await import('./agent.store')) as any
+        const useAgentStore = agentModule.useAgentStore
+
+        // If no file tree, build it first and wait
+        if (!store.fileTree) {
+          await store.buildFileTreeFromCurrentHandle()
+          // Get updated store after build
+          const updatedStore = get()
+          // Always send a response, even if tree is null (no directory opened)
+          const rootName = useAgentStore?.getState?.()?.directoryName
+          store.session?.broadcastFileTreeUpdate(updatedStore.fileTree, rootName || null)
+          return
+        }
+
+        // Now broadcast the file tree
+        const rootName = useAgentStore?.getState?.()?.directoryName
+        store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+      },
+      onPeerJoined: async () => {
+        // Broadcast file tree to newly joined remote
+        const store = get()
+        if (store.fileTree) {
+          const { useAgentStore } = await import('./agent.store')
+          const rootName = useAgentStore.getState().directoryName
+          store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+        }
+      },
     })
 
     set({ session, sessionId, relayUrl })
@@ -305,6 +412,9 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     // Rejoin the session using the appropriate method
     if (role === 'host') {
       await session.reconnectAsHost(sessionId)
+      // Rebuild file tree after reconnecting as host
+      const store = get()
+      store.buildFileTreeFromCurrentHandle()
     } else {
       await session.joinSession(sessionId)
     }
@@ -365,12 +475,79 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     set({ recentFiles: files })
   },
 
-  handleFileSearch: (query, limit = 50) => {
-    const { fileTree } = get()
+  handleFileSearch: async (query, limit = 50) => {
+    let { fileTree } = get()
+    console.log('[RemoteStore] File search:', query, 'fileTree:', fileTree)
+
+    // If no file tree, try to build it first
     if (!fileTree) {
+      console.log('[RemoteStore] No file tree, attempting to build...')
+      await get().buildFileTreeFromCurrentHandle()
+      fileTree = get().fileTree
+      console.log('[RemoteStore] After build, fileTree:', fileTree)
+    }
+
+    if (!fileTree) {
+      console.warn(
+        '[RemoteStore] File search requested but no file tree available (no directory handle)'
+      )
       return []
     }
-    return fileDiscoveryService.search(query, [fileTree], { limit })
+
+    const results = fileDiscoveryService.search(query, [fileTree], { limit })
+    console.log('[RemoteStore] Search results:', results.length, 'files')
+    return results
+  },
+
+  /**
+   * Build file tree from the agent store's directory handle
+   * This should be called after creating a remote session as host
+   */
+  buildFileTreeFromCurrentHandle: async () => {
+    const { useAgentStore } = await import('./agent.store')
+    const dirHandle = useAgentStore.getState().directoryHandle
+    if (!dirHandle) {
+      console.warn('[RemoteStore] No directory handle available to build file tree')
+      return
+    }
+
+    try {
+      // Import traversal service
+      const { traverseDirectory } = await import('../services/traversal.service')
+
+      // Collect all file metadata
+      const allFiles: Array<{
+        name: string
+        size: number
+        type: 'file' | 'directory'
+        lastModified: number
+        path: string
+      }> = []
+
+      for await (const file of traverseDirectory(dirHandle)) {
+        allFiles.push(file)
+      }
+
+      console.log('[RemoteStore] Collected', allFiles.length, 'entries for file tree')
+
+      // Build hierarchical tree
+      const tree = fileDiscoveryService.buildFileTreeFromMetadata(allFiles)
+
+      if (tree) {
+        get().setFileTree(tree)
+        console.log('[RemoteStore] File tree built successfully')
+
+        // Broadcast to remotes if this is a host session
+        const store = get()
+        if (store.session && store.getRole() === 'host') {
+          const rootName = useAgentStore.getState().directoryName
+          store.session.broadcastFileTreeUpdate(tree, rootName || null)
+          console.log('[RemoteStore] File tree broadcasted to remotes')
+        }
+      }
+    } catch (error) {
+      console.error('[RemoteStore] Failed to build file tree:', error)
+    }
   },
 
   handleFileSelect: (path) => {
@@ -405,6 +582,32 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     session.send(message)
     console.log('[RemoteStore] Pushed recent files to remote:', recentFiles.length)
   },
+
+  /**
+   * Refresh file tree and broadcast update to connected remotes.
+   * Called when the Host switches to a different directory.
+   */
+  refreshFileTree: async () => {
+    console.log('[RemoteStore] Refreshing file tree...')
+    await get().buildFileTreeFromCurrentHandle()
+
+    // Broadcast the updated file tree to all connected remotes
+    const { session, fileTree } = get()
+    const { useAgentStore } = await import('./agent.store')
+    const rootName = useAgentStore.getState().directoryName
+
+    if (session) {
+      session.broadcastFileTreeUpdate(fileTree, rootName || null)
+      console.log('[RemoteStore] File tree update broadcasted to remotes')
+    }
+  },
+
+  /**
+   * Get the current session role.
+   */
+  getRole: () => {
+    return get().role
+  },
 }))
 
 // ============================================================================
@@ -432,8 +635,18 @@ function findFileByPath(node: FileEntry | null, path: string): FileEntry | null 
 // Auto-reconnect on load
 // ============================================================================
 
+// Flag to prevent multiple reconnect attempts (e.g., from React StrictMode double-render)
+let reconnectAttempted = false
+
 /** Attempt to reconnect to a previously saved session */
 export function attemptReconnect(): boolean {
+  // Guard against multiple calls (e.g., from React StrictMode)
+  if (reconnectAttempted) {
+    console.log('[RemoteStore] Reconnect already attempted, skipping')
+    return false
+  }
+  reconnectAttempted = true
+
   const stored = loadSessionFromStorage()
   if (!stored) {
     console.log('[RemoteStore] No saved session found')

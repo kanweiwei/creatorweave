@@ -37,6 +37,8 @@ export interface RemoteSessionCallbacks {
   onSessionIdChange?: (sessionId: string) => void
   /** Peer joined/left */
   onPeerChange?: (peerCount: number) => void
+  /** New peer joined (Host only) - use this to send initial data like file tree */
+  onPeerJoined?: () => void
   /** Encryption state changed */
   onEncryptionStateChange?: (state: EncryptionState, error?: string) => void
   /** Received a user message from remote peer (Host only) */
@@ -48,8 +50,9 @@ export interface RemoteSessionCallbacks {
   /** Received state sync (Remote only) */
   onStateSync?: (state: StateSyncMessage) => void
   /** File discovery callbacks (Host only) */
-  onFileSearch?: (query: string, limit: number | undefined) => FileEntry[]
+  onFileSearch?: (query: string, limit: number | undefined) => Promise<FileEntry[]>
   onFileSelect?: (path: string) => void
+  onFileTreeRequest?: () => void // Remote requests current file tree
   /** Error occurred */
   onError?: (error: string) => void
 }
@@ -303,6 +306,17 @@ export class RemoteSession {
     this.sendSecure({ type: 'file:change', path, changeType, preview })
   }
 
+  /** Broadcast file tree update to all remotes (only rootName, Remote doesn't need full tree) */
+  broadcastFileTreeUpdate(
+    _fileTree: import('@/remote/remote-protocol').FileEntry | null,
+    rootName: string | null
+  ): void {
+    this.sendSecure({
+      type: 'file:tree-update',
+      rootName,
+    })
+  }
+
   /** Send full state sync to newly joined remote */
   sendStateSync(state: StateSyncMessage): void {
     this.sendSecure(state)
@@ -333,6 +347,8 @@ export class RemoteSession {
   // ---- Private ----
 
   private async sendSecure(message: RemoteMessage): Promise<void> {
+    console.log('[RemoteSession] Sending message:', message.type, message)
+
     // Protocol messages are sent unencrypted
     if (isProtocolMessage(message)) {
       this.client.send(message)
@@ -363,6 +379,7 @@ export class RemoteSession {
   }
 
   private async handleMessage(raw: WireMessage): Promise<void> {
+    console.log('[RemoteSession] Received message:', raw)
     let message: RemoteMessage
 
     // Decrypt if needed
@@ -387,6 +404,8 @@ export class RemoteSession {
       // Session lifecycle
       case 'session:joined':
         this.callbacks.onPeerChange?.(message.peerCount)
+        // Notify Host that a new peer joined (for sending initial data)
+        this.callbacks.onPeerJoined?.()
         break
 
       case 'session:error':
@@ -459,20 +478,41 @@ export class RemoteSession {
       // File discovery messages
       case 'file:search': {
         const searchMsg = message as FileSearchRequest
-        const results = this.callbacks.onFileSearch?.(searchMsg.query, searchMsg.limit) ?? []
-        const response: FileSearchResult = {
-          type: 'file:search-result',
-          query: searchMsg.query,
-          results,
-          hasMore: false,
-        }
-        this.client.send(response)
+        // Use async/await for file search
+        this.callbacks
+          .onFileSearch?.(searchMsg.query, searchMsg.limit)
+          .then((results) => {
+            const response: FileSearchResult = {
+              type: 'file:search-result',
+              query: searchMsg.query,
+              results: results ?? [],
+              hasMore: false,
+            }
+            this.client.send(response)
+          })
+          .catch((err) => {
+            console.error('[RemoteSession] File search error:', err)
+            // Send empty results on error
+            const response: FileSearchResult = {
+              type: 'file:search-result',
+              query: searchMsg.query,
+              results: [],
+              hasMore: false,
+            }
+            this.client.send(response)
+          })
         break
       }
 
       case 'file:selected': {
         const selectMsg = message as FileSelectMessage
         this.callbacks.onFileSelect?.(selectMsg.path)
+        break
+      }
+
+      case 'file:tree-request': {
+        // Remote requests current file tree
+        this.callbacks.onFileTreeRequest?.()
         break
       }
 

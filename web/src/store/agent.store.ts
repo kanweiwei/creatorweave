@@ -86,6 +86,19 @@ export const useAgentStore = create<AgentState>()(
         state.directoryName = handle?.name || null
       })
       persistHandle(handle).catch(console.error)
+
+      // Notify remote session of directory change
+      if (handle) {
+        // Trigger async file tree rebuild and broadcast to remotes
+        import('./remote.store').then(({ useRemoteStore }) => {
+          const remoteStore = useRemoteStore.getState()
+          if (remoteStore.session && remoteStore.getRole() === 'host') {
+            remoteStore.refreshFileTree().catch((err) => {
+              console.error('[AgentStore] Failed to refresh file tree:', err)
+            })
+          }
+        })
+      }
     },
 
     restoreDirectoryHandle: async () => {

@@ -337,17 +337,23 @@ async function handleSessionCreate(socket: any, msg: SessionCreateMessage): Prom
   }
 
   // Check if host already exists
+  let isReconnect = false
   if (session.host) {
     // Check if the existing socket is still connected
     const existingSocketActive = session.host.socket && !session.host.socket.disconnected
 
     if (existingSocketActive) {
-      // Host already connected - ignore duplicate
-      return
+      // Host socket is still active - this is a page refresh/reconnect
+      // Replace the old socket with the new one (old socket will be cleaned up on disconnect)
+      console.log(`[WS] Host refreshing/reconnecting to session ${sessionId}, replacing socket`)
+      socketToSession.delete(session.host.socket)
+      isReconnect = true
+    } else {
+      // Existing socket is disconnected, allow normal reconnect
+      console.log(`[WS] Host reconnecting to session ${sessionId} (old socket disconnected)`)
+      socketToSession.delete(session.host.socket)
+      isReconnect = true
     }
-    // Existing socket is disconnected, allow reconnect
-    console.log(`[WS] Host reconnecting to session ${sessionId}`)
-    socketToSession.delete(session.host.socket)
   }
 
   // Add (or reconnect) host to session
@@ -361,6 +367,19 @@ async function handleSessionCreate(socket: any, msg: SessionCreateMessage): Prom
     exchangePublicKeys(session)
     // Notify both that session is ready
     notifySessionReady(session)
+
+    // If this was a reconnect (refresh), ensure the new host socket gets the session:joined message
+    // This is needed because the old socket may have already received it, but the new one hasn't
+    if (isReconnect) {
+      const peerCount = (session.host ? 1 : 0) + (session.remote ? 1 : 0)
+      const msg: SessionJoinedMessage = {
+        type: 'session:joined',
+        sessionId: session.sessionId,
+        peerCount
+      }
+      sendToPeer(session.host, msg)
+      console.log(`[WS] Sent session:joined to reconnected host, peerCount: ${peerCount}`)
+    }
   } else {
     // No remote peer, notify host that only they are connected
     const msg: SessionJoinedMessage = {
@@ -390,17 +409,23 @@ async function handleSessionJoin(socket: any, msg: SessionJoinMessage): Promise<
   }
 
   // Check if remote already exists
+  let isReconnect = false
   if (session.remote) {
     // Check if the existing socket is still connected
     const existingSocketActive = session.remote.socket && !session.remote.socket.disconnected
 
     if (existingSocketActive) {
-      // Remote already connected - ignore duplicate
-      return
+      // Remote socket is still active - this is a page refresh/reconnect
+      // Replace the old socket with the new one (old socket will be cleaned up on disconnect)
+      console.log(`[WS] Remote refreshing/reconnecting to session ${sessionId}, replacing socket`)
+      socketToSession.delete(session.remote.socket)
+      isReconnect = true
+    } else {
+      // Existing socket is disconnected, allow normal reconnect
+      console.log(`[WS] Remote reconnecting to session ${sessionId} (old socket disconnected)`)
+      socketToSession.delete(session.remote.socket)
+      isReconnect = true
     }
-    // Existing socket is disconnected, allow reconnect
-    console.log(`[WS] Remote reconnecting to session ${sessionId}`)
-    socketToSession.delete(session.remote.socket)
   }
 
   // Add (or reconnect) remote to session
@@ -412,6 +437,18 @@ async function handleSessionJoin(socket: any, msg: SessionJoinMessage): Promise<
   if (session.host) {
     exchangePublicKeys(session)
     notifySessionReady(session)
+
+    // If this was a reconnect (refresh), ensure the new remote socket gets the session:joined message
+    if (isReconnect) {
+      const peerCount = (session.host ? 1 : 0) + (session.remote ? 1 : 0)
+      const msg: SessionJoinedMessage = {
+        type: 'session:joined',
+        sessionId: session.sessionId,
+        peerCount
+      }
+      sendToPeer(session.remote, msg)
+      console.log(`[WS] Sent session:joined to reconnected remote, peerCount: ${peerCount}`)
+    }
   }
 }
 
