@@ -9,6 +9,10 @@ import { RemoteSession } from '@/remote/remote-session'
 import type { RemoteMessage, StateSyncMessage, FileEntry } from '@/remote/remote-protocol'
 import type { EncryptionState } from '@browser-fs-analyzer/encryption'
 import { fileDiscoveryService } from '@/services/file-discovery.service'
+import { streamingBus } from '@/streaming-bus'
+
+// 用于保存事件取消订阅函数
+let streamingBusUnsubscribers: Array<() => void> = []
 
 type RemoteMessageEntry = { role: string; content: string | null; messageId: string }
 
@@ -67,6 +71,62 @@ function clearSessionFromStorage(): void {
   } catch (e) {
     console.warn('[RemoteStore] Failed to clear session from localStorage:', e)
   }
+}
+
+// ============================================================================
+// Streaming Event Bus Setup
+// ============================================================================
+
+/**
+ * Setup streaming event listeners that broadcast agent streaming events to remote sessions.
+ * Called when a session is created/rejoined as host.
+ */
+function setupStreamingListeners(session: RemoteSession): void {
+  // Cleanup any existing listeners
+  streamingBusUnsubscribers.forEach((unsub) => unsub())
+  streamingBusUnsubscribers = []
+
+  // Thinking events
+  streamingBusUnsubscribers.push(
+    streamingBus.on('thinking:start', () => {
+      session.broadcastStatus('thinking')
+    })
+  )
+
+  streamingBusUnsubscribers.push(
+    streamingBus.on('thinking:delta', (delta: string) => {
+      session.broadcastThinking(delta)
+    })
+  )
+
+  // Tool call events
+  streamingBusUnsubscribers.push(
+    streamingBus.on('tool:start', (toolCall: { name: string; args: string; id: string }) => {
+      session.broadcastStatus('tool_calling')
+      session.broadcastToolCall(toolCall.name, toolCall.args, toolCall.id)
+    })
+  )
+
+  // Status events
+  streamingBusUnsubscribers.push(
+    streamingBus.on('complete', () => {
+      session.broadcastStatus('idle')
+    })
+  )
+
+  streamingBusUnsubscribers.push(
+    streamingBus.on('error', (_error: string) => {
+      session.broadcastStatus('error')
+    })
+  )
+
+  streamingBusUnsubscribers.push(
+    streamingBus.on('status:change', (status: 'idle' | 'thinking' | 'tool_calling' | 'error') => {
+      session.broadcastStatus(status)
+    })
+  )
+
+  console.log('[RemoteStore] Streaming listeners setup complete')
 }
 
 // ============================================================================
@@ -299,6 +359,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     })
 
     set({ session })
+    // Setup streaming bus listeners to broadcast events to remote sessions
+    setupStreamingListeners(session)
 
     const sessionId = await session.createSession()
     console.log('[RemoteStore] Session created with ID:', sessionId)
@@ -487,6 +549,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     })
 
     set({ session, sessionId, relayUrl })
+    // Setup streaming bus listeners to broadcast events to remote sessions
+    setupStreamingListeners(session)
 
     // Rejoin the session using the appropriate method
     if (role === 'host') {
@@ -504,6 +568,9 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     if (session) {
       session.close()
     }
+    // Cleanup streaming listeners
+    streamingBusUnsubscribers.forEach((unsub) => unsub())
+    streamingBusUnsubscribers = []
     clearSessionFromStorage()
     set({
       session: null,

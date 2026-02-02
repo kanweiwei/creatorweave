@@ -3,21 +3,41 @@
  * 用于手动输入会话 ID 加入会话
  */
 
-import { useState, useCallback } from 'react'
-import { Key } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { Key, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useRemoteStore } from '../store/remote.store'
+import { useConnection } from '../contexts/ConnectionContext'
 
 // UUID validation regex (xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export interface SessionInputPageProps {
-  onJoinSession: (sessionId: string) => void
-  connectionState: 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
-  error: string | null
-}
-
-export function SessionInputPage({ onJoinSession, connectionState, error }: SessionInputPageProps) {
+export function SessionInputPage() {
+  const navigate = useNavigate()
   const [sessionInput, setSessionInput] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
+
+  // 从 store 获取连接状态
+  const {
+    connectionState,
+    error,
+    reconnectAttempt,
+    reconnectMaxAttempts,
+  } = useRemoteStore()
+
+  // 从 Context 获取连接方法
+  const { joinSession, cancelConnection } = useConnection()
+
+  // 连接成功后跳转到 /chats
+  useEffect(() => {
+    if (connectionState === 'connected') {
+      navigate('/chats', { replace: true })
+    }
+  }, [connectionState, navigate])
+
+  const handleCancel = () => {
+    cancelConnection()
+  }
 
   // Validate UUID format
   const isValidUUID = useCallback((id: string): boolean => {
@@ -35,7 +55,7 @@ export function SessionInputPage({ onJoinSession, connectionState, error }: Sess
       return
     }
     setInputError(null)
-    onJoinSession(trimmed)
+    joinSession(trimmed)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -43,6 +63,12 @@ export function SessionInputPage({ onJoinSession, connectionState, error }: Sess
       handleJoinSession()
     }
   }
+
+  // 显示取消按钮：连接中或重连中状态
+  const isConnecting = connectionState === 'connecting' || connectionState === 'reconnecting'
+  const isReconnecting = connectionState === 'reconnecting'
+  const showCancelButton = isConnecting
+  const showProgress = isReconnecting && reconnectAttempt > 0
 
   return (
     <div className="flex-1 flex items-center justify-center bg-neutral-50 p-4">
@@ -90,41 +116,79 @@ export function SessionInputPage({ onJoinSession, connectionState, error }: Sess
           </div>
         )}
 
+        {/* Reconnecting Progress */}
+        {showProgress && (
+          <div className="mb-4 bg-neutral-100 px-3 py-2 rounded-lg text-xs">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-neutral-600">正在重连...</span>
+              <span className="text-neutral-400">
+                {Math.min(reconnectAttempt, reconnectMaxAttempts)} / {reconnectMaxAttempts}
+              </span>
+            </div>
+            <div className="w-full bg-neutral-200 rounded-full h-1.5">
+              <div
+                className="bg-primary-500 h-1.5 rounded-full transition-all"
+                style={{
+                  width: `${(Math.min(reconnectAttempt, reconnectMaxAttempts) / reconnectMaxAttempts) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Helper Text */}
         <p className="text-xs text-neutral-400 text-center mb-4">
           会话 ID 格式: UUID (8-4-4-4-12)
         </p>
 
-        {/* Join Button */}
-        <button
-          onClick={handleJoinSession}
-          disabled={!sessionInput.trim() || connectionState === 'connecting' || connectionState === 'reconnecting'}
-          className="w-full bg-primary-600 text-white py-3 rounded-xl font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-        >
-          {connectionState === 'connecting' || connectionState === 'reconnecting' ? (
-            <>
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  fill="none"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              连接中...
-            </>
-          ) : (
-            '加入会话'
+        {/* Buttons Row */}
+        <div className="flex gap-2">
+          {/* Join Button */}
+          <button
+            onClick={handleJoinSession}
+            disabled={!sessionInput.trim() || connectionState === 'connecting' || connectionState === 'reconnecting'}
+            className={`flex-1 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
+              !sessionInput.trim() || connectionState === 'connecting' || connectionState === 'reconnecting'
+                ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                : 'bg-primary-600 text-white hover:bg-primary-700'
+            }`}
+          >
+            {connectionState === 'connecting' || connectionState === 'reconnecting' ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                连接中...
+              </>
+            ) : (
+              '加入会话'
+            )}
+          </button>
+
+          {/* Cancel Button - 连接中或重连中显示 */}
+          {showCancelButton && (
+            <button
+              onClick={handleCancel}
+              className="px-4 py-3 rounded-xl font-medium bg-neutral-200 text-neutral-600 hover:bg-neutral-300 transition-colors flex items-center justify-center"
+              aria-label="取消连接"
+            >
+              <X className="w-5 h-5" />
+            </button>
           )}
-        </button>
+        </div>
 
         {/* Scan QR Hint */}
         <div className="mt-6 pt-4 border-t border-neutral-100">

@@ -8,7 +8,7 @@
  * - New navigation structure with MainLayout
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { io, Socket } from 'socket.io-client'
 import { E2EEncryption, type EncryptionState, isEncryptedEnvelope, type RemoteMessage, type EncryptedEnvelope } from '@browser-fs-analyzer/encryption'
@@ -16,6 +16,7 @@ import { FilePicker } from './components/FilePicker'
 import { useRemoteStore } from './store/remote.store'
 import { useConversationStore, type Conversation, type Message } from './store/conversation.store'
 import type { FileEntry } from './types/remote'
+import { ConnectionContext, type ConnectionContextValue, type ConnectionState, useConnection } from './contexts/ConnectionContext'
 
 // Pages
 import { ConversationListPage } from './pages/ConversationListPage'
@@ -41,8 +42,6 @@ const RELAY_SERVER_URL = import.meta.env.VITE_RELAY_SERVER_URL || 'ws://localhos
 // ============================================================================
 // Types
 // ============================================================================
-
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 interface StoredSession {
   sessionId: string
@@ -96,17 +95,10 @@ function clearSession(): void {
 // ============================================================================
 
 interface AppConnectionProviderProps {
-  children: (props: {
-    connectionState: ConnectionState
-    error: string | null
-    encryptionError: string | null
-    joinSession: (sessionId: string) => void
-    disconnectSession: () => void
-    agentStatus: 'idle' | 'thinking' | 'tool_calling' | 'error'
-  }) => React.ReactNode
+  children: React.ReactNode
 }
 
-function AppConnectionProvider({ children }: AppConnectionProviderProps) {
+function ConnectionProvider({ children }: AppConnectionProviderProps) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +115,9 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const RECONNECT_DELAY = 2000
+
+  // Ref to store joinSession function for breaking circular dependency
+  const joinSessionRef = useRef<(sessionId: string) => Promise<void>>(() => Promise.resolve())
 
   // Store integration
   const { setSocket, setHostRootName } = useRemoteStore()
@@ -158,13 +153,58 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
     }
   }, [sessionId])
 
+  // Sync agent status with window
+  useEffect(() => {
+    ;(window as any).agentStatus = agentStatus
+  }, [agentStatus])
+
   const setConnectionStateSync = useCallback((state: ConnectionState) => {
     setConnectionState(state)
     useRemoteStore.getState().setConnectionState(state)
   }, [])
 
+  // 完整的取消连接函数 - 断开 WebSocket 并清理状态
+  const cancelConnection = useCallback(() => {
+    console.log('[Mobile] Canceling connection')
+
+    // 清理重连 timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    // 重置重连状态
+    reconnectAttemptsRef.current = 0
+    useRemoteStore.getState().cancelReconnect()
+
+    // 断开 WebSocket
+    if (wsRef.current) {
+      wsRef.current.disconnect()
+      wsRef.current = null
+    }
+
+    // 清理 session
+    clearSession()
+    setSessionId(null)
+    setError(null)
+    setConnectionStateSync('disconnected')
+
+    // 清理 window 上的引用
+    ;(window as any).remoteSocket = null
+    ;(window as any).encryptionRef = null
+  }, [setConnectionStateSync])
+
+  // 暴露到 window 供组件调用（保留用于其他非组件调用）
+  useEffect(() => {
+    ;(window as any).cancelConnection = cancelConnection
+    return () => {
+      ;(window as any).cancelConnection = undefined
+    }
+  }, [cancelConnection])
+
   const resetReconnectState = useCallback(() => {
     reconnectAttemptsRef.current = 0
+    useRemoteStore.getState().resetReconnect()
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
@@ -172,20 +212,32 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
   }, [])
 
   const scheduleReconnect = useCallback(() => {
+    const store = useRemoteStore.getState()
     reconnectAttemptsRef.current++
-    const delay = RECONNECT_DELAY * Math.min(reconnectAttemptsRef.current, 5)
+    store.incrementReconnectAttempt()
 
-    console.log(`[Mobile] Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay}ms`)
+    // 超过最大重连次数，停止重连
+    if (reconnectAttemptsRef.current > store.reconnectMaxAttempts) {
+      console.log('[Mobile] Max reconnect attempts reached, giving up')
+      setError('连接失败，请重试或检查 PC 端是否在线')
+      setConnectionStateSync('disconnected')
+      return
+    }
+
+    const delay = RECONNECT_DELAY * reconnectAttemptsRef.current
+
+    console.log(`[Mobile] Scheduling reconnect attempt ${reconnectAttemptsRef.current}/${store.reconnectMaxAttempts} in ${delay}ms`)
     setConnectionStateSync('reconnecting')
 
     reconnectTimeoutRef.current = setTimeout(() => {
       const savedSessionId = sessionIdRef.current
       if (savedSessionId) {
         console.log('[Mobile] Attempting to reconnect...')
-        joinSession(savedSessionId)
+        // Use ref to break circular dependency
+        joinSessionRef.current(savedSessionId)
       }
     }, delay)
-  }, [])
+  }, [setConnectionStateSync, setError, resetReconnectState])
 
   // Handle WebSocket messages
   const handleWSMessage = useCallback(async (msg: RemoteMessage | EncryptedEnvelope) => {
@@ -251,6 +303,8 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
           messageId: string
           timestamp: number
         }
+        // Clear thinking when final message arrives
+        useConversationStore.getState().clearThinking()
         const { activeConversationId } = useConversationStore.getState()
         if (activeConversationId) {
           useConversationStore.getState().addMessage(activeConversationId, {
@@ -262,11 +316,47 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
         }
         break
 
-      case 'agent:status':
-        setAgentStatus((messageToProcess as { type: 'agent:status'; status: 'idle' | 'thinking' | 'tool_calling' | 'error' }).status)
-        // Sync with local state for ConversationDetailPageWithInput
-        ;(window as any).agentStatus = agentStatus
+      case 'agent:thinking': {
+        const thinkingMsg = messageToProcess as {
+          type: 'agent:thinking'
+          delta: string
+        }
+        useConversationStore.getState().appendThinking(thinkingMsg.delta)
+        // Sync with window for ConversationDetailPage
+        ;(window as any).agentThinking = useConversationStore.getState().thinkingContent
         break
+      }
+
+      case 'agent:tool_call': {
+        const toolMsg = messageToProcess as {
+          type: 'agent:tool_call'
+          toolName: string
+          args: string
+          toolCallId: string
+        }
+        useConversationStore.getState().addToolCall({
+          toolName: toolMsg.toolName,
+          args: toolMsg.args,
+          toolCallId: toolMsg.toolCallId,
+        })
+        break
+      }
+
+      case 'agent:status': {
+        const statusMsg = messageToProcess as {
+          type: 'agent:status'
+          status: 'idle' | 'thinking' | 'tool_calling' | 'error'
+        }
+        setAgentStatus(statusMsg.status)
+        // Sync with local state for ConversationDetailPageWithInput
+        ;(window as any).agentStatus = statusMsg.status
+        // Clear thinking when status becomes idle
+        if (statusMsg.status === 'idle') {
+          useConversationStore.getState().clearThinking()
+          ;(window as any).agentThinking = ''
+        }
+        break
+      }
 
       case 'sync:conversations': {
         const syncMsg = messageToProcess as {
@@ -455,25 +545,22 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
     }
   }, [handleWSMessage, scheduleReconnect, setConnectionStateSync, setSocket])
 
-  // Disconnect session
-  const disconnectSession = useCallback(() => {
-    console.log('[Mobile] Manual disconnect')
-    resetReconnectState()
-    clearSession()
-    setSessionId(null)
-    setError(null)
+  // Context value - must be after joinSession definition
+  const contextValue: ConnectionContextValue = useMemo(() => ({
+    connectionState,
+    error,
+    encryptionError,
+    joinSession,
+    cancelConnection,
+  }), [connectionState, error, encryptionError, joinSession, cancelConnection])
 
-    if (wsRef.current) {
-      wsRef.current.disconnect()
-      wsRef.current = null
-    }
-    setConnectionStateSync('disconnected')
-  }, [resetReconnectState, setConnectionStateSync])
+  // Update joinSessionRef when joinSession changes
+  useEffect(() => {
+    joinSessionRef.current = joinSession
+  }, [joinSession])
 
   // Auto-join on mount (only once)
   const hasAttemptedJoinRef = useRef(false)
-  const joinSessionRef = useRef(joinSession)
-  joinSessionRef.current = joinSession
 
   useEffect(() => {
     // Skip if already attempted
@@ -496,22 +583,15 @@ function AppConnectionProvider({ children }: AppConnectionProviderProps) {
   }, []) // Run only once on mount
 
   return (
-    <>{children({
-      connectionState,
-      error,
-      encryptionError,
-      joinSession,
-      disconnectSession,
-      agentStatus,
-    })}</>
+    <ConnectionContext.Provider value={contextValue}>
+      {children}
+    </ConnectionContext.Provider>
   )
 }
 
-// ============================================================================
-// Main App Component
-// ============================================================================
-
-function AppContent() {
+// 需要使用 ConnectionContext 的组件
+function AppContentWithConnection() {
+  const { connectionState } = useConnection()
   const { filePickerOpen, setFilePickerOpen } = useRemoteStore()
 
   // Send message
@@ -572,65 +652,64 @@ function AppContent() {
   }, [])
 
   return (
-    <AppConnectionProvider>
-      {({ connectionState, error, encryptionError, joinSession }) => (
-        <>
-          {/* Routes */}
-          <Routes>
-            {/* Input page - no auth required */}
-            <Route
-              path="/input"
-              element={
-                <SessionInputPage
-                  connectionState={connectionState}
-                  error={error || encryptionError}
-                  onJoinSession={joinSession}
-                />
-              }
-            />
+    <>
+      <Routes>
+        {/* Input page - no auth required */}
+        <Route
+          path="/input"
+          element={<SessionInputPage />}
+        />
 
-            {/* Protected routes with MainLayout */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <MainLayout
-                    actions={[
-                      {
-                        icon: RefreshCw,
-                        onClick: () => {
-                          const ws = (window as any).remoteSocket as Socket | null
-                          ws?.emit('message', { type: 'sync:request', fullSync: true })
-                        },
-                        title: '刷新',
-                        show: connectionState === 'connected',
-                      },
-                    ]}
-                  />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/chats" element={<ConversationListPage />} />
-              <Route
-                path="/chats/:id"
-                element={
-                  <ConversationDetailPageWithInput
-                    sendMessage={sendMessage}
-                    onStop={stopGeneration}
-                  />
-                }
+        {/* Protected routes with MainLayout */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <MainLayout
+                actions={[
+                  {
+                    icon: RefreshCw,
+                    onClick: () => {
+                      const ws = (window as any).remoteSocket as Socket | null
+                      ws?.emit('message', { type: 'sync:request', fullSync: true })
+                    },
+                    title: '刷新',
+                    show: connectionState === 'connected',
+                  },
+                ]}
               />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/chats" element={<ConversationListPage />} />
+          <Route
+            path="/chats/:id"
+            element={
+              <ConversationDetailPageWithInput
+                sendMessage={sendMessage}
+                onStop={stopGeneration}
+              />
+            }
+          />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
 
-            {/* Root redirect */}
-            <Route path="/*" element={<NavigateToAppropriate />} />
-          </Routes>
+        {/* Root redirect */}
+        <Route path="/*" element={<NavigateToAppropriate />} />
+      </Routes>
 
-          {/* File Picker Modal */}
-          <FilePicker open={filePickerOpen} onClose={() => setFilePickerOpen(false)} />
-        </>
-      )}
-    </AppConnectionProvider>
+      {/* File Picker Modal */}
+      <FilePicker open={filePickerOpen} onClose={() => setFilePickerOpen(false)} />
+    </>
+  )
+}
+
+export default function App() {
+  return (
+    <ConnectionProvider>
+      <BrowserRouter>
+        <AppContentWithConnection />
+      </BrowserRouter>
+    </ConnectionProvider>
   )
 }
 
@@ -643,7 +722,7 @@ function ConversationDetailPageWithInput({
   onStop: () => void
 }) {
   const { id } = useParams<{ id: string }>()
-  const { conversations, setActiveConversation } = useConversationStore()
+  const { conversations, setActiveConversation, thinkingContent, toolCalls } = useConversationStore()
   const { setFilePickerOpen } = useRemoteStore()
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'tool_calling' | 'error'>('idle')
@@ -705,6 +784,8 @@ function ConversationDetailPageWithInput({
         conversation={conversation}
         status={agentStatus === 'thinking' || agentStatus === 'tool_calling' ? 'pending' : 'idle'}
         onLoadMore={conversation?.hasMore ? handleLoadMore : undefined}
+        thinkingContent={thinkingContent}
+        toolCalls={toolCalls}
         className="flex-1 overflow-hidden"
       />
       <ChatInput
@@ -715,13 +796,5 @@ function ConversationDetailPageWithInput({
         selectedFileCount={0}
       />
     </div>
-  )
-}
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
   )
 }

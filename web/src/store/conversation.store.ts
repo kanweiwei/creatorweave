@@ -11,6 +11,14 @@ import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import type { Conversation, Message, ToolCall, ConversationStatus } from '@/agent/message-types'
 import { createConversation } from '@/agent/message-types'
+import {
+  emitThinkingStart,
+  emitThinkingDelta,
+  emitToolStart,
+  emitComplete,
+  emitError,
+} from '@/streaming-bus'
+import { StreamingQueue } from '../utils/streaming-queue'
 
 // Enable Immer Map/Set support
 enableMapSet()
@@ -123,6 +131,9 @@ interface ConversationState {
   // AgentLoop management (not persisted)
   agentLoops: Map<string, AgentLoop>
 
+  // Streaming queues for RAF-batched updates (not persisted)
+  streamingQueues: Map<string, { reasoning: StreamingQueue; content: StreamingQueue }>
+
   // Follow-up suggestions (not persisted) - per conversation
   suggestedFollowUps: Map<string, string>
 
@@ -181,6 +192,7 @@ export const useConversationStore = create<ConversationState>()(
     activeConversationId: null,
     loaded: false,
     agentLoops: new Map(),
+    streamingQueues: new Map(),
     suggestedFollowUps: new Map(),
 
     activeConversation: () => {
@@ -307,6 +319,13 @@ export const useConversationStore = create<ConversationState>()(
     },
 
     deleteConversation: (id) => {
+      // Cleanup streaming queues before deleting
+      const queues = get().streamingQueues.get(id)
+      if (queues) {
+        queues.reasoning.destroy()
+        queues.content.destroy()
+      }
+
       set((state) => {
         // Cancel and remove AgentLoop if running
         const agentLoop = state.agentLoops.get(id)
@@ -320,6 +339,8 @@ export const useConversationStore = create<ConversationState>()(
         }
         // Clear follow-up suggestion for deleted conversation
         state.suggestedFollowUps.delete(id)
+        // Clear streaming queues
+        state.streamingQueues.delete(id)
       })
       deleteConversationFromDB(id).catch(console.error)
     },
@@ -405,6 +426,39 @@ export const useConversationStore = create<ConversationState>()(
 
         const currentMessages = conv.messages
 
+        // Create streaming queues for RAF-batched updates
+        // This decouples network streaming (high freq) from visual updates (60fps)
+        const reasoningQueue = new StreamingQueue((_key: string, accumulated: string) => {
+          set((state) => {
+            const c = state.conversations.find((c) => c.id === conversationId)
+            if (c) c.streamingReasoning = accumulated
+          })
+        })
+
+        const contentQueue = new StreamingQueue((_key: string, accumulated: string) => {
+          set((state) => {
+            const c = state.conversations.find((c) => c.id === conversationId)
+            if (c) c.streamingContent = accumulated
+          })
+        })
+
+        // Store queues for cleanup
+        set((state) => {
+          state.streamingQueues.set(conversationId, {
+            reasoning: reasoningQueue,
+            content: contentQueue,
+          })
+        })
+
+        // Helper to cleanup queues
+        const cleanupQueues = () => {
+          reasoningQueue.destroy()
+          contentQueue.destroy()
+          set((state) => {
+            state.streamingQueues.delete(conversationId)
+          })
+        }
+
         // Run the agent
         const resultMessages = await agentLoop.run(currentMessages, {
           onMessageStart: () => {
@@ -431,19 +485,22 @@ export const useConversationStore = create<ConversationState>()(
                 c.isReasoningStreaming = true
               }
             })
+            emitThinkingStart()
           },
           onReasoningDelta: (delta: string) => {
-            set((state) => {
-              const c = state.conversations.find((c) => c.id === conversationId)
-              if (c) c.streamingReasoning += delta
-            })
+            // Use queue instead of direct set - batches updates via RAF
+            reasoningQueue.add('reasoning', delta)
+            emitThinkingDelta(delta)
           },
           onReasoningComplete: (reasoning: string) => {
+            // Flush any remaining content before completing
+            reasoningQueue.flushNow()
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c) {
                 c.isReasoningStreaming = false
                 c.completedReasoning = reasoning
+                c.streamingReasoning = ''
               }
             })
           },
@@ -457,12 +514,12 @@ export const useConversationStore = create<ConversationState>()(
             })
           },
           onContentDelta: (delta: string) => {
-            set((state) => {
-              const c = state.conversations.find((c) => c.id === conversationId)
-              if (c) c.streamingContent += delta
-            })
+            // Use queue instead of direct set - batches updates via RAF
+            contentQueue.add('content', delta)
           },
           onContentComplete: (content: string) => {
+            // Flush any remaining content before completing
+            contentQueue.flushNow()
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c) {
@@ -480,6 +537,11 @@ export const useConversationStore = create<ConversationState>()(
                 c.currentToolCall = tc
                 c.streamingToolArgs = ''
               }
+            })
+            emitToolStart({
+              name: tc.function.name,
+              args: tc.function.arguments,
+              id: tc.id,
             })
           },
           onToolCallDelta: (_index: number, argsDelta: string) => {
@@ -502,6 +564,11 @@ export const useConversationStore = create<ConversationState>()(
             })
           },
           onComplete: async (msgs: Message[]) => {
+            // Flush queues before completion
+            reasoningQueue.flushNow()
+            contentQueue.flushNow()
+            cleanupQueues()
+
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c) {
@@ -511,6 +578,7 @@ export const useConversationStore = create<ConversationState>()(
               // Remove AgentLoop reference
               state.agentLoops.delete(conversationId)
             })
+            emitComplete()
             // Persist final state
             const finalConv = get().conversations.find((c) => c.id === conversationId)
             if (finalConv) persistConversation(finalConv).catch(console.error)
@@ -534,6 +602,11 @@ export const useConversationStore = create<ConversationState>()(
             }
           },
           onError: (err: Error) => {
+            // Flush queues and cleanup on error
+            reasoningQueue.flushNow()
+            contentQueue.flushNow()
+            cleanupQueues()
+
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c) {
@@ -542,10 +615,19 @@ export const useConversationStore = create<ConversationState>()(
               }
               state.agentLoops.delete(conversationId)
             })
+            emitError(err.message)
           },
         })
 
         // Final update in case onComplete wasn't called
+        // Cleanup queues first
+        const queues = get().streamingQueues.get(conversationId)
+        if (queues) {
+          queues.reasoning.flushNow()
+          queues.content.flushNow()
+          queues.reasoning.destroy()
+          queues.content.destroy()
+        }
         set((state) => {
           const c = state.conversations.find((c) => c.id === conversationId)
           if (c) {
@@ -553,10 +635,21 @@ export const useConversationStore = create<ConversationState>()(
             c.status = 'idle'
           }
           state.agentLoops.delete(conversationId)
+          state.streamingQueues.delete(conversationId)
         })
         const finalConv = get().conversations.find((c) => c.id === conversationId)
         if (finalConv) persistConversation(finalConv).catch(console.error)
       } catch (error) {
+        // Cleanup queues on error/abort
+        const queues = get().streamingQueues.get(conversationId)
+        if (queues) {
+          queues.reasoning.destroy()
+          queues.content.destroy()
+          set((state) => {
+            state.streamingQueues.delete(conversationId)
+          })
+        }
+
         if (error instanceof Error && error.name === 'AbortError') {
           // Cancelled by user
           set((state) => {
@@ -583,8 +676,15 @@ export const useConversationStore = create<ConversationState>()(
       const agentLoop = get().agentLoops.get(conversationId)
       if (agentLoop) {
         agentLoop.cancel()
+        // Cleanup queues when cancelling
+        const queues = get().streamingQueues.get(conversationId)
+        if (queues) {
+          queues.reasoning.destroy()
+          queues.content.destroy()
+        }
         set((state) => {
           state.agentLoops.delete(conversationId)
+          state.streamingQueues.delete(conversationId)
           const c = state.conversations.find((c) => c.id === conversationId)
           if (c) c.status = 'idle'
         })

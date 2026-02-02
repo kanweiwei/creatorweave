@@ -8,13 +8,49 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { ConversationDetail } from '@browser-fs-analyzer/conversation'
 import { useConversationStore } from '../store/conversation.store'
-import type { Conversation } from '@browser-fs-analyzer/conversation'
+import type { Conversation, ConversationStatus } from '@browser-fs-analyzer/conversation'
+
+function mapAgentStatusToConversationStatus(
+  status: 'idle' | 'thinking' | 'tool_calling' | 'error'
+): ConversationStatus {
+  switch (status) {
+    case 'thinking':
+      return 'streaming'
+    case 'tool_calling':
+      return 'tool_calling'
+    case 'error':
+      return 'error'
+    default:
+      return 'idle'
+  }
+}
 
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { conversations, setActiveConversation } = useConversationStore()
+  const {
+    conversations,
+    setActiveConversation,
+    thinkingContent,
+    toolCalls,
+  } = useConversationStore()
   const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'tool_calling' | 'error'>('idle')
+
+  // Sync agent status from window (set by App.tsx)
+  useEffect(() => {
+    const updateStatus = () => {
+      const status = (window as any).agentStatus
+      if (status) {
+        setAgentStatus(status)
+      }
+    }
+    updateStatus()
+
+    // Listen for status changes
+    window.addEventListener('agentStatusChange', updateStatus)
+    return () => window.removeEventListener('agentStatusChange', updateStatus)
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -53,7 +89,7 @@ export function ConversationDetailPage() {
       <header className="bg-white border-b border-neutral-200 px-2 py-1.5 sticky top-0 z-10">
         <div className="flex items-center gap-1 max-w-lg mx-auto">
           <button
-            onClick={() => navigate('/conversations')}
+            onClick={() => navigate('/chats')}
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -72,8 +108,10 @@ export function ConversationDetailPage() {
       <main className="flex-1 overflow-hidden">
         <ConversationDetail
           conversation={conversation}
-          status="idle"
+          status={mapAgentStatusToConversationStatus(agentStatus)}
           onLoadMore={conversation?.hasMore ? handleLoadMore : undefined}
+          thinkingContent={thinkingContent}
+          toolCalls={toolCalls}
           className="h-full"
         />
       </main>

@@ -1,12 +1,26 @@
 import { create } from 'zustand'
 import type { ConversationStatus, Message, Conversation } from '@browser-fs-analyzer/conversation'
+import { StreamingQueue } from '../utils/streaming-queue'
 
 // Re-export types for convenience
 export type { ConversationStatus, Message, Conversation }
 
+export interface ToolCall {
+  toolName: string
+  args: string
+  toolCallId: string
+}
+
 interface ConversationState {
   conversations: Conversation[]
   activeConversationId: string | null
+
+  // Thinking content (streamed from host)
+  thinkingContent: string
+  toolCalls: ToolCall[]
+
+  // Streaming queue for RAF-batched updates (not persisted)
+  streamingQueue: StreamingQueue | null
 
   // Actions
   setConversations: (data: Conversation[]) => void
@@ -19,12 +33,18 @@ interface ConversationState {
   setActiveConversation: (id: string) => void
   addMessage: (conversationId: string, message: Message) => void
   updateStatus: (conversationId: string, status: ConversationStatus) => void
+  appendThinking: (delta: string) => void
+  clearThinking: () => void
+  addToolCall: (toolCall: ToolCall) => void
   clear: () => void
 }
 
-export const useConversationStore = create<ConversationState>((set) => ({
+export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
+  thinkingContent: '',
+  toolCalls: [],
+  streamingQueue: null,
 
   setConversations: (data) => {
     set((state) => {
@@ -68,7 +88,13 @@ export const useConversationStore = create<ConversationState>((set) => ({
   },
 
   setActiveConversation: (id) => {
-    set({ activeConversationId: id })
+    // Cleanup existing queue when switching conversations
+    const existingQueue = get().streamingQueue
+    if (existingQueue) {
+      existingQueue.destroy()
+    }
+
+    set({ activeConversationId: id, thinkingContent: '', toolCalls: [], streamingQueue: null })
   },
 
   addMessage: (conversationId, message) => {
@@ -89,10 +115,46 @@ export const useConversationStore = create<ConversationState>((set) => ({
     }))
   },
 
+  appendThinking: (delta) => {
+    // Create queue if not exists
+    let queue = get().streamingQueue
+    if (!queue) {
+      queue = new StreamingQueue((accumulated) => {
+        set({ thinkingContent: accumulated })
+      })
+      set({ streamingQueue: queue })
+    }
+    queue.add(delta)
+  },
+
+  clearThinking: () => {
+    // Flush and cleanup queue
+    const queue = get().streamingQueue
+    if (queue) {
+      queue.flushNow()
+      queue.destroy()
+    }
+    set({ thinkingContent: '', toolCalls: [], streamingQueue: null })
+  },
+
+  addToolCall: (toolCall) => {
+    set((state) => ({
+      toolCalls: [...state.toolCalls, toolCall],
+    }))
+  },
+
   clear: () => {
+    // Cleanup queue
+    const queue = get().streamingQueue
+    if (queue) {
+      queue.destroy()
+    }
     set({
       conversations: [],
       activeConversationId: null,
+      thinkingContent: '',
+      toolCalls: [],
+      streamingQueue: null,
     })
   },
 }))

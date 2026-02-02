@@ -28,6 +28,13 @@ interface RemoteState {
   // Encryption
   encryptionState: EncryptionState
 
+  // Reconnect
+  reconnectAttempt: number
+  reconnectMaxAttempts: number
+  cancelReconnect: () => void
+  resetReconnect: () => void
+  incrementReconnectAttempt: () => void
+
   // Messages
   messages: AgentMessage[]
   agentStatus: 'idle' | 'thinking' | 'tool_calling' | 'error'
@@ -82,6 +89,8 @@ export const useRemoteStore = create<RemoteState>((set, get) => ({
   sessionId: null,
   error: null,
   encryptionState: 'none',
+  reconnectAttempt: 0,
+  reconnectMaxAttempts: 3,
   messages: [],
   agentStatus: 'idle',
   searchResults: [],
@@ -92,6 +101,22 @@ export const useRemoteStore = create<RemoteState>((set, get) => ({
   directoryChanged: false,
   filePickerOpen: false,
   socket: null,
+
+  // Reconnect actions
+  cancelReconnect: () => {
+    console.log('[RemoteStore] Canceling reconnect')
+    set({ reconnectAttempt: 0, connectionState: 'disconnected' })
+    // Note: actual timeout cleanup happens in App.tsx
+  },
+
+  resetReconnect: () => {
+    set({ reconnectAttempt: 0 })
+  },
+
+  incrementReconnectAttempt: () => {
+    const current = get().reconnectAttempt
+    set({ reconnectAttempt: current + 1 })
+  },
 
   // Connection
   setConnectionState: (state) => {

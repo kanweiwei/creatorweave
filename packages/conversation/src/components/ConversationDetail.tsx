@@ -7,12 +7,15 @@ import { useEffect, useRef } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ThinkingIndicator } from './ThinkingIndicator'
+import { ReasoningSection } from './ReasoningSection'
 import type { Conversation, ConversationStatus } from '../types/conversation'
 
 interface ConversationDetailProps {
   conversation: Conversation | null
   status: ConversationStatus
   onLoadMore?: () => void
+  thinkingContent?: string
+  toolCalls?: Array<{ toolName: string; args: string; toolCallId: string }>
   className?: string
 }
 
@@ -20,14 +23,16 @@ export function ConversationDetail({
   conversation,
   status,
   onLoadMore,
+  thinkingContent = '',
+  toolCalls = [],
   className = '',
 }: ConversationDetailProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or thinking updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversation])
+  }, [conversation, thinkingContent])
 
   if (!conversation) {
     return (
@@ -41,13 +46,24 @@ export function ConversationDetail({
   }
 
   const isLoading = status === 'pending' || status === 'streaming' || status === 'tool_calling'
+  const hasThinking = thinkingContent.length > 0 || toolCalls.length > 0
+
+  // Map ConversationStatus to ReasoningSection status type
+  const reasoningStatus: 'idle' | 'thinking' | 'tool_calling' | 'error' =
+    status === 'streaming' ? 'thinking' :
+    status === 'tool_calling' ? 'tool_calling' :
+    status === 'error' ? 'error' : 'idle'
+
+  // Map ConversationStatus to ThinkingIndicator status type
+  const thinkingStatus: 'thinking' | 'tool_calling' =
+    status === 'tool_calling' ? 'tool_calling' : 'thinking'
 
   return (
     <div className={`flex h-full flex-col bg-white ${className}`}>
       {/* Messages area - matches Host端 ConversationView */}
       <div className="custom-scrollbar flex-1 overflow-y-auto">
         <div className="px-4 py-4">
-          {conversation.messages.length === 0 && !isLoading && (
+          {conversation.messages.length === 0 && !isLoading && !hasThinking && (
             <div className="flex h-full items-center justify-center">
               <div className="text-center text-neutral-400">
                 <MessageSquare className="mx-auto mb-2 h-8 w-8" />
@@ -61,11 +77,18 @@ export function ConversationDetail({
               <MessageBubble key={msg.messageId || index} message={msg} />
             ))}
 
-            {/* Loading indicator */}
-            {isLoading && (
-              <ThinkingIndicator
-                status={status === 'tool_calling' ? 'tool_calling' : 'thinking'}
+            {/* Thinking / Reasoning section */}
+            {hasThinking && (
+              <ReasoningSection
+                thinking={thinkingContent}
+                toolCalls={toolCalls}
+                status={reasoningStatus}
               />
+            )}
+
+            {/* Loading indicator */}
+            {isLoading && !hasThinking && (
+              <ThinkingIndicator status={thinkingStatus} />
             )}
 
             {/* Load more button */}
