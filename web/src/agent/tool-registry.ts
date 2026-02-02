@@ -9,6 +9,8 @@ import type { PluginMetadata } from '@/types/plugin'
 import { fileReadDefinition, fileReadExecutor } from './tools/file-read.tool'
 import { fileWriteDefinition, fileWriteExecutor } from './tools/file-write.tool'
 import { fileEditDefinition, fileEditExecutor } from './tools/file-edit.tool'
+import { fileBatchWriteDefinition, fileBatchWriteExecutor } from './tools/file-batch.tool'
+import { fileSyncDefinition, fileSyncExecutor } from './tools/file-sync.tool'
 import { globDefinition, globExecutor } from './tools/glob.tool'
 import { grepDefinition, grepExecutor } from './tools/grep.tool'
 import { listFilesDefinition, listFilesExecutor } from './tools/list-files.tool'
@@ -71,6 +73,8 @@ export class ToolRegistry {
     this.register(fileReadDefinition, fileReadExecutor)
     this.register(fileWriteDefinition, fileWriteExecutor)
     this.register(fileEditDefinition, fileEditExecutor)
+    this.register(fileBatchWriteDefinition, fileBatchWriteExecutor)
+    this.register(fileSyncDefinition, fileSyncExecutor)
     this.register(globDefinition, globExecutor)
     this.register(grepDefinition, grepExecutor)
     this.register(listFilesDefinition, listFilesExecutor)

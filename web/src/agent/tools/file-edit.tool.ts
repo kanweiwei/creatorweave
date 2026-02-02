@@ -1,19 +1,24 @@
 /**
  * file_edit tool - Apply diff-based edits to a file using string replacement.
- * Broadcasts file changes to remote sessions.
+ *
+ * Phase 4 Integration:
+ * - Uses OPFS cache for reading file content
+ * - Writes edited content to OPFS workspace
+ * - Supports undo/redo through OPFS workspace
+ * - Broadcasts file changes to remote sessions
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { resolveFileHandle } from '@/services/fsAccess.service'
-import { getUndoManager } from '@/undo/undo-manager'
+import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
+import { getUndoManager } from '@/undo/undo-manager'
 
 export const fileEditDefinition: ToolDefinition = {
   type: 'function',
   function: {
     name: 'file_edit',
     description:
-      'Apply a text replacement to a file. Finds the exact old_text in the file and replaces it with new_text. The old_text must be unique in the file. Use file_read first to see the current content.',
+      'Apply a text replacement to a file. Finds the exact old_text in the file and replaces it with new_text. The old_text must be unique in the file. Uses cached content if file has pending modifications. Use file_read first to see the current content.',
     parameters: {
       type: 'object',
       properties: {
@@ -45,19 +50,29 @@ export const fileEditExecutor: ToolExecutor = async (args, context) => {
   }
 
   try {
-    const fileHandle = await resolveFileHandle(context.directoryHandle, path)
-    const file = await fileHandle.getFile()
-    const content = await file.text()
+    // Use OPFS store for cache-first reading (Phase 4 integration)
+    const { readFile, writeFile, getPendingChanges } = useOPFSStore.getState()
+
+    // Read file content (will use cache if available)
+    const { content } = await readFile(path, context.directoryHandle)
+
+    if (typeof content !== 'string') {
+      return JSON.stringify({
+        error: `Cannot edit binary file: ${path}. Use file_write to replace the entire file.`,
+      })
+    }
+
+    const fileContent = content
 
     // Check that old_text exists and is unique
-    const firstIndex = content.indexOf(oldText)
+    const firstIndex = fileContent.indexOf(oldText)
     if (firstIndex === -1) {
       return JSON.stringify({
         error: `old_text not found in file. Make sure you have the exact text including whitespace and indentation.`,
       })
     }
 
-    const secondIndex = content.indexOf(oldText, firstIndex + 1)
+    const secondIndex = fileContent.indexOf(oldText, firstIndex + 1)
     if (secondIndex !== -1) {
       return JSON.stringify({
         error: `old_text appears multiple times in the file. Provide a larger, more unique text snippet to match.`,
@@ -65,14 +80,16 @@ export const fileEditExecutor: ToolExecutor = async (args, context) => {
     }
 
     // Apply replacement
-    const newContent = content.replace(oldText, newText)
+    const newContent = fileContent.replace(oldText, newText)
 
-    const writable = await fileHandle.createWritable()
-    await writable.write(newContent)
-    await writable.close()
+    // Write edited content to OPFS workspace
+    await writeFile(path, newContent, context.directoryHandle)
 
-    // Record modification for undo
-    getUndoManager().recordModification(path, 'modify', content, newContent)
+    // Get current pending count for status message
+    const pendingChanges = getPendingChanges()
+
+    // Record modification for legacy undo manager (backward compatibility)
+    getUndoManager().recordModification(path, 'modify', fileContent, newContent)
 
     // Broadcast file change to remote sessions
     const session = useRemoteStore.getState().session
@@ -85,6 +102,9 @@ export const fileEditExecutor: ToolExecutor = async (args, context) => {
       success: true,
       path,
       action: 'edited',
+      status: 'pending',
+      pendingCount: pendingChanges.length,
+      message: `File "${path}" edited. ${pendingChanges.length} file(s) pending sync.`,
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'NotFoundError') {

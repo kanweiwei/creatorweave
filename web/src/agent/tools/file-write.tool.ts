@@ -1,20 +1,24 @@
 /**
  * file_write tool - Write content to a file, creating directories as needed.
- * Records modifications for undo support.
- * Broadcasts file changes to remote sessions.
+ *
+ * Phase 4 Integration:
+ * - Uses OPFS session workspace for write operations
+ * - Files are cached in OPFS with pending change tracking
+ * - Supports undo/redo through OPFS workspace
+ * - Broadcasts file changes to remote sessions
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { resolveFileHandle, createFileWithDirs } from '@/services/fsAccess.service'
-import { getUndoManager } from '@/undo/undo-manager'
+import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
+import { getUndoManager } from '@/undo/undo-manager'
 
 export const fileWriteDefinition: ToolDefinition = {
   type: 'function',
   function: {
     name: 'file_write',
     description:
-      'Write content to a file. Creates the file and any parent directories if they do not exist. Overwrites existing content. Returns confirmation or error.',
+      'Write content to a file. Creates the file and any parent directories if they do not exist. Overwrites existing content. Files are written to OPFS cache and marked as pending sync. Use sync_to_disk to write changes to the real filesystem. Returns confirmation or error.',
     parameters: {
       type: 'object',
       properties: {
@@ -41,24 +45,20 @@ export const fileWriteExecutor: ToolExecutor = async (args, context) => {
   }
 
   try {
-    // Try to read existing content for undo support
-    let oldContent: string | null = null
-    try {
-      const existingHandle = await resolveFileHandle(context.directoryHandle, path)
-      const existingFile = await existingHandle.getFile()
-      oldContent = await existingFile.text()
-    } catch {
-      // File doesn't exist yet - that's fine
-    }
+    // Use OPFS store for write operations (Phase 4 integration)
+    const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
 
-    // Create file (and directories) then write
-    const fileHandle = await createFileWithDirs(context.directoryHandle, path)
-    const writable = await fileHandle.createWritable()
-    await writable.write(content)
-    await writable.close()
+    // Check if file is new or modified
+    const isNew = !hasCachedFile(path)
 
-    const isNew = oldContent === null
-    // Record modification for undo
+    // Write to OPFS workspace (caches content + tracks pending change)
+    await writeFile(path, content, context.directoryHandle)
+
+    // Get current pending count for status message
+    const pendingChanges = getPendingChanges()
+
+    // Record modification for legacy undo manager (backward compatibility)
+    const oldContent = isNew ? null : '' // OPFS handles the actual old content
     getUndoManager().recordModification(path, isNew ? 'create' : 'modify', oldContent, content)
 
     // Broadcast file change to remote sessions
@@ -73,6 +73,11 @@ export const fileWriteExecutor: ToolExecutor = async (args, context) => {
       path,
       action: isNew ? 'created' : 'updated',
       size: content.length,
+      status: 'pending',
+      pendingCount: pendingChanges.length,
+      message: isNew
+        ? `File "${path}" created. ${pendingChanges.length} file(s) pending sync.`
+        : `File "${path}" updated. ${pendingChanges.length} file(s) pending sync.`,
     })
   } catch (error) {
     return JSON.stringify({
