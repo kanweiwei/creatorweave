@@ -20,6 +20,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
+import { useSettingsStore } from '@/store/settings.store'
+import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { ConversationView } from '@/components/agent/ConversationView'
@@ -30,10 +32,20 @@ import { ProjectSkillsDialog } from '@/components/skills/ProjectSkillsDialog'
 import { scanProjectSkills } from '@/skills/skill-scanner'
 import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
+import { createUserMessage } from '@/agent/message-types'
 
 export function WorkspaceLayout() {
-  const { activeConversationId, createNew, setActive } = useConversationStore()
+  const {
+    activeConversationId,
+    createNew,
+    setActive,
+    runAgent,
+    isConversationRunning,
+    updateMessages,
+  } = useConversationStore()
   const { directoryHandle } = useAgentStore()
+  const { providerType, modelName, maxTokens, hasApiKey } = useSettingsStore()
+  const { role } = useRemoteStore()
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   // Skills management state
@@ -151,6 +163,80 @@ export function WorkspaceLayout() {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [previewFilePath, handleClosePreview])
+
+  // Register callbacks for remote messages (Host mode)
+  useEffect(() => {
+    if (role !== 'host') {
+      return
+    }
+
+    const handleRemoteMessage = async (content: string, messageId: string) => {
+      if (!hasApiKey) {
+        return
+      }
+
+      // Use existing conversation or create new one
+      let targetConvId = activeConversationId
+
+      if (!targetConvId) {
+        const newConv = createNew(content.slice(0, 30))
+        setActive(newConv.id)
+        targetConvId = newConv.id
+        // Wait for state to update
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      } else {
+        // Check if already running
+        if (isConversationRunning(targetConvId)) {
+          return
+        }
+      }
+
+      // Add user message
+      const userMsg = createUserMessage(content)
+      const currentConv = useConversationStore
+        .getState()
+        .conversations.find((c) => c.id === targetConvId)
+      const currentMessages = currentConv ? [...currentConv.messages, userMsg] : [userMsg]
+      updateMessages(targetConvId, currentMessages)
+
+      // Run agent
+      await runAgent(targetConvId, providerType, modelName, maxTokens, directoryHandle)
+
+      // Send acknowledgment
+      const { sendMessage } = useRemoteStore.getState()
+      sendMessage('', messageId)
+    }
+
+    const handleRemoteCancel = () => {
+      if (activeConversationId) {
+        const { cancelAgent } = useConversationStore.getState()
+        cancelAgent(activeConversationId)
+      }
+    }
+
+    registerRemoteCallbacks(handleRemoteMessage, handleRemoteCancel)
+
+    return () => {
+      // Unregister callbacks on unmount or when role changes
+      useRemoteStore.setState({
+        _onRemoteMessage: null,
+        _onRemoteCancel: null,
+      })
+    }
+  }, [
+    role,
+    activeConversationId,
+    hasApiKey,
+    providerType,
+    modelName,
+    maxTokens,
+    directoryHandle,
+    createNew,
+    setActive,
+    updateMessages,
+    runAgent,
+    isConversationRunning,
+  ])
 
   // Drag divider between conversation and preview
   const handleDividerDragStart = useCallback(

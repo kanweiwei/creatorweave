@@ -117,6 +117,7 @@ interface RemoteState {
   sendMessage: (content: string, messageId: string) => void
   sendCancel: () => void
   clearError: () => void
+  syncConversations: (fullSync?: boolean) => Promise<void>
 
   // File discovery actions
   setFileTree: (tree: FileEntry | null) => void
@@ -221,7 +222,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
         store._onFileSelect?.(path)
       },
       onFileTreeRequest: async () => {
-        // Remote requested file tree - broadcast current tree
+        // Remote requested file tree - send response (not broadcast update)
         const store = get()
         console.log(
           '[RemoteStore] file:tree-request received, fileTree:',
@@ -239,13 +240,13 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
           const updatedStore = get()
           // Always send a response, even if tree is null (no directory opened)
           const rootName = useAgentStore?.getState?.()?.directoryName
-          store.session?.broadcastFileTreeUpdate(updatedStore.fileTree, rootName || null)
+          store.session?.sendFileTreeResponse(updatedStore.fileTree, rootName || null)
           return
         }
 
-        // Now broadcast the file tree
+        // Send the response with current file tree
         const rootName = useAgentStore?.getState?.()?.directoryName
-        store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+        store.session?.sendFileTreeResponse(store.fileTree, rootName || null)
       },
       onPeerJoined: async () => {
         // Broadcast file tree to newly joined remote
@@ -255,6 +256,45 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
           const rootName = useAgentStore.getState().directoryName
           store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
         }
+        // Sync conversations to newly joined remote
+        store.syncConversations()
+      },
+      // Conversation sync callbacks
+      onSyncRequest: async (fullSync) => {
+        console.log('[RemoteStore] Sync request received, fullSync:', fullSync)
+        get().syncConversations(fullSync)
+      },
+      onSyncPageRequest: async (conversationId, page) => {
+        console.log('[RemoteStore] Page request:', conversationId, 'page:', page)
+        const { session } = get()
+        if (!session) return
+
+        const { useConversationStore } = await import('./conversation.store')
+        const conv = useConversationStore
+          .getState()
+          .conversations.find((c) => c.id === conversationId)
+        if (!conv) {
+          console.warn('[RemoteStore] Conversation not found:', conversationId)
+          return
+        }
+
+        const PAGE_SIZE = 100
+        const startIdx = (page - 1) * PAGE_SIZE
+        const endIdx = startIdx + PAGE_SIZE
+        const messages = conv.messages.slice(startIdx, endIdx).map((msg) => ({
+          ...msg,
+          content: msg.content?.includes('data:image') ? '[图片]' : msg.content,
+        }))
+
+        const totalPages = Math.ceil(conv.messages.length / PAGE_SIZE)
+
+        session.send({
+          type: 'sync:page:response',
+          conversationId,
+          page,
+          totalPages,
+          messages,
+        } as any)
       },
     })
 
@@ -370,7 +410,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
         store._onFileSelect?.(path)
       },
       onFileTreeRequest: async () => {
-        // Remote requested file tree - broadcast current tree
+        // Remote requested file tree - send response (not broadcast update)
         const store = get()
         console.log(
           '[RemoteStore] file:tree-request received, fileTree:',
@@ -388,13 +428,13 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
           const updatedStore = get()
           // Always send a response, even if tree is null (no directory opened)
           const rootName = useAgentStore?.getState?.()?.directoryName
-          store.session?.broadcastFileTreeUpdate(updatedStore.fileTree, rootName || null)
+          store.session?.sendFileTreeResponse(updatedStore.fileTree, rootName || null)
           return
         }
 
-        // Now broadcast the file tree
+        // Send the response with current file tree
         const rootName = useAgentStore?.getState?.()?.directoryName
-        store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
+        store.session?.sendFileTreeResponse(store.fileTree, rootName || null)
       },
       onPeerJoined: async () => {
         // Broadcast file tree to newly joined remote
@@ -404,6 +444,45 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
           const rootName = useAgentStore.getState().directoryName
           store.session?.broadcastFileTreeUpdate(store.fileTree, rootName || null)
         }
+        // Sync conversations to newly joined remote
+        store.syncConversations()
+      },
+      // Conversation sync callbacks
+      onSyncRequest: async (fullSync) => {
+        console.log('[RemoteStore] Sync request received, fullSync:', fullSync)
+        get().syncConversations(fullSync)
+      },
+      onSyncPageRequest: async (conversationId, page) => {
+        console.log('[RemoteStore] Page request:', conversationId, 'page:', page)
+        const { session } = get()
+        if (!session) return
+
+        const { useConversationStore } = await import('./conversation.store')
+        const conv = useConversationStore
+          .getState()
+          .conversations.find((c) => c.id === conversationId)
+        if (!conv) {
+          console.warn('[RemoteStore] Conversation not found:', conversationId)
+          return
+        }
+
+        const PAGE_SIZE = 100
+        const startIdx = (page - 1) * PAGE_SIZE
+        const endIdx = startIdx + PAGE_SIZE
+        const messages = conv.messages.slice(startIdx, endIdx).map((msg) => ({
+          ...msg,
+          content: msg.content?.includes('data:image') ? '[图片]' : msg.content,
+        }))
+
+        const totalPages = Math.ceil(conv.messages.length / PAGE_SIZE)
+
+        session.send({
+          type: 'sync:page:response',
+          conversationId,
+          page,
+          totalPages,
+          messages,
+        } as any)
       },
     })
 
@@ -608,6 +687,59 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
   getRole: () => {
     return get().role
   },
+
+  /**
+   * Sync conversations to remote peers (Host only).
+   * @param _fullSync Whether to do a full sync (currently unused, reserved for future)
+   */
+  syncConversations: async (_fullSync = true) => {
+    const { session, role } = get()
+    if (role !== 'host' || !session) {
+      console.warn('[RemoteStore] syncConversations: not a host or no session')
+      return
+    }
+
+    // Dynamically import conversation.store
+    const { useConversationStore } = await import('./conversation.store')
+    const { conversations, activeConversationId } = useConversationStore.getState()
+
+    // Dynamically import agent.store to get directory name
+    const agentModule = await import('./agent.store')
+    const hostRootName = agentModule.useAgentStore.getState().directoryName
+
+    const PAGE_SIZE = 100
+    const MAX_CONVERSATIONS = 20
+
+    // Take the most recent 20 conversations, ordered by creation time
+    const syncConversations = conversations.slice(0, MAX_CONVERSATIONS).map((conv) => {
+      // Filter image content
+      const messages = conv.messages.slice(0, PAGE_SIZE).map((msg) => ({
+        ...msg,
+        content: msg.content?.includes('data:image') ? '[图片]' : msg.content,
+      }))
+
+      return {
+        id: conv.id,
+        title: conv.title,
+        messages,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+        status: conv.status || 'idle',
+        hasMore: conv.messages.length > PAGE_SIZE,
+        messageCount: conv.messages.length,
+      }
+    })
+
+    const syncMsg = {
+      type: 'sync:conversations',
+      conversations: syncConversations,
+      activeConversationId,
+      hostRootName,
+    }
+
+    session.send(syncMsg as any)
+    console.log('[RemoteStore] Synced', syncConversations.length, 'conversations')
+  },
 }))
 
 // ============================================================================
@@ -680,7 +812,7 @@ export function attemptReconnect(): boolean {
   return true
 }
 
-/** Register callbacks for Host mode (called by AgentPanel) */
+/** Register callbacks for Host mode (called by WorkspaceLayout) */
 export function registerRemoteCallbacks(
   onMessage: (content: string, messageId: string) => void,
   onCancel: () => void

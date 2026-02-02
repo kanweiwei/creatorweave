@@ -24,6 +24,8 @@ import type {
   FileSearchResult,
   FileSelectMessage,
   FileEntry,
+  SyncRequestMessage,
+  SyncPageRequestMessage,
 } from './remote-protocol'
 
 export type SessionRole = 'host' | 'remote' | 'none'
@@ -53,6 +55,9 @@ export interface RemoteSessionCallbacks {
   onFileSearch?: (query: string, limit: number | undefined) => Promise<FileEntry[]>
   onFileSelect?: (path: string) => void
   onFileTreeRequest?: () => void // Remote requests current file tree
+  /** Conversation sync callbacks (Host only) */
+  onSyncRequest?: (fullSync: boolean, timestamps?: Record<string, number>) => void
+  onSyncPageRequest?: (conversationId: string, page: number) => void
   /** Error occurred */
   onError?: (error: string) => void
 }
@@ -317,6 +322,17 @@ export class RemoteSession {
     })
   }
 
+  /** Send file tree response to remote (answer to file:tree-request) */
+  sendFileTreeResponse(
+    _fileTree: import('@/remote/remote-protocol').FileEntry | null,
+    rootName: string | null
+  ): void {
+    this.sendSecure({
+      type: 'file:tree-response',
+      rootName,
+    })
+  }
+
   /** Send full state sync to newly joined remote */
   sendStateSync(state: StateSyncMessage): void {
     this.sendSecure(state)
@@ -513,6 +529,19 @@ export class RemoteSession {
       case 'file:tree-request': {
         // Remote requests current file tree
         this.callbacks.onFileTreeRequest?.()
+        break
+      }
+
+      // Conversation sync (received by Host)
+      case 'sync:request': {
+        const syncReq = message as SyncRequestMessage
+        this.callbacks.onSyncRequest?.(syncReq.fullSync, syncReq.conversationTimestamps)
+        break
+      }
+
+      case 'sync:page:request': {
+        const pageReq = message as SyncPageRequestMessage
+        this.callbacks.onSyncPageRequest?.(pageReq.conversationId, pageReq.page)
         break
       }
 

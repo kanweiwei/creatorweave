@@ -94,7 +94,10 @@ export const useRemoteStore = create<RemoteState>((set, get) => ({
   socket: null,
 
   // Connection
-  setConnectionState: (state) => set({ connectionState: state }),
+  setConnectionState: (state) => {
+    console.log('[RemoteStore] setConnectionState:', state)
+    set({ connectionState: state })
+  },
   setRole: (role) => set({ role }),
   setSessionId: (id) => set({ sessionId: id }),
   setError: (error) => set({ error }),

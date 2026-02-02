@@ -136,6 +136,56 @@ export interface StateSyncMessage {
 }
 
 // ============================================================================
+// Conversation sync (Host → Remote)
+// ============================================================================
+
+export interface ConversationSyncMessage {
+  type: 'sync:conversations'
+  conversations: Array<{
+    id: string
+    title: string
+    messages: Array<{
+      role: string
+      content: string | null
+      messageId: string
+      timestamp: number
+    }>
+    createdAt: number
+    updatedAt: number
+    status: 'idle' | 'pending' | 'streaming' | 'tool_calling' | 'error'
+    hasMore: boolean
+    messageCount: number
+  }>
+  activeConversationId: string | null
+  hostRootName: string | null
+}
+
+export interface SyncRequestMessage {
+  type: 'sync:request'
+  fullSync: boolean
+  conversationTimestamps?: Record<string, number>
+}
+
+export interface SyncPageRequestMessage {
+  type: 'sync:page:request'
+  conversationId: string
+  page: number
+}
+
+export interface SyncPageResponseMessage {
+  type: 'sync:page:response'
+  conversationId: string
+  page: number
+  totalPages: number
+  messages: Array<{
+    role: string
+    content: string | null
+    messageId: string
+    timestamp: number
+  }>
+}
+
+// ============================================================================
 // Heartbeat
 // ============================================================================
 
@@ -217,6 +267,13 @@ export interface FileTreeUpdateMessage {
   rootName: string | null
 }
 
+/** Host responds to Remote's file tree request */
+export interface FileTreeResponseMessage {
+  type: 'file:tree-response'
+  /** Root directory name for display */
+  rootName: string | null
+}
+
 /** Remote requests current file tree from Host */
 export interface FileTreeRequestMessage {
   type: 'file:tree-request'
@@ -243,6 +300,10 @@ export type RemoteMessage =
   | RemoteSendMessage
   | RemoteCancelMessage
   | StateSyncMessage
+  | ConversationSyncMessage
+  | SyncRequestMessage
+  | SyncPageRequestMessage
+  | SyncPageResponseMessage
   | PingMessage
   | PongMessage
   | EncryptionReadyMessage
@@ -252,6 +313,7 @@ export type RemoteMessage =
   | RecentFilesMessage
   | FileSelectMessage
   | FileTreeUpdateMessage
+  | FileTreeResponseMessage
   | FileTreeRequestMessage
 
 /** Envelope wrapping encrypted messages */

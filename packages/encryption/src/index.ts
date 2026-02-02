@@ -348,6 +348,9 @@ const PROTOCOL_MESSAGE_TYPES = new Set([
   'pong',
   'encryption:ready',
   'encryption:error',
+  'file:tree-update',
+  'file:tree-request',
+  'file:tree-response',
 ])
 
 /** Messages that MUST be encrypted */
@@ -365,6 +368,10 @@ const MUST_ENCRYPT_TYPES = new Set([
   'agent:tool_result',
   'file:change',
   'sync:state',
+  'sync:conversations',
+  'sync:request',
+  'sync:page:request',
+  'sync:page:response',
 ])
 
 // ============================================================================

@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Search, Loader2, File, Folder, AlertCircle, HardDrive } from 'lucide-react'
+import { Search, Loader2, File, Folder, HardDrive } from 'lucide-react'
 import { useRemoteStore } from '../store/remote.store'
 import type { FileEntry } from '../types/remote'
 
@@ -13,7 +13,6 @@ export function FileSearch() {
     searchResults,
     isSearching,
     selectedFiles,
-    directoryChanged,
     hostRootName,
     connectionState
   } = useRemoteStore()
@@ -21,7 +20,6 @@ export function FileSearch() {
   // Track IME composition state
   const [isComposing, setIsComposing] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const [searchedAfterChange, setSearchedAfterChange] = useState(false)
 
   // Trigger search (with debounce)
   const triggerSearch = useCallback((value: string) => {
@@ -35,20 +33,13 @@ export function FileSearch() {
       return
     }
 
-    // If directory changed and user hasn't searched yet, allow the search
-    // and mark that we've searched after the change
-    const store = useRemoteStore.getState()
-    if (directoryChanged && !searchedAfterChange) {
-      setSearchedAfterChange(true)
-      store.setDirectoryChanged(false)
-    }
-
     // Debounced search
     searchTimeoutRef.current = setTimeout(() => {
       console.log('[FileSearch] Triggering search for:', value)
+      const store = useRemoteStore.getState()
       store.searchFiles(value)
     }, 300)
-  }, [isComposing, directoryChanged, searchedAfterChange])
+  }, [isComposing])
 
   // Handle IME composition start
   const handleCompositionStart = () => {
@@ -106,24 +97,6 @@ export function FileSearch() {
           <span className="font-mono text-gray-400">未连接</span>
         )}
       </div>
-
-      {/* Directory Changed Warning */}
-      {directoryChanged && (
-        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              Host 目录已切换
-            </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-              当前目录: <span className="font-medium">{hostRootName || '未知'}</span>
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              请重新搜索以获取最新文件
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Search Input */}
       <div className="relative mb-4">
