@@ -13,6 +13,7 @@ import { Lock, Unlock, AlertTriangle, Key, RefreshCw, AtSign, X, FileEdit } from
 import { E2EEncryption, type EncryptionState, isEncryptedEnvelope, type RemoteMessage, type EncryptedEnvelope } from '@browser-fs-analyzer/encryption'
 import { FilePicker } from './components/FilePicker'
 import { useRemoteStore } from './store/remote.store'
+import { DirectoryChangeToast } from '@browser-fs-analyzer/ui'
 import type { FileEntry } from './types/remote'
 
 // UUID validation regex (xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
@@ -115,6 +116,10 @@ export function App() {
     toggleFileSelection,
     setSocket
   } = useRemoteStore()
+
+  // Directory change toast state
+  const [showDirChangeToast, setShowDirChangeToast] = useState(false)
+  const [dirChangeName, setDirChangeName] = useState<string | null>(null)
 
   // File preview expand/collapse state
   const [filesExpanded, setFilesExpanded] = useState(false)
@@ -388,15 +393,12 @@ export function App() {
         store.setDirectoryChanged(dirChanged)
         store.setSearchResults([]) // Clear previous search results
 
-        // Notify user about directory change
-        const dirName = newRootName || '未知目录'
+        // Show directory change toast
         if (dirChanged) {
-          setMessages((prev) => [...prev, {
-            role: 'system',
-            content: `📁 Host 已切换到目录: ${dirName}，请重新搜索`,
-            messageId: `tree-update-${Date.now()}`,
-            timestamp: Date.now()
-          }])
+          setDirChangeName(newRootName)
+          setShowDirChangeToast(true)
+          // Auto-hide after 5 seconds (toast handles this, but we track state)
+          setTimeout(() => setShowDirChangeToast(false), 5000)
         }
         break
       }
@@ -670,6 +672,13 @@ export function App() {
           </div>
         )}
       </header>
+
+      {/* Directory change toast notification */}
+      {showDirChangeToast && (
+        <DirectoryChangeToast
+          hostRootName={dirChangeName}
+        />
+      )}
 
       {/* Content */}
       <main className="flex-1 flex flex-col max-w-lg mx-auto w-full p-4">
