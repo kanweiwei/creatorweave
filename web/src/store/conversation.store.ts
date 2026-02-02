@@ -18,6 +18,7 @@ import {
   emitComplete,
   emitError,
 } from '@/streaming-bus'
+import { useSessionStore } from './session.store'
 import { StreamingQueue } from '../utils/streaming-queue'
 
 // Enable Immer Map/Set support
@@ -148,7 +149,7 @@ interface ConversationState {
   // Actions
   loadFromDB: () => Promise<void>
   createNew: (title?: string) => Conversation
-  setActive: (id: string | null) => void
+  setActive: (id: string | null) => Promise<void>
   addMessage: (conversationId: string, message: Message) => void
   updateMessages: (conversationId: string, messages: Message[]) => void
   deleteConversation: (id: string) => void
@@ -259,13 +260,34 @@ export const useConversationStore = create<ConversationState>()(
         state.activeConversationId = conversation.id
       })
       persistConversation(conversation).catch(console.error)
+
+      // Create corresponding session workspace
+      // Use conversation ID as session ID, and title as root directory identifier
+      useSessionStore
+        .getState()
+        .createSession(conversation.id, `/conversations/${conversation.id}`, title || '新对话')
+        .catch((e) => {
+          console.error('[conversation.store] Failed to create session workspace:', e)
+        })
+
       return conversation
     },
 
-    setActive: (id) =>
+    setActive: async (id) => {
       set((state) => {
         state.activeConversationId = id
-      }),
+      })
+
+      // Switch the corresponding session workspace
+      if (id) {
+        useSessionStore
+          .getState()
+          .switchSession(id)
+          .catch((e) => {
+            console.error('[conversation.store] Failed to switch session workspace:', e)
+          })
+      }
+    },
 
     addMessage: (conversationId, message) => {
       set((state) => {
@@ -343,6 +365,14 @@ export const useConversationStore = create<ConversationState>()(
         state.streamingQueues.delete(id)
       })
       deleteConversationFromDB(id).catch(console.error)
+
+      // Delete corresponding session workspace
+      useSessionStore
+        .getState()
+        .deleteSession(id)
+        .catch((e) => {
+          console.error('[conversation.store] Failed to delete session workspace:', e)
+        })
     },
 
     updateTitle: (id, title) => {

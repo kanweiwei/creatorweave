@@ -1,0 +1,374 @@
+/**
+ * OPFS Store - provides file operations through SessionWorkspace
+ *
+ * This store acts as a bridge between the application and the OPFS session system:
+ * - All file operations go through the current active session's workspace
+ * - Files are cached in OPFS with mtime-based change detection
+ * - Pending changes are tracked for sync to real filesystem
+ * - Undo history is maintained per session
+ *
+ * Architecture:
+ * - Application → OPFSStore → SessionWorkspace → OPFS
+ */
+
+import { create } from 'zustand'
+import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
+import type {
+  FileContent,
+  FileMetadata,
+  PendingChange,
+  UndoRecord,
+  SyncResult,
+} from '@/opfs/types/opfs-types'
+import { getSessionManager } from '@/opfs/session'
+
+// Enable Immer Map/Set support
+enableMapSet()
+
+/**
+ * File read result with metadata
+ */
+export interface FileReadResult {
+  content: FileContent
+  metadata: FileMetadata
+}
+
+/**
+ * OPFS store state
+ */
+interface OPFSState {
+  /** Current active session ID */
+  sessionId: string | null
+
+  /** Whether the store has been initialized */
+  initialized: boolean
+
+  /** Pending changes for current session */
+  pendingChanges: PendingChange[]
+
+  /** Undo records for current session */
+  undoRecords: UndoRecord[]
+
+  /** Cached file paths for current session */
+  cachedPaths: string[]
+
+  /** Whether an operation is in progress */
+  isLoading: boolean
+
+  /** Error message if any operation failed */
+  error: string | null
+
+  // Actions
+
+  /** Initialize the store (wait for active session) */
+  initialize: () => Promise<void>
+
+  /** Read file from current session (cache first, then filesystem) */
+  readFile: (path: string, directoryHandle: FileSystemDirectoryHandle) => Promise<FileReadResult>
+
+  /** Write file to current session (cache + pending + undo) */
+  writeFile: (
+    path: string,
+    content: FileContent,
+    directoryHandle: FileSystemDirectoryHandle
+  ) => Promise<void>
+
+  /** Delete file from current session */
+  deleteFile: (path: string, directoryHandle: FileSystemDirectoryHandle) => Promise<void>
+
+  /** Get pending changes for current session */
+  getPendingChanges: () => PendingChange[]
+
+  /** Get undo records for current session */
+  getUndoRecords: () => UndoRecord[]
+
+  /** Sync pending changes to real filesystem */
+  syncPendingChanges: (directoryHandle: FileSystemDirectoryHandle) => Promise<SyncResult>
+
+  /** Undo a specific operation */
+  undo: (recordId: string) => Promise<void>
+
+  /** Redo a specific operation */
+  redo: (recordId: string) => Promise<void>
+
+  /** Clear current session's cache, pending, and undo */
+  clearSession: () => Promise<void>
+
+  /** Check if file is cached in current session */
+  hasCachedFile: (path: string) => boolean
+
+  /** Get all cached file paths */
+  getCachedPaths: () => string[]
+
+  /** Refresh state from current session */
+  refresh: () => Promise<void>
+
+  /** Clear error state */
+  clearError: () => void
+}
+
+/**
+ * Helper to get active session workspace
+ */
+async function getActiveWorkspace() {
+  const { useSessionStore } = await import('./session.store')
+  const activeSessionId = useSessionStore.getState().activeSessionId
+
+  if (!activeSessionId) {
+    throw new Error('No active session')
+  }
+
+  const manager = await getSessionManager()
+  const workspace = await manager.getSession(activeSessionId)
+
+  if (!workspace) {
+    throw new Error(`Session ${activeSessionId} not found`)
+  }
+
+  return { workspace, sessionId: activeSessionId }
+}
+
+export const useOPFSStore = create<OPFSState>()(
+  immer((set, get) => ({
+    sessionId: null,
+    initialized: false,
+    pendingChanges: [],
+    undoRecords: [],
+    cachedPaths: [],
+    isLoading: false,
+    error: null,
+
+    initialize: async () => {
+      try {
+        const { sessionId } = await getActiveWorkspace()
+
+        // Load initial state from session
+        const manager = await getSessionManager()
+        const workspace = await manager.getSession(sessionId)
+
+        if (workspace) {
+          set({
+            sessionId,
+            pendingChanges: workspace.getPendingChanges(),
+            undoRecords: workspace.getUndoRecords(),
+            cachedPaths: workspace.getCachedPaths(),
+            initialized: true,
+            error: null,
+          })
+        }
+      } catch (e) {
+        console.error('[opfs.store] Failed to initialize:', e)
+        set({
+          error: e instanceof Error ? e.message : 'Failed to initialize OPFS',
+          initialized: true,
+        })
+      }
+    },
+
+    readFile: async (path, directoryHandle) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        const result = await workspace.readFile(path, directoryHandle)
+
+        set({ isLoading: false })
+
+        return result
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to read file'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    writeFile: async (path, content, directoryHandle) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        await workspace.writeFile(path, content, directoryHandle)
+
+        // Update state
+        set((state) => {
+          state.pendingChanges = workspace.getPendingChanges()
+          state.undoRecords = workspace.getUndoRecords()
+          state.cachedPaths = workspace.getCachedPaths()
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to write file'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    deleteFile: async (path, directoryHandle) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        await workspace.deleteFile(path, directoryHandle)
+
+        // Update state
+        set((state) => {
+          state.pendingChanges = workspace.getPendingChanges()
+          state.undoRecords = workspace.getUndoRecords()
+          state.cachedPaths = workspace.getCachedPaths()
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to delete file'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    getPendingChanges: () => {
+      return get().pendingChanges
+    },
+
+    getUndoRecords: () => {
+      return get().undoRecords
+    },
+
+    syncPendingChanges: async (directoryHandle) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        const result = await workspace.syncToDisk(directoryHandle)
+
+        // Update state
+        set((state) => {
+          state.pendingChanges = workspace.getPendingChanges()
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+
+        return result
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to sync changes'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    undo: async (recordId) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        await workspace.undo(recordId)
+
+        // Update state
+        set((state) => {
+          state.undoRecords = workspace.getUndoRecords()
+          state.cachedPaths = workspace.getCachedPaths()
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to undo'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    redo: async (recordId) => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        await workspace.redo(recordId)
+
+        // Update state
+        set((state) => {
+          state.undoRecords = workspace.getUndoRecords()
+          state.cachedPaths = workspace.getCachedPaths()
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to redo'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    clearSession: async () => {
+      set({ isLoading: true, error: null })
+
+      try {
+        const { workspace } = await getActiveWorkspace()
+        await workspace.clear()
+
+        // Update state
+        set((state) => {
+          state.pendingChanges = []
+          state.undoRecords = []
+          state.cachedPaths = []
+          state.isLoading = false
+        })
+
+        // Update session store counts
+        const { useSessionStore } = await import('./session.store')
+        useSessionStore.getState().updateCurrentCounts()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to clear session'
+        set({ error: message, isLoading: false })
+        throw new Error(message)
+      }
+    },
+
+    hasCachedFile: (path) => {
+      return get().cachedPaths.includes(path)
+    },
+
+    getCachedPaths: () => {
+      return get().cachedPaths
+    },
+
+    refresh: async () => {
+      try {
+        const { workspace, sessionId: newSessionId } = await getActiveWorkspace()
+
+        set((state) => {
+          state.sessionId = newSessionId
+          state.pendingChanges = workspace.getPendingChanges()
+          state.undoRecords = workspace.getUndoRecords()
+          state.cachedPaths = workspace.getCachedPaths()
+          state.error = null
+        })
+      } catch (e) {
+        console.error('[opfs.store] Failed to refresh:', e)
+        set({
+          error: e instanceof Error ? e.message : 'Failed to refresh OPFS',
+        })
+      }
+    },
+
+    clearError: () =>
+      set((state) => {
+        state.error = null
+      }),
+  }))
+)

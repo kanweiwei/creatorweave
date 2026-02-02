@@ -69,4 +69,6 @@ export {
   SessionCacheManager,
   SessionPendingManager,
   SessionUndoStorage,
+  getSessionManager,
+  resetSessionManager,
 } from './session'

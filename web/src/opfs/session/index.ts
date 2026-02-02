@@ -17,3 +17,26 @@ export { SessionWorkspace } from './session-workspace'
 export { SessionCacheManager } from './session-cache'
 export { SessionPendingManager } from './session-pending'
 export { SessionUndoStorage } from './session-undo'
+
+/**
+ * Get or create the singleton SessionManager instance
+ */
+import { SessionManager as SessionManagerClass } from './session-manager'
+
+let sessionManagerInstance: SessionManagerClass | null = null
+
+export async function getSessionManager(): Promise<SessionManagerClass> {
+  if (!sessionManagerInstance) {
+    const manager = new SessionManagerClass()
+    await manager.initialize()
+    sessionManagerInstance = manager
+  }
+  return sessionManagerInstance
+}
+
+/**
+ * Reset the session manager singleton (useful for testing)
+ */
+export function resetSessionManager(): void {
+  sessionManagerInstance = null
+}
