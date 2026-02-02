@@ -2,7 +2,10 @@
  * TopBar - minimal top bar for the workspace.
  *
  * Left: Logo + product name
- * Right: Folder button, Settings gear, Remote status
+ * Right: Folder button, Session badge, Settings gear, Remote status
+ *
+ * Phase 3 Integration:
+ * - Added SessionBadge to show OPFS session status
  */
 
 import { useState } from 'react'
@@ -12,6 +15,7 @@ import { useSettingsStore } from '@/store/settings.store'
 import { selectFolderReadWrite } from '@/services/fsAccess.service'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { RemoteBadge } from '@/components/remote/RemoteBadge'
+import { SessionBadge } from '@/components/session'
 
 interface TopBarProps {
   onSkillsManagerOpen?: () => void
@@ -79,6 +83,9 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
 
           {/* Remote */}
           <RemoteBadge />
+
+          {/* Session - OPFS session status */}
+          <SessionBadge compact />
 
           {/* Skills */}
           <button

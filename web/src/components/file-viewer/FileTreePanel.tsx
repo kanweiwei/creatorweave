@@ -1,11 +1,17 @@
 /**
  * FileTreePanel - lazily-loaded file tree with expand-on-click.
  * Uses FileSystemDirectoryHandle to list directory contents on demand.
+ *
+ * Phase 3 Integration:
+ * - Shows file modification status from OPFS pending changes
+ * - Displays pending indicators (create/modify/delete) next to files
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
+import { useOPFSStore } from '@/store/opfs.store'
+import type { PendingChange } from '@/opfs/types/opfs-types'
 
 /** File tree node */
 interface TreeNode {
@@ -53,12 +59,31 @@ function getFileIcon(name: string): string {
   return iconMap[ext || ''] || ''
 }
 
+/** Pending status indicator */
+function PendingIndicator({ type }: { type: PendingChange['type'] | null }) {
+  if (!type) return null
+
+  const colors = {
+    create: 'bg-green-500',
+    modify: 'bg-amber-500',
+    delete: 'bg-red-500',
+  }
+
+  return (
+    <span
+      className={`h-2 w-2 rounded-full ${colors[type]}`}
+      title={`待${type === 'create' ? '创建' : type === 'modify' ? '修改' : '删除'}`}
+    />
+  )
+}
+
 /** Single tree node row */
 function TreeNodeRow({
   node,
   depth,
   expanded,
   selected,
+  pendingType,
   onToggle,
   onClick,
 }: {
@@ -66,6 +91,7 @@ function TreeNodeRow({
   depth: number
   expanded: boolean
   selected: boolean
+  pendingType: PendingChange['type'] | null
   onToggle: () => void
   onClick: () => void
 }) {
@@ -116,6 +142,9 @@ function TreeNodeRow({
           {formatBytes(node.size)}
         </span>
       )}
+
+      {/* Pending status indicator */}
+      {!isDir && <PendingIndicator type={pendingType} />}
     </div>
   )
 }
@@ -126,6 +155,7 @@ function TreeBranch({
   depth,
   expandedPaths,
   selectedPath,
+  pendingMap,
   onToggle,
   onFileSelect,
 }: {
@@ -133,6 +163,7 @@ function TreeBranch({
   depth: number
   expandedPaths: Set<string>
   selectedPath: string | null
+  pendingMap: Map<string, PendingChange['type']>
   onToggle: (node: TreeNode) => void
   onFileSelect: (node: TreeNode) => void
 }) {
@@ -147,6 +178,7 @@ function TreeBranch({
       {sorted.map((node) => {
         const expanded = expandedPaths.has(node.path)
         const selected = selectedPath === node.path
+        const pendingType = pendingMap.get(node.path) || null
 
         return (
           <div key={node.path}>
@@ -155,6 +187,7 @@ function TreeBranch({
               depth={depth}
               expanded={expanded}
               selected={selected}
+              pendingType={pendingType}
               onToggle={() => onToggle(node)}
               onClick={() => onFileSelect(node)}
             />
@@ -164,6 +197,7 @@ function TreeBranch({
                 depth={depth + 1}
                 expandedPaths={expandedPaths}
                 selectedPath={selectedPath}
+                pendingMap={pendingMap}
                 onToggle={onToggle}
                 onFileSelect={onFileSelect}
               />
@@ -185,6 +219,18 @@ export function FileTreePanel({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
+
+  // Get pending changes from OPFS store
+  const pendingChanges = useOPFSStore((state) => state.pendingChanges)
+
+  // Build a map of file paths to pending change types for O(1) lookup
+  const pendingMap = useMemo(() => {
+    const map = new Map<string, PendingChange['type']>()
+    for (const change of pendingChanges) {
+      map.set(change.path, change.type)
+    }
+    return map
+  }, [pendingChanges])
 
   /** Hidden files to exclude from file tree */
   const HIDDEN_PATTERNS = [/^\.DS_Store$/, /^\.AppleDouble$/, /^\.LSOverride$/, /^._/]
@@ -373,6 +419,7 @@ export function FileTreePanel({
               depth={0}
               expandedPaths={expandedPaths}
               selectedPath={selectedPath || null}
+              pendingMap={pendingMap}
               onToggle={handleToggle}
               onFileSelect={handleFileSelect}
             />
