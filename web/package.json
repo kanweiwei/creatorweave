@@ -24,6 +24,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@browser-fs-analyzer/config": "workspace:*",
     "@browser-fs-analyzer/encryption": "workspace:*",
     "@browser-fs-analyzer/i18n": "workspace:*",
     "@types/qrcode.react": "^1.0.5",
