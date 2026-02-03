@@ -17,7 +17,7 @@ interface LanguageSwitcherProps {
 export function LanguageSwitcher({ className = '' }: LanguageSwitcherProps) {
   const [locale, setLocale] = useLocale()
 
-  const locales: Locale[] = ['zh-CN', 'en-US']
+  const locales: Locale[] = ['zh-CN', 'en-US', 'ja-JP', 'ko-KR']
 
   return (
     <div className={`space-y-2 ${className}`}>

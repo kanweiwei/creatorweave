@@ -1,7 +1,7 @@
 export * from './types'
 export * from './config'
 export * from './utils'
-export { zhCN, enUS } from './locales'
+export { zhCN, enUS, jaJP, koKR } from './locales'
 
 import { translations, DEFAULT_LOCALE } from './config'
 import { getNested, interpolate } from './utils'

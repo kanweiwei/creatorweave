@@ -42,4 +42,6 @@ export function interpolate(
 export const LOCALE_LABELS: Record<string, string> = {
   'zh-CN': '简体中文',
   'en-US': 'English',
+  'ja-JP': '日本語',
+  'ko-KR': '한국어',
 } as const

@@ -1,5 +1,7 @@
 import { zhCN } from './locales/zh-CN'
 import { enUS } from './locales/en-US'
+import { jaJP } from './locales/ja-JP'
+import { koKR } from './locales/ko-KR'
 import type { Locale } from './types'
 
 /**
@@ -10,7 +12,7 @@ export const DEFAULT_LOCALE: Locale = 'zh-CN'
 /**
  * 支持的所有语言
  */
-export const SUPPORTED_LOCALES: Locale[] = ['zh-CN', 'en-US']
+export const SUPPORTED_LOCALES: Locale[] = ['zh-CN', 'en-US', 'ja-JP', 'ko-KR']
 
 /**
  * 翻译映射表
@@ -18,6 +20,8 @@ export const SUPPORTED_LOCALES: Locale[] = ['zh-CN', 'en-US']
 export const translations = {
   'zh-CN': zhCN,
   'en-US': enUS,
+  'ja-JP': jaJP,
+  'ko-KR': koKR,
 } as const
 
 /**

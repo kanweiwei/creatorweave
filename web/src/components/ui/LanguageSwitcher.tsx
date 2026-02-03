@@ -1,7 +1,7 @@
 /**
  * LanguageSwitcher - 语言切换组件
  *
- * 下拉式语言切换按钮，支持中英文切换
+ * 下拉式语言切换按钮，支持中英日韩切换
  */
 
 import { Globe, Check } from 'lucide-react'
@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
       </button>
 
       <div className="absolute right-0 top-full z-50 mt-1 hidden rounded-lg border bg-white py-1 shadow-lg group-hover:block">
-        {(['zh-CN', 'en-US'] as Locale[]).map((key) => (
+        {(['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as Locale[]).map((key) => (
           <button
             key={key}
             type="button"

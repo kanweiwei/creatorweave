@@ -1,7 +1,7 @@
 /**
  * 支持的语言代码
  */
-export type Locale = 'zh-CN' | 'en-US'
+export type Locale = 'zh-CN' | 'en-US' | 'ja-JP' | 'ko-KR'
 
 /**
  * 翻译值类型（支持嵌套对象）
