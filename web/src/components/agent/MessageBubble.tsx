@@ -102,9 +102,7 @@ export function MessageBubble({
       <div className="min-w-0 max-w-[80%] space-y-2">
         {/* Reasoning */}
         {hasReasoning && (
-          <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-            <ReasoningSection reasoning={message.reasoning!} streaming={isStreamingReasoning} />
-          </div>
+          <ReasoningSection reasoning={message.reasoning!} streaming={isStreamingReasoning} />
         )}
 
         {/* Content */}

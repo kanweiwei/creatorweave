@@ -165,11 +165,7 @@ function StreamingContentSection({
       <div className="border-t border-neutral-100" />
 
       {/* Reasoning */}
-      {reasoning && (
-        <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-          <ReasoningSection reasoning={reasoning} streaming={isStreamingReasoning} />
-        </div>
-      )}
+      {reasoning && <ReasoningSection reasoning={reasoning} streaming={isStreamingReasoning} />}
 
       {/* Content */}
       {content && (
@@ -209,11 +205,7 @@ function AssistantStep({
       {(hasReasoning || hasContent || hasToolCalls) && (
         <div className="space-y-2">
           {/* Reasoning section */}
-          {hasReasoning && (
-            <div className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-              <ReasoningSection reasoning={message.reasoning!} />
-            </div>
-          )}
+          {hasReasoning && <ReasoningSection reasoning={message.reasoning!} />}
 
           {/* Content section */}
           {hasContent && (
