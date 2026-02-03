@@ -88,6 +88,16 @@ export const enUS = {
     delete: 'Delete Session',
     deleteConfirm: 'Are you sure you want to delete this session?',
     storageLocation: 'Storage Location',
+    // Status
+    notInitialized: 'Not Initialized',
+    unknownSession: 'Unknown Session',
+    initializing: 'Initializing...',
+    noSession: 'No Session',
+    pendingCount: '{count} pending',
+    undoCount: '{count} undo',
+    pendingChanges: '{count} pending changes',
+    undoOperations: '{count} undo operations',
+    noChanges: 'No changes',
   },
 
   fileViewer: {

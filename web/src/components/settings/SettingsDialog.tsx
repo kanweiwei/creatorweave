@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settings.store'
 import { saveApiKey, loadApiKey } from '@/security/api-key-store'
 import { LLM_PROVIDER_CONFIGS } from '@/agent/providers/types'
 import type { LLMProviderType } from '@/agent/providers/types'
+import { useT } from '@/i18n'
 
 interface SettingsDialogProps {
   open: boolean
@@ -34,6 +35,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setMaxTokens,
     setHasApiKey,
   } = useSettingsStore()
+  const t = useT()
 
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -79,7 +81,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-lg font-semibold text-neutral-900">设置</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{t('settings.title')}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -92,7 +94,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div className="space-y-5 px-6 py-5">
           {/* Provider Selection */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-neutral-700">LLM 服务商</label>
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+              {t('settings.llmProvider')}
+            </label>
             <select
               value={providerType}
               onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}
@@ -108,14 +112,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           {/* API Key */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-neutral-700">API Key</label>
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+              {t('settings.apiKey')}
+            </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
                   type={showKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="输入 API Key..."
+                  placeholder={t('settings.apiKeyPlaceholder')}
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-10 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 />
                 <button
@@ -131,15 +137,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 onClick={handleSaveKey}
                 className="flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
               >
-                {saved ? <Check className="h-4 w-4" /> : '保存'}
+                {saved ? <Check className="h-4 w-4" /> : t('settings.save')}
               </button>
             </div>
-            <p className="mt-1 text-xs text-neutral-500">密钥使用 AES-256 加密存储在本地浏览器中</p>
+            <p className="mt-1 text-xs text-neutral-500">{t('settings.apiKeyNote')}</p>
           </div>
 
           {/* Model Name */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-neutral-700">模型名称</label>
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+              {t('settings.modelName')}
+            </label>
             <input
               type="text"
               value={modelName}
@@ -151,7 +159,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Temperature */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-              Temperature: {temperature}
+              {t('settings.temperature')}: {temperature}
             </label>
             <input
               type="range"
@@ -167,7 +175,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Max Tokens */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-              最大输出 Tokens
+              {t('settings.maxTokens')}
             </label>
             <input
               type="number"

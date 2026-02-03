@@ -2,6 +2,7 @@
  * WelcomeScreen - shown when no active conversation.
  *
  * Clean, centered layout with input box to start a conversation.
+ * Phase 4: Added i18n support
  */
 
 import { useState } from 'react'
@@ -10,6 +11,7 @@ import { useSettingsStore } from '@/store/settings.store'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { selectFolderReadWrite } from '@/services/fsAccess.service'
+import { useT } from '@/i18n'
 
 interface WelcomeScreenProps {
   onStartConversation: (text: string) => void
@@ -20,6 +22,7 @@ export function WelcomeScreen({ onStartConversation }: WelcomeScreenProps) {
   const { hasApiKey } = useSettingsStore()
   const { directoryHandle, setDirectoryHandle } = useAgentStore()
   const { conversations } = useConversationStore()
+  const t = useT()
 
   const handleSubmit = () => {
     const text = input.trim()
@@ -53,8 +56,8 @@ export function WelcomeScreen({ onStartConversation }: WelcomeScreenProps) {
           <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50">
             <Sparkles className="h-6 w-6 text-primary-600" />
           </div>
-          <h1 className="mb-2 text-2xl font-semibold text-neutral-900">BFOSA</h1>
-          <p className="text-sm text-neutral-500">浏览器原生 AI 工作台</p>
+          <h1 className="mb-2 text-2xl font-semibold text-neutral-900">{t('welcome.title')}</h1>
+          <p className="text-sm text-neutral-500">{t('welcome.tagline')}</p>
         </div>
 
         {/* Input area */}
@@ -63,7 +66,7 @@ export function WelcomeScreen({ onStartConversation }: WelcomeScreenProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={hasApiKey ? '输入消息开始对话...' : '请先在设置中配置 API Key'}
+            placeholder={hasApiKey ? t('welcome.placeholder') : t('welcome.placeholderNoKey')}
             rows={3}
             className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 pr-12 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
             disabled={!hasApiKey}
@@ -73,7 +76,7 @@ export function WelcomeScreen({ onStartConversation }: WelcomeScreenProps) {
             onClick={handleSubmit}
             disabled={!input.trim() || !hasApiKey}
             className="absolute bottom-3 right-3 rounded-lg bg-primary-600 p-1.5 text-white hover:bg-primary-700 disabled:opacity-30"
-            title="发送"
+            title={t('welcome.send')}
           >
             <Send className="h-4 w-4" />
           </button>
@@ -88,16 +91,14 @@ export function WelcomeScreen({ onStartConversation }: WelcomeScreenProps) {
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              打开本地文件夹
+              {t('welcome.openLocalFolder')}
             </button>
           )}
         </div>
 
         {/* Recent conversations hint */}
         {conversations.length > 0 && (
-          <p className="mt-8 text-center text-xs text-neutral-400">
-            从左侧选择已有对话，或输入消息开始新对话
-          </p>
+          <p className="mt-8 text-center text-xs text-neutral-400">{t('welcome.recentHint')}</p>
         )}
       </div>
     </div>

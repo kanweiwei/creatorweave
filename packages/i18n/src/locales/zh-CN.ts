@@ -95,6 +95,16 @@ export const zhCN = {
     delete: '删除会话',
     deleteConfirm: '确定要删除这个会话吗？',
     storageLocation: '存储位置',
+    // 状态
+    notInitialized: '未初始化',
+    unknownSession: '未知会话',
+    initializing: '初始化中...',
+    noSession: '无会话',
+    pendingCount: '{count} 个待同步',
+    undoCount: '{count} 个可撤销',
+    pendingChanges: '{count} 个待同步变更',
+    undoOperations: '{count} 个可撤销操作',
+    noChanges: '无变更',
   },
 
   // 文件查看器

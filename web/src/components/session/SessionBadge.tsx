@@ -5,11 +5,13 @@
  * - Current session name (active conversation)
  * - Pending changes count
  * - Undo records count
+ * Phase 4: Added i18n support
  */
 
 import React, { useCallback, useMemo } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { Clock, RotateCcw, AlertCircle } from 'lucide-react'
+import { useT } from '@/i18n'
 
 export interface SessionBadgeProps {
   /** Optional click handler */
@@ -21,6 +23,7 @@ export interface SessionBadgeProps {
 export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = false }) => {
   const { activeSessionId, sessions, currentPendingCount, currentUndoCount, initialized } =
     useSessionStore()
+  const t = useT()
 
   // Get current session info
   const currentSession = useMemo(() => {
@@ -29,9 +32,9 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
   }, [activeSessionId, sessions])
 
   const displayName = useMemo(() => {
-    if (!currentSession) return '未初始化'
-    return currentSession.name || activeSessionId?.slice(0, 8) || '未知会话'
-  }, [currentSession, activeSessionId])
+    if (!currentSession) return t('session.notInitialized')
+    return currentSession.name || activeSessionId?.slice(0, 8) || t('session.unknownSession')
+  }, [currentSession, activeSessionId, t])
 
   const hasPending = currentPendingCount > 0
   const hasUndo = currentUndoCount > 0
@@ -45,7 +48,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
     return (
       <div className="flex items-center gap-2 text-xs text-neutral-400">
         <AlertCircle className="h-3.5 w-3.5" />
-        <span>初始化中...</span>
+        <span>{t('session.initializing')}</span>
       </div>
     )
   }
@@ -55,7 +58,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
     return (
       <div className="flex items-center gap-2 text-xs text-neutral-400">
         <AlertCircle className="h-3.5 w-3.5" />
-        <span>无会话</span>
+        <span>{t('session.noSession')}</span>
       </div>
     )
   }
@@ -73,7 +76,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
         {hasPending && (
           <span
             className="flex h-5 items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700"
-            title={`${currentPendingCount} 个待同步`}
+            title={t('session.pendingCount', { count: currentPendingCount })}
           >
             <Clock className="h-3 w-3" />
             <span className="text-[10px] font-medium">{currentPendingCount}</span>
@@ -82,7 +85,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
         {hasUndo && (
           <span
             className="flex h-5 items-center gap-1 rounded-full bg-blue-100 px-1.5 text-blue-700"
-            title={`${currentUndoCount} 个可撤销`}
+            title={t('session.undoCount', { count: currentUndoCount })}
           >
             <RotateCcw className="h-3 w-3" />
             <span className="text-[10px] font-medium">{currentUndoCount}</span>
@@ -98,7 +101,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       type="button"
       onClick={handleClick}
       className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-50"
-      title={`当前会话: ${displayName}`}
+      title={`${t('session.current')}: ${displayName}`}
     >
       {/* Session name */}
       <span className="max-w-[120px] truncate text-neutral-700">{displayName}</span>
@@ -107,7 +110,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       {hasPending && (
         <span
           className="flex h-5 items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700"
-          title={`${currentPendingCount} 个待同步变更`}
+          title={t('session.pendingChanges', { count: currentPendingCount })}
         >
           <Clock className="h-3 w-3" />
           <span className="text-[10px] font-medium">{currentPendingCount}</span>
@@ -118,7 +121,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       {hasUndo && (
         <span
           className="flex h-5 items-center gap-1 rounded-full bg-blue-100 px-1.5 text-blue-700"
-          title={`${currentUndoCount} 个可撤销操作`}
+          title={t('session.undoOperations', { count: currentUndoCount })}
         >
           <RotateCcw className="h-3 w-3" />
           <span className="text-[10px] font-medium">{currentUndoCount}</span>
@@ -126,7 +129,9 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       )}
 
       {/* No changes indicator */}
-      {!hasPending && !hasUndo && <span className="text-xs text-neutral-400">无变更</span>}
+      {!hasPending && !hasUndo && (
+        <span className="text-xs text-neutral-400">{t('session.noChanges')}</span>
+      )}
     </button>
   )
 }

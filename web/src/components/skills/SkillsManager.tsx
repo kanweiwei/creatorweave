@@ -3,6 +3,7 @@
  *
  * Displays all skills grouped by source (project/user/builtin)
  * with search, filter, and management actions.
+ * Phase 4: Added i18n support
  */
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
@@ -15,6 +16,7 @@ import { SkillEditor } from './SkillEditor'
 import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
 import { cn } from '@/lib/utils'
+import { useT } from '@/i18n'
 
 interface SkillsManagerProps {
   /** Whether the dialog is open */
@@ -30,6 +32,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [refreshing, setRefreshing] = useState(false)
+  const t = useT()
 
   // Skill editor state
   const [editorOpen, setEditorOpen] = useState(false)
@@ -87,11 +90,11 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (confirm('确定要删除这个技能吗？')) {
+      if (confirm(t('skills.deleteConfirm'))) {
         await skillsStore.deleteSkill(id)
       }
     },
-    [skillsStore]
+    [skillsStore, t]
   )
 
   const handleEdit = useCallback((skill: SkillMetadata) => {
@@ -117,7 +120,9 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
         className="flex max-h-[85vh] max-w-3xl flex-col overflow-hidden"
       >
         <DialogHeader className="border-b border-neutral-100 pb-4">
-          <DialogTitle className="text-base font-semibold text-neutral-900">技能管理</DialogTitle>
+          <DialogTitle className="text-base font-semibold text-neutral-900">
+            {t('skills.title')}
+          </DialogTitle>
         </DialogHeader>
 
         {/* Search & Filter Bar */}
@@ -125,7 +130,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
             <Input
-              placeholder="搜索技能名称、描述或标签..."
+              placeholder={t('skills.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-9 bg-neutral-50 pl-9"
@@ -133,13 +138,14 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
           </div>
           <div className="flex items-center overflow-hidden rounded-lg border border-neutral-200">
             <FilterTab active={filterType === 'all'} onClick={() => setFilterType('all')}>
-              全部 <span className="ml-1 text-neutral-400">({skillsStore.skills.length})</span>
+              {t('skills.filterAll')}{' '}
+              <span className="ml-1 text-neutral-400">({skillsStore.skills.length})</span>
             </FilterTab>
             <FilterTab active={filterType === 'enabled'} onClick={() => setFilterType('enabled')}>
-              已启用
+              {t('skills.filterEnabled')}
             </FilterTab>
             <FilterTab active={filterType === 'disabled'} onClick={() => setFilterType('disabled')}>
-              已禁用
+              {t('skills.filterDisabled')}
             </FilterTab>
           </div>
           <Button
@@ -147,7 +153,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
             size="icon"
             onClick={handleRefresh}
             disabled={refreshing}
-            title="刷新"
+            title={t('common.refresh')}
             className="h-9 w-9"
           >
             <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
@@ -160,7 +166,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
             {/* Project Skills */}
             {projectSkills.length > 0 && (
               <SkillGroup
-                title="项目技能"
+                title={t('skills.projectSkills')}
                 icon={<FolderOpen className="h-4 w-4 text-neutral-500" />}
                 skills={projectSkills}
                 onToggle={handleToggle}
@@ -171,7 +177,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
 
             {/* User Skills */}
             <SkillGroup
-              title="我的技能"
+              title={t('skills.mySkills')}
               icon={<User className="h-4 w-4 text-neutral-500" />}
               skills={userSkills}
               onToggle={handleToggle}
@@ -181,7 +187,7 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
 
             {/* Builtin Skills */}
             <SkillGroup
-              title="内置技能"
+              title={t('skills.builtinSkills')}
               icon={<Building className="h-4 w-4 text-neutral-500" />}
               skills={builtinSkills}
               onToggle={handleToggle}
@@ -198,15 +204,15 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
               {skillsStore.skills.filter((s) => s.enabled).length}
             </span>
             {' / '}
-            {skillsStore.skills.length} 已启用
+            {skillsStore.skills.length} {t('skills.filterEnabled')}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onClose} className="h-9">
-              关闭
+              {t('common.close')}
             </Button>
             <Button onClick={handleCreateNew} className="h-9">
               <Plus className="mr-1.5 h-4 w-4" />
-              新建技能
+              {t('skills.createNew')}
             </Button>
           </div>
         </div>

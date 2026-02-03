@@ -6,6 +6,8 @@
  *
  * Phase 3 Integration:
  * - Added SessionBadge to show OPFS session status
+ * Phase 4 Integration:
+ * - Added i18n support
  */
 
 import { useState } from 'react'
@@ -17,6 +19,7 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { RemoteBadge } from '@/components/remote/RemoteBadge'
 import { SessionBadgeWithStorage } from '@/components/session'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { useT } from '@/i18n'
 
 interface TopBarProps {
   onSkillsManagerOpen?: () => void
@@ -26,6 +29,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { directoryHandle, directoryName, setDirectoryHandle } = useAgentStore()
   const { hasApiKey } = useSettingsStore()
+  const t = useT()
 
   const handleSelectFolder = async () => {
     try {
@@ -43,7 +47,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
         {/* Left: Logo + Name */}
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary-600" />
-          <span className="text-sm font-semibold text-neutral-900">BFOSA</span>
+          <span className="text-sm font-semibold text-neutral-900">{t('topbar.productName')}</span>
         </div>
 
         {/* Right: Actions */}
@@ -54,7 +58,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
               type="button"
               onClick={handleSelectFolder}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-              title="切换项目文件夹"
+              title={t('topbar.switchFolder')}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               <FolderOpen className="h-3.5 w-3.5 text-neutral-500" />
@@ -67,7 +71,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              打开文件夹
+              {t('topbar.openFolder')}
             </button>
           )}
 
@@ -78,7 +82,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
               onClick={() => setSettingsOpen(true)}
               className="rounded-md px-2 py-1 text-xs text-amber-600 hover:bg-amber-50"
             >
-              未配置 API Key
+              {t('topbar.noApiKey')}
             </button>
           )}
 
@@ -96,7 +100,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
             type="button"
             onClick={onSkillsManagerOpen}
             className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-            title="技能管理"
+            title={t('topbar.skillsManagement')}
           >
             <Wrench className="h-4 w-4" />
           </button>
@@ -106,7 +110,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
             type="button"
             onClick={() => setSettingsOpen(true)}
             className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-            title="设置"
+            title={t('topbar.settings')}
           >
             <Settings className="h-4 w-4" />
           </button>

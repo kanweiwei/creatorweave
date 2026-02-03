@@ -3,12 +3,14 @@
  *
  * 布局：状态区 | 操作区，中间竖线分隔
  * 7 种状态，信息密度最小化，靠视觉通道传达状态
+ * Phase 4: Added i18n support
  */
 
 import React, { useState, useMemo } from 'react'
 import { useRemoteStore } from '@/store/remote.store'
 import { RemoteControlPanel } from './RemoteControlPanel'
 import { QrCode, Lock, LockOpen, Key, RefreshCw, AlertTriangle } from 'lucide-react'
+import { useT } from '@/i18n'
 
 // 加密状态配置
 const ENCRYPTION_CONFIG: Record<
@@ -51,6 +53,7 @@ export const RemoteBadge: React.FC = () => {
     closeSession,
     clearError,
   } = useRemoteStore()
+  const t = useT()
 
   const isActive = role !== 'none'
   const hasError = error || encryptionError
@@ -82,7 +85,7 @@ export const RemoteBadge: React.FC = () => {
         <button
           onClick={() => setPanelOpen(true)}
           className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-accent"
-          title="打开远程控制"
+          title={t('remote.title')}
         >
           <span className="h-2 w-2 rounded-full bg-gray-400" />
           <span>Remote</span>
@@ -112,7 +115,7 @@ export const RemoteBadge: React.FC = () => {
 
           {/* 3. 角色徽章 */}
           <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground">
-            {role === 'host' ? 'HOST' : 'REMOTE'}
+            {role === 'host' ? t('remote.host') : t('remote.remote')}
           </span>
         </div>
 
@@ -136,7 +139,7 @@ export const RemoteBadge: React.FC = () => {
                 onClick={closeSession}
                 className="text-xs text-red-500 transition-colors hover:bg-destructive/10"
               >
-                Disconnect
+                {t('remote.disconnect')}
               </button>
             </>
           ) : (
@@ -146,7 +149,7 @@ export const RemoteBadge: React.FC = () => {
                 <button
                   onClick={() => setPanelOpen(true)}
                   className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="显示二维码"
+                  title={t('remote.showQrCode')}
                 >
                   <QrCode className="h-3.5 w-3.5" />
                 </button>
@@ -156,7 +159,7 @@ export const RemoteBadge: React.FC = () => {
                 onClick={closeSession}
                 className="text-xs text-red-500 transition-colors hover:bg-destructive/10 hover:text-red-600"
               >
-                Disconnect
+                {t('remote.disconnect')}
               </button>
             </>
           )}
