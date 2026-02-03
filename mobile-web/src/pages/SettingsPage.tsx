@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { Lock, Trash2, Info, LogOut } from 'lucide-react'
 import { useRemoteStore } from '../store/remote.store'
 import { useConversationStore } from '../store/conversation.store'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -87,6 +88,11 @@ export function SettingsPage() {
               </div>
             )}
           </div>
+        </section>
+
+        {/* 语言设置 */}
+        <section className="bg-white rounded-xl p-4">
+          <LanguageSwitcher />
         </section>
 
         {/* 会话管理 */}

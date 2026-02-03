@@ -14,6 +14,9 @@ importers:
       '@browser-fs-analyzer/encryption':
         specifier: workspace:*
         version: link:../packages/encryption
+      '@browser-fs-analyzer/i18n':
+        specifier: workspace:*
+        version: link:../packages/i18n
       '@browser-fs-analyzer/ui':
         specifier: workspace:*
         version: link:../packages/ui

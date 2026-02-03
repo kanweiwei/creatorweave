@@ -11,6 +11,7 @@
   "dependencies": {
     "@browser-fs-analyzer/conversation": "workspace:*",
     "@browser-fs-analyzer/encryption": "workspace:*",
+    "@browser-fs-analyzer/i18n": "workspace:*",
     "@browser-fs-analyzer/ui": "workspace:*",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
