@@ -11,6 +11,9 @@ import './styles/globals.css'
 // Utils
 export { cn } from './lib/utils'
 
+// Types
+export * from './types/z-index'
+
 // ========== Brand Components (Public API) ==========
 export * from './components/brand'
 

@@ -117,7 +117,7 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
         </div>
       </header>
 
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   )
 }

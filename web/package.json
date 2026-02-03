@@ -27,6 +27,7 @@
     "@browser-fs-analyzer/config": "workspace:*",
     "@browser-fs-analyzer/encryption": "workspace:*",
     "@browser-fs-analyzer/i18n": "workspace:*",
+    "@browser-fs-analyzer/ui": "workspace:*",
     "@types/qrcode.react": "^1.0.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

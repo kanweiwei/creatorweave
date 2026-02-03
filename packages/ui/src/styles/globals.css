@@ -78,6 +78,22 @@
     --danger-200: 24 74% 78%;       /* #FED7AA - 橙色边框 */
     --danger-bg: 25 95% 97%;        /* #FFF7ED */
     --danger-border: 24 74% 66%;    /* #FDBA74 */
+
+    /* ========== Z-Index Layering System ========== */
+    /* Layer 0: Default document flow */
+    --z-base: 0;
+    /* Layer 1: Elements above normal flow (sticky, hover cards) */
+    --z-raised: 10;
+    /* Layer 2: Dropdowns and popovers (within context) */
+    --z-dropdown: 100;
+    /* Layer 3: Modal/Dialog overlay/backdrop */
+    --z-overlay: 1000;
+    /* Layer 4: Modal/Dialog content (above overlay) */
+    --z-modal: 1001;
+    /* Layer 5: Tooltips (above all but notifications) */
+    --z-tooltip: 9998;
+    /* Layer 6: Notifications (highest priority) */
+    --z-notification: 9999;
   }
 
   .dark {

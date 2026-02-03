@@ -117,13 +117,6 @@ export {
   BrandDialogDescription,
 } from './modals/dialog'
 
-// ========== Specialized Dialogs ==========
-export {
-  SettingsDialog,
-  SettingsDialogContent,
-} from './dialogs/settings-dialog'
-export type { SettingsDialogProps } from './dialogs/settings-dialog'
-
 export {
   RemoteDialog,
   RemoteDialogContent,

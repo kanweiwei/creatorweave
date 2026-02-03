@@ -145,6 +145,15 @@ export default {
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
+  		},
+  		zIndex: {
+  			'base': 'var(--z-base)',
+  			'raised': 'var(--z-raised)',
+  			'dropdown': 'var(--z-dropdown)',
+  			'overlay': 'var(--z-overlay)',
+  			'modal': 'var(--z-modal)',
+  			'tooltip': 'var(--z-tooltip)',
+  			'notification': 'var(--z-notification)',
   		}
   	}
   },

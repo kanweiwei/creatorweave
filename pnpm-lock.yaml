@@ -301,6 +301,9 @@ importers:
       '@browser-fs-analyzer/i18n':
         specifier: workspace:*
         version: link:../packages/i18n
+      '@browser-fs-analyzer/ui':
+        specifier: workspace:*
+        version: link:../packages/ui
       '@types/qrcode.react':
         specifier: ^1.0.5
         version: 1.0.5
