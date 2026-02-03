@@ -47,7 +47,7 @@ export function LanguageSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 rounded-lg border bg-white py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] whitespace-nowrap rounded-lg border bg-white py-1 shadow-lg">
           {(['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as Locale[]).map((key) => (
             <button
               key={key}
