@@ -117,6 +117,19 @@ export {
   BrandDialogDescription,
 } from './modals/dialog'
 
+// ========== Specialized Dialogs ==========
+export {
+  SettingsDialog,
+  SettingsDialogContent,
+} from './dialogs/settings-dialog'
+export type { SettingsDialogProps } from './dialogs/settings-dialog'
+
+export {
+  RemoteDialog,
+  RemoteDialogContent,
+} from './dialogs/remote-dialog'
+export type { RemoteDialogProps } from './dialogs/remote-dialog'
+
 // ========== Accordions ==========
 export {
   BrandAccordion,
