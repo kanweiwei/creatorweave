@@ -43,8 +43,8 @@ const PROVIDER_LABELS: Record<LLMProviderType, string> = {
 
 const SettingsDialogContent = forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof BrandDialogContent>
->(({ className, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof BrandDialogContent> & { open?: boolean }
+>(({ className, open, ...props }, ref) => {
   const {
     providerType,
     modelName,
@@ -62,22 +62,33 @@ const SettingsDialogContent = forwardRef<
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [hasLoadedKey, setHasLoadedKey] = useState(false) // Track if key was loaded from storage
+  const [isLoadingKey, setIsLoadingKey] = useState(false) // Track loading state
 
-  // Load existing API key on mount and update hasApiKey status
+  // Load existing API key on mount and when dialog opens
   // Note: We don't display the actual key for security, only show a placeholder
   useEffect(() => {
-    loadApiKey(providerType).then((key) => {
-      if (key) {
-        // Don't set the actual key in the input field for security
-        // User can click to reveal if needed, but we don't auto-load it
-        setHasApiKey(true)
+    setIsLoadingKey(true)
+    loadApiKey(providerType)
+      .then((key) => {
+        if (key) {
+          // Don't set the actual key in the input field for security
+          // User can click to reveal if needed, but we don't auto-load it
+          setHasApiKey(true)
+          setHasLoadedKey(true)
+        } else {
+          setHasApiKey(false)
+          setHasLoadedKey(true) // Mark as loaded even if no key
+        }
+      })
+      .catch((error) => {
+        console.error('[SettingsDialog] Failed to load API key:', error)
+        // Still mark as loaded to avoid infinite loading state
         setHasLoadedKey(true)
-      } else {
-        setHasApiKey(false)
-        setHasLoadedKey(false)
-      }
-    })
-  }, [providerType, setHasApiKey])
+      })
+      .finally(() => {
+        setIsLoadingKey(false)
+      })
+  }, [providerType, setHasApiKey, open]) // Add 'open' to reload when dialog opens
 
   const handleSaveKey = async () => {
     const trimmedKey = apiKey.trim()
@@ -107,16 +118,25 @@ const SettingsDialogContent = forwardRef<
     setModelName(config.modelName)
     setApiKey('')
     setHasLoadedKey(false)
+    setIsLoadingKey(true)
     // Check if this provider has a key configured (don't load the actual key)
-    loadApiKey(provider).then((key) => {
-      if (key) {
-        setHasApiKey(true)
-        setHasLoadedKey(true)
-      } else {
-        setHasApiKey(false)
-        setHasLoadedKey(false)
-      }
-    })
+    loadApiKey(provider)
+      .then((key) => {
+        if (key) {
+          setHasApiKey(true)
+          setHasLoadedKey(true)
+        } else {
+          setHasApiKey(false)
+          setHasLoadedKey(true) // Mark as loaded even if no key
+        }
+      })
+      .catch((error) => {
+        console.error('[SettingsDialog] Failed to load API key:', error)
+        setHasLoadedKey(true) // Mark as loaded to avoid infinite loading
+      })
+      .finally(() => {
+        setIsLoadingKey(false)
+      })
   }
 
   // Convert temperature (0-1) to slider value (0-100)
@@ -169,9 +189,11 @@ const SettingsDialogContent = forwardRef<
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
-                  hasLoadedKey && !apiKey
-                    ? '••••••••••••• (已配置，如需更新请输入新 Key)'
-                    : t('settings.apiKeyPlaceholder')
+                  isLoadingKey
+                    ? '加载中...'
+                    : hasLoadedKey && !apiKey
+                      ? '••••••••••••• (已配置，如需更新请输入新 Key)'
+                      : t('settings.apiKeyPlaceholder')
                 }
                 className="h-10 pr-10"
               />
@@ -244,7 +266,7 @@ const SettingsDialog = forwardRef<
 >(({ open, onOpenChange, ...props }, ref) => {
   return (
     <BrandDialog open={open} onOpenChange={onOpenChange}>
-      <SettingsDialogContent ref={ref as React.RefObject<HTMLDivElement>} {...props} />
+      <SettingsDialogContent ref={ref as React.RefObject<HTMLDivElement>} open={open} {...props} />
     </BrandDialog>
   )
 })

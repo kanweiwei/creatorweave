@@ -133,11 +133,14 @@ class SQLiteWorkerClient {
     {
       resolve: (value: unknown) => void
       reject: (error: Error) => void
+      request?: WorkerRequest // Store original request for retry
     }
   >()
   private requestId = 0
   private initializing = false // Guard for StrictMode double init
   private dbMode: 'opfs' | 'memory' | null = null
+  private schemaSQL: string = '' // Store schema for recovery
+  private recovering = false // Recovery in progress flag
 
   async initialize(): Promise<void> {
     if (this.initialized) return
@@ -199,6 +202,24 @@ class SQLiteWorkerClient {
             this.pendingRequests.delete(response.id)
 
             if (response.error) {
+              // Check if this is a CANTOPEN error that might be recoverable
+              if (
+                response.error.includes('CANTOPEN') ||
+                response.error.includes('GetSyncHandleError')
+              ) {
+                console.warn('[SQLite] Database open error, attempting recovery...')
+                // Try to recover and retry the request
+                this.handleRecovery()
+                  .then(() => {
+                    // Retry the original request after recovery
+                    this.retryRequest(response.id, response.type)
+                  })
+                  .catch((recoveryError) => {
+                    console.error('[SQLite] Recovery failed:', recoveryError)
+                    pending.reject(new Error(response.error))
+                  })
+                return
+              }
               pending.reject(new Error(response.error))
             } else {
               switch (response.type) {
@@ -218,6 +239,7 @@ class SQLiteWorkerClient {
                 case 'commit':
                 case 'rollback':
                 case 'close':
+                case 'recover':
                   pending.resolve(undefined)
                   break
                 case 'getMode':
@@ -245,6 +267,9 @@ class SQLiteWorkerClient {
           error.preventDefault()
         }
 
+        // Store schema for recovery
+        this.schemaSQL = schemaSQL
+
         // Initialize the worker with extended timeout
         // SQLite WASM can take a while to load on first run
         await this.sendRequest<unknown>({ type: 'init', schemaSQL }, 120000) // 2 minutes
@@ -271,7 +296,12 @@ class SQLiteWorkerClient {
     const id = request.id ?? `req-${++this.requestId}`
 
     return new Promise<T>((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve: resolve as (value: unknown) => void, reject })
+      // Store original request for potential retry after recovery
+      this.pendingRequests.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+        request: { ...request, id },
+      })
       this.worker!.postMessage({ ...request, id })
 
       // Use the provided timeout or default to 30 seconds
@@ -340,6 +370,50 @@ class SQLiteWorkerClient {
   /** Get the current database mode (opfs or memory) */
   getMode(): 'opfs' | 'memory' | null {
     return this.dbMode
+  }
+
+  /**
+   * Handle database recovery when CANTOPEN errors occur
+   */
+  private async handleRecovery(): Promise<void> {
+    if (this.recovering) {
+      // Already recovering, wait for it to complete
+      while (this.recovering) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      return
+    }
+
+    this.recovering = true
+    console.log('[SQLite] Starting database recovery...')
+
+    try {
+      // Send recover request to worker
+      await this.sendRequest<void>({
+        type: 'recover',
+        schemaSQL: this.schemaSQL,
+        id: `recover-${Date.now()}`,
+      })
+      console.log('[SQLite] Database recovery completed')
+    } catch (error) {
+      console.error('[SQLite] Database recovery failed:', error)
+      throw error
+    } finally {
+      this.recovering = false
+    }
+  }
+
+  /**
+   * Retry a request after recovery
+   */
+  private retryRequest(id: string, type: string): void {
+    const pending = this.pendingRequests.get(id)
+    if (!pending || !pending.request) return
+
+    console.log(`[SQLite] Retrying request ${type} after recovery...`)
+
+    // Resend the original request
+    this.worker!.postMessage({ ...pending.request, id })
   }
 }
 

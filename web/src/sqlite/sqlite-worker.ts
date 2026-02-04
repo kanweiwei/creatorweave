@@ -20,6 +20,7 @@ export type WorkerRequest =
   | { type: 'rollback'; id: string }
   | { type: 'close'; id: string }
   | { type: 'getMode'; id: string }
+  | { type: 'recover'; schemaSQL: string; id: string }
 
 // Worker response types (used for type safety in message handling)
 export type WorkerResponse =
@@ -32,10 +33,12 @@ export type WorkerResponse =
   | { type: 'rollback'; id: string; error?: string }
   | { type: 'close'; id: string; error?: string }
   | { type: 'getMode'; id: string; mode: 'opfs' | 'memory'; error?: string }
+  | { type: 'recover'; id: string; success: boolean; error?: string }
 
 let sqlite3: any = null
 let db: any = null
 let dbMode: 'opfs' | 'memory' = 'memory'
+let savedSchemaSQL: string = '' // Store schema for recovery
 
 // Handle messages from main thread
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
@@ -45,8 +48,14 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   try {
     switch (type) {
       case 'init':
+        savedSchemaSQL = e.data.schemaSQL
         await handleInit(e.data.schemaSQL)
         postMessage({ type: 'init', id, success: true, mode: dbMode })
+        break
+
+      case 'recover':
+        await handleRecover()
+        postMessage({ type: 'recover', id, success: true })
         break
 
       case 'queryAll': {
@@ -99,6 +108,38 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   }
 }
 
+/**
+ * Recover from database errors by recreating the database
+ * This is called when SQLITE_CANTOPEN or similar errors occur
+ */
+async function handleRecover() {
+  console.warn('[SQLite Worker] Attempting database recovery...')
+
+  // Close existing database if open
+  if (db) {
+    try {
+      db.close()
+    } catch (e) {
+      console.warn('[SQLite Worker] Error closing database during recovery:', e)
+    }
+    db = null
+  }
+
+  // Try to delete the corrupted database file
+  try {
+    if (sqlite3 && sqlite3.opfs && sqlite3.opfs.deleteDatabase) {
+      await sqlite3.opfs.deleteDatabase(DB_NAME)
+      console.log('[SQLite Worker] Old database deleted')
+    }
+  } catch (e) {
+    console.warn('[SQLite Worker] Could not delete old database:', e)
+  }
+
+  // Recreate database
+  await handleInit(savedSchemaSQL)
+  console.log('[SQLite Worker] Database recovered')
+}
+
 async function handleInit(schemaSQL: string) {
   // Diagnostic logging for OPFS/SharedArrayBuffer availability
   console.log('[SQLite Worker] Environment diagnostics:')
@@ -146,6 +187,18 @@ async function handleInit(schemaSQL: string) {
 
 function handleQueryAll(sql: string, params: unknown[]): unknown[] {
   if (!db) throw new Error('Database not initialized')
+
+  // Check if database connection is still valid
+  try {
+    // Simple check: try to get the filename
+    const filename = db.filename
+    if (!filename) {
+      throw new Error('Database connection invalid: no filename')
+    }
+  } catch (e) {
+    console.error('[SQLite Worker] Database connection check failed:', e)
+    throw new Error('Database connection is no longer valid. Please reload the page.')
+  }
 
   const rows: unknown[] = []
   const stmt = db.prepare(sql)

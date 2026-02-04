@@ -10,17 +10,13 @@
  * Refactored to use brand components
  */
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { Clock, RotateCcw, HardDrive, Trash2, Check, Sparkles, Info } from 'lucide-react'
 import { useSessionStore } from '@/store/session.store'
 import { useStorageInfo } from '@/hooks/useStorageInfo'
 import { useSQLiteMode } from '@/hooks/useSQLiteMode'
 import type { StorageStatus } from '@/opfs/utils/storage-utils'
-import {
-  BrandButton,
-  BrandBadge,
-  BrandSelectSeparator,
-} from '@browser-fs-analyzer/ui'
+import { BrandButton, BrandBadge, BrandSelectSeparator } from '@browser-fs-analyzer/ui'
 import { cn } from '@/lib/utils'
 
 export interface SessionBadgeWithStorageProps {
@@ -61,6 +57,19 @@ const getStatusDotColor = (hasError: boolean, isInitialized: boolean, isOPFS: bo
 
 export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = () => {
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // 点击外部关闭 dropdown（与 LanguageSwitcher 相同的模式）
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const {
     activeSessionId,
@@ -156,7 +165,7 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
   const currentSession = sessions.find((s) => s.id === activeSessionId)
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <BrandButton iconButton variant="ghost" onClick={() => setOpen(!open)} title="存储空间">
         <HardDrive className="h-5 w-5" />
       </BrandButton>
@@ -172,17 +181,16 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
   function SessionDropdown() {
     return (
       <>
-        {/* Backdrop */}
-        <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden="true" />
-
-        {/* Dropdown menu */}
-        <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+        {/* Dropdown menu - 使用与 LanguageSwitcher 相同的 z-index */}
+        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
           {/* Header - Current session */}
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-tertiary">当前会话</span>
+              <span className="text-tertiary text-xs font-medium">当前会话</span>
               {currentSession && (
-                <span className="text-xs font-semibold text-primary-600">{currentSession.name}</span>
+                <span className="text-xs font-semibold text-primary-600">
+                  {currentSession.name}
+                </span>
               )}
             </div>
           </div>
@@ -201,7 +209,7 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
               <>
                 {/* Progress bar using BrandProgress */}
                 <div className="mb-3">
-                  <div className="mb-1.5 flex items-center justify-between text-[10px] text-tertiary">
+                  <div className="text-tertiary mb-1.5 flex items-center justify-between text-[10px]">
                     <span>
                       {storage.usageFormatted} / {storage.quotaFormatted}
                     </span>
@@ -239,10 +247,8 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                   </div>
                   {/* Explanatory note */}
                   <div className="flex items-start gap-1.5 text-[9px] leading-tight text-muted">
-                    <Info className="h-2.5 w-2.5 shrink-0 mt-0.5" />
-                    <p>
-                      配额是浏览器允许的上限，不等于实际剩余空间。写入时若超出实际空间会报错。
-                    </p>
+                    <Info className="mt-0.5 h-2.5 w-2.5 shrink-0" />
+                    <p>配额是浏览器允许的上限，不等于实际剩余空间。写入时若超出实际空间会报错。</p>
                   </div>
                 </div>
               </>
