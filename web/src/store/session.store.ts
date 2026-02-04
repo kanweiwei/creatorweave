@@ -314,10 +314,36 @@ export const useSessionStore = create<SessionState>()(
       try {
         const repo = getSessionRepository()
         const manager = await getSessionManager()
+
+        // Check if session exists in SQLite first
+        const sessionRecord = await repo.findSessionById(id)
+
+        // If session doesn't exist in SQLite, it might be a new conversation
+        // that hasn't had its session created yet - just return silently
+        // The session will be created when the agent loop starts
+        if (!sessionRecord) {
+          set({ isLoading: false })
+          return
+        }
+
+        // Try to load from OPFS workspace
         const workspace = await manager.getSession(id)
 
         if (!workspace) {
-          throw new Error(`Session ${id} not found`)
+          // Session exists in SQLite but not in OPFS - data inconsistency
+          // Clean up the orphaned SQLite record and clear from state
+          console.warn(`[session.store] Session ${id} exists in database but OPFS workspace missing. Cleaning up orphaned record.`)
+          await repo.deleteSession(id)
+
+          // Remove from state if present
+          set((state) => {
+            state.sessions = state.sessions.filter((s) => s.id !== id)
+            if (state.activeSessionId === id) {
+              state.activeSessionId = null
+            }
+            state.isLoading = false
+          })
+          return
         }
 
         // Update last access time in SQLite

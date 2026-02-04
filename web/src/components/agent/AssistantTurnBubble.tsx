@@ -169,8 +169,8 @@ function StreamingContentSection({
 
       {/* Content */}
       {content && (
-        <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-          <div className="prose-sm max-w-none break-words">
+        <div className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
+          <div className="prose-sm max-w-prose overflow-x-auto break-words">
             <MarkdownContent content={content} />
           </div>
           {/* Cursor when actively streaming content */}
@@ -210,7 +210,7 @@ function AssistantStep({
           {/* Content section */}
           {hasContent && (
             <div className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200">
-              <div className="prose-sm max-w-none break-words">
+              <div className="prose-sm max-w-prose overflow-x-auto break-words">
                 <MarkdownContent content={message.content!} />
               </div>
             </div>
