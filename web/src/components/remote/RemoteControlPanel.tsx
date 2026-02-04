@@ -2,11 +2,14 @@
  * Remote Control Panel - Dialog for creating session and showing QR code.
  *
  * Auto-closes when remote peer connects AFTER panel is opened.
+ * Phase 5: Refactored to use brand components
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
+import { Copy } from 'lucide-react'
 import { useRemoteStore } from '@/store/remote.store'
+import { BrandDialog, BrandDialogContent, BrandInput, BrandButton } from '@browser-fs-analyzer/ui'
 
 interface RemoteControlPanelProps {
   open: boolean
@@ -26,6 +29,7 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
     peerCount,
     createSession,
     setRelayUrl: storeSetRelayUrl,
+    closeSession,
   } = useRemoteStore()
 
   const isActive = role !== 'none'
@@ -43,12 +47,6 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
   }, [open, peerCount])
 
   // Auto-close when remote connects AFTER panel is opened
-  // Only close when:
-  // 1. Panel is open
-  // 2. We are the host
-  // 3. Remote was NOT connected when panel opened
-  // 4. Remote is now connected (peerCount > 1)
-  // 5. Connection is stable (not just connecting)
   useEffect(() => {
     if (
       open &&
@@ -68,7 +66,6 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
     try {
       storeSetRelayUrl(relayUrl)
       await createSession()
-      // Don't close - show QR code for scanning
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create session')
     } finally {
@@ -88,59 +85,39 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
     }
   }, [sessionId])
 
-  if (!open) return null
-
-  const handleBackdropClick = (_e: React.MouseEvent) => {
-    // Don't close when clicking backdrop if session is active
-    if (isActive) return
+  const handleDisconnect = useCallback(() => {
+    closeSession()
     onClose()
-  }
+  }, [closeSession, onClose])
 
   // Generate join URL for QR code
-  // Points to Relay Server's /join endpoint which redirects to mobile-web
   const joinUrl = hasSession
     ? relayUrl.replace('ws://', 'http://').replace('wss://', 'https://') + `/join/${sessionId}`
     : null
 
-  // Also show direct mobile-web URL as fallback
   const mobileUrl = hasSession ? `${window.location.origin}/?session=${sessionId}` : null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={handleBackdropClick}
-    >
-      <div
-        className="relative mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+    <BrandDialog open={open} onOpenChange={onClose} modal={false}>
+      <BrandDialogContent
+        className="max-w-md p-6"
+        onPointerDownOutside={(e) => {
+          if (isActive) e.preventDefault()
+        }}
       >
-        {/* Close button (X) - only closes dialog, doesn't disconnect */}
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
-          title="Close"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Remote Control</h2>
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Remote Control</h2>
+        </div>
 
         {/* Relay URL */}
         <label className="mb-1 block text-sm font-medium text-gray-600">Relay Server</label>
-        <input
-          type="text"
+        <BrandInput
           value={relayUrl}
           onChange={(e) => setRelayUrl(e.target.value)}
-          className="mb-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
           placeholder="ws://localhost:3001"
           disabled={isActive}
+          className="mb-4"
         />
 
         {/* QR Code display */}
@@ -159,13 +136,15 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
             {/* Session ID with copy button */}
             <div className="mt-3 flex items-center justify-center gap-2">
               <code className="font-mono text-sm text-gray-600">{sessionId}</code>
-              <button
+              <BrandButton
+                variant="outline"
                 onClick={handleCopySessionId}
-                className="rounded px-2 py-1 text-xs text-primary-600 hover:bg-primary-50"
+                className="h-6 !px-2 !py-0 !text-xs"
                 title="Copy session ID"
               >
+                <Copy className="mr-1 h-3 w-3" />
                 {copied ? 'Copied!' : 'Copy'}
-              </button>
+              </BrandButton>
             </div>
 
             {/* URLs for reference */}
@@ -190,19 +169,19 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
           </div>
         ) : (
           <div className="mb-4 py-8 text-center text-sm text-gray-500">
-            Click &quot;Create Session&quot; to generate QR code
+            Click "Create Session" to generate QR code
           </div>
         )}
 
         {/* Error display */}
-        {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
+        {error && <p className="mb-4 text-sm text-danger">{error}</p>}
 
         {/* Connection status (when active) */}
         {isActive && (
           <div className="mb-4 flex items-center justify-center gap-2 rounded-md bg-gray-50 px-3 py-2">
             <span
               className={`h-2 w-2 rounded-full ${
-                connectionState === 'connected' ? 'bg-green-500' : 'bg-yellow-500'
+                connectionState === 'connected' ? 'bg-success-500' : 'bg-warning-500'
               }`}
             />
             <span className="text-sm text-gray-700">
@@ -219,35 +198,21 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
         {/* Actions */}
         <div className="flex justify-end gap-2">
           {isActive ? (
-            <button
-              onClick={() => {
-                useRemoteStore.getState().closeSession()
-                onClose()
-              }}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
+            <BrandButton variant="outline" onClick={handleDisconnect}>
               Disconnect
-            </button>
+            </BrandButton>
           ) : (
             <>
-              <button
-                onClick={onClose}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                disabled={loading}
-              >
+              <BrandButton variant="outline" onClick={onClose} disabled={loading}>
                 Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={loading}
-                className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-              >
+              </BrandButton>
+              <BrandButton onClick={handleCreate} disabled={loading}>
                 {loading ? 'Creating...' : 'Create Session'}
-              </button>
+              </BrandButton>
             </>
           )}
         </div>
-      </div>
-    </div>
+      </BrandDialogContent>
+    </BrandDialog>
   )
 }

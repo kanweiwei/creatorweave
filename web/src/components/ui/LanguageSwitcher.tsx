@@ -2,14 +2,15 @@
  * LanguageSwitcher - 语言切换组件
  *
  * 点击式语言切换按钮，支持中英日韩切换
- * 使用点击触发 + 点击外部关闭的模式
+ * Phase 5: Refactored to use brand components
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Globe, Check } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { LOCALE_LABELS } from '@browser-fs-analyzer/i18n'
 import { useLocale } from '@/i18n'
 import type { Locale } from '@/i18n'
+import { BrandButton } from '@browser-fs-analyzer/ui'
 
 export function LanguageSwitcher() {
   const [locale, setLocale] = useLocale()
@@ -37,30 +38,32 @@ export function LanguageSwitcher() {
 
   return (
     <div className="relative" ref={containerRef}>
-      <button
-        type="button"
-        onClick={handleToggle}
-        className="flex items-center gap-2 rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-      >
+      <BrandButton iconButton variant="ghost" onClick={handleToggle}>
         <Globe className="h-4 w-4" />
-        <span className="text-xs">{LOCALE_LABELS[locale]}</span>
-      </button>
+      </BrandButton>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] whitespace-nowrap rounded-lg border bg-white py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[120px] whitespace-nowrap rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
           {(['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as Locale[]).map((key) => (
             <button
               key={key}
               type="button"
               onClick={() => handleSelect(key)}
-              className="flex w-full items-center justify-between gap-4 px-3 py-2 text-sm hover:bg-neutral-50"
+              className={cn(
+                'flex w-full items-center justify-between gap-4 px-3 py-2 text-sm hover:bg-gray-50',
+                locale === key && 'bg-primary-50 text-primary-700'
+              )}
             >
               <span>{LOCALE_LABELS[key]}</span>
-              {locale === key && <Check className="h-4 w-4 text-primary-600" />}
+              {locale === key && <span className="text-xs">✓</span>}
             </button>
           ))}
         </div>
       )}
     </div>
   )
+}
+
+function cn(...classes: (string | undefined | boolean | null)[]): string {
+  return classes.filter(Boolean).join(' ')
 }
