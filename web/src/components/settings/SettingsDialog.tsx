@@ -161,6 +161,10 @@ const SettingsDialogContent = forwardRef<
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={t('settings.apiKeyPlaceholder')}
                 className="h-10 pr-10"
+                autoComplete="off"
+                data-form-type="other"
+                data-lpignore="true"
+                name="api-key-input"
               />
               <button
                 type="button"
