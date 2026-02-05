@@ -155,12 +155,13 @@ const SettingsDialogContent = forwardRef<
           <label className="text-sm font-medium text-primary">{t('settings.apiKey')}</label>
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <BrandInput
-                type={showKey ? 'text' : 'password'}
+              <input
+                type="text"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={t('settings.apiKeyPlaceholder')}
-                className="h-10 pr-10"
+                className="flex w-full rounded-lg border border-gray-200 bg-transparent px-[14px] py-[10px] pr-10 text-sm focus-visible:border-primary-600 focus-visible:shadow-[0_0_6px_rgba(13,148,136,0.13)] focus-visible:outline-none"
+                style={{ WebkitTextSecurity: showKey ? 'none' : 'disc' } as React.CSSProperties}
                 autoComplete="off"
                 data-form-type="other"
                 data-lpignore="true"

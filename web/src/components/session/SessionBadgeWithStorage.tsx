@@ -11,22 +11,23 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import {
-  Clock,
-  RotateCcw,
-  HardDrive,
-  Trash2,
-  Check,
-  Info,
-  AlertTriangle,
-  X,
-} from 'lucide-react'
+import { Clock, RotateCcw, HardDrive, Trash2, Check, Info, AlertTriangle, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSessionStore } from '@/store/session.store'
 import { useStorageInfo, type CleanupPreview } from '@/hooks/useStorageInfo'
 import { useSQLiteMode } from '@/hooks/useSQLiteMode'
 import type { StorageStatus } from '@/opfs/utils/storage-utils'
-import { BrandButton, BrandBadge, BrandSelectSeparator } from '@browser-fs-analyzer/ui'
+import {
+  BrandButton,
+  BrandBadge,
+  BrandSelectSeparator,
+  BrandDialog,
+  BrandDialogContent,
+  BrandDialogHeader,
+  BrandDialogBody,
+  BrandDialogFooter,
+  BrandDialogTitle,
+} from '@browser-fs-analyzer/ui'
 import { cn } from '@/lib/utils'
 
 export interface SessionBadgeWithStorageProps {
@@ -71,6 +72,9 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
   const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(null)
   const [cleanupScope, setCleanupScope] = useState<'old' | 'all'>('old')
   const [cleanupLoading, setCleanupLoading] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 点击外部关闭 dropdown（与 LanguageSwitcher 相同的模式）
@@ -120,32 +124,39 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
     [switchSession]
   )
 
-  // Handle session delete
-  const handleDelete = useCallback(
-    async (e: React.MouseEvent, sessionId: string) => {
-      e.stopPropagation()
+  // Handle session delete - open dialog
+  const handleDeleteClick = useCallback((sessionId: string) => {
+    setSessionToDelete(sessionId)
+    setDeleteDialogOpen(true)
+    setOpen(false) // Close dropdown when opening dialog
+  }, [])
 
-      if (!confirm('确定要删除此会话吗？所有缓存、待同步和撤销记录将被删除。')) {
-        return
-      }
+  // Confirm session delete
+  const handleConfirmDelete = useCallback(async () => {
+    if (!sessionToDelete) return
 
-      try {
-        await deleteSession(sessionId)
-        toast.success('会话已删除')
-        await refresh()
-      } catch (error) {
-        console.error('[SessionBadgeWithStorage] Failed to delete session:', error)
-        toast.error('删除会话失败')
-      }
-    },
-    [deleteSession, refresh]
-  )
+    setDeleteLoading(true)
+
+    try {
+      await deleteSession(sessionToDelete)
+      toast.success('会话已删除')
+      setDeleteDialogOpen(false)
+      setSessionToDelete(null)
+      await refresh()
+    } catch (error) {
+      console.error('[SessionBadgeWithStorage] Failed to delete session:', error)
+      toast.error('删除会话失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [sessionToDelete, deleteSession, refresh])
 
   // Handle open cleanup dialog
   const handleOpenCleanupDialog = useCallback(
     async (scope: 'old' | 'all') => {
       setCleanupScope(scope)
       setCleanupLoading(true)
+      setOpen(false) // Close dropdown when opening dialog
 
       try {
         const preview = await getCleanupPreview(scope, 30)
@@ -202,6 +213,42 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
 
       {/* Cleanup Confirmation Dialog */}
       {cleanupDialogOpen && cleanupPreview && <CleanupDialog />}
+
+      {/* Delete Confirmation Dialog */}
+      <BrandDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <BrandDialogContent>
+          <BrandDialogHeader>
+            <BrandDialogTitle>删除会话</BrandDialogTitle>
+          </BrandDialogHeader>
+          <BrandDialogBody>
+            <p className="text-sm text-secondary">确定要删除此会话吗？</p>
+            <div className="mt-3 space-y-1 text-xs text-secondary">
+              <div className="font-medium text-danger">删除后将清除：</div>
+              <ul className="ml-4 list-disc space-y-1 text-secondary">
+                <li>会话记录和元数据</li>
+                <li>所有文件缓存</li>
+                <li>待同步的修改和撤销历史</li>
+              </ul>
+              <div className="mt-2 font-medium text-emerald-600">保留：</div>
+              <ul className="ml-4 list-disc space-y-1 text-secondary">
+                <li>对话记录（但无法再访问此会话的文件）</li>
+              </ul>
+            </div>
+          </BrandDialogBody>
+          <BrandDialogFooter>
+            <BrandButton
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteLoading}
+            >
+              取消
+            </BrandButton>
+            <BrandButton variant="danger" onClick={handleConfirmDelete} disabled={deleteLoading}>
+              {deleteLoading ? '删除中...' : '确认删除'}
+            </BrandButton>
+          </BrandDialogFooter>
+        </BrandDialogContent>
+      </BrandDialog>
     </div>
   )
 
@@ -239,8 +286,8 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                 <div className="text-[10px] text-amber-800">
                   <span className="font-semibold">注意：</span>
-                  将丢弃 {cleanupPreview.pendingCount} 个未保存的修改和{' '}
-                  {cleanupPreview.undoCount} 条撤销记录
+                  将丢弃 {cleanupPreview.pendingCount} 个未保存的修改和 {cleanupPreview.undoCount}{' '}
+                  条撤销记录
                 </div>
               </div>
             )}
@@ -265,7 +312,7 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
 
             {/* Scope Selection */}
             <div className="mt-3 space-y-2">
-              <div className="text-[10px] font-medium text-muted uppercase">选择清理范围</div>
+              <div className="text-[10px] font-medium uppercase text-muted">选择清理范围</div>
               <div className="space-y-1">
                 <button
                   type="button"
@@ -274,13 +321,15 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                     'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
                     cleanupScope === 'old'
                       ? 'bg-primary-50 text-primary-700'
-                      : 'hover:bg-gray-50 text-secondary'
+                      : 'text-secondary hover:bg-gray-50'
                   )}
                 >
                   <div
                     className={cn(
                       'h-3 w-3 rounded-full border',
-                      cleanupScope === 'old' ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                      cleanupScope === 'old'
+                        ? 'border-primary-500 bg-primary-500'
+                        : 'border-gray-300'
                     )}
                   />
                   仅清理旧会话 (30天未活跃)
@@ -292,13 +341,15 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                     'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
                     cleanupScope === 'all'
                       ? 'bg-primary-50 text-primary-700'
-                      : 'hover:bg-gray-50 text-secondary'
+                      : 'text-secondary hover:bg-gray-50'
                   )}
                 >
                   <div
                     className={cn(
                       'h-3 w-3 rounded-full border',
-                      cleanupScope === 'all' ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                      cleanupScope === 'all'
+                        ? 'border-primary-500 bg-primary-500'
+                        : 'border-gray-300'
                     )}
                   />
                   清理所有会话缓存
@@ -459,19 +510,20 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                       <button
                         type="button"
                         onClick={() => handleSwitch(session.id)}
-                        className="flex flex-1 flex-col items-start text-left"
+                        className="flex min-w-0 flex-1 flex-col items-start text-left"
                       >
-                        <div className="flex w-full items-center gap-2">
+                        {/* First row: name + size */}
+                        <div className="flex w-full min-w-0 items-center gap-2">
                           <span className="truncate text-xs font-medium text-primary">
                             {session.name}
                           </span>
-                          <span className="ml-auto text-[10px] text-muted">
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted">
                             {session.cacheSizeFormatted}
                           </span>
                         </div>
 
-                        {/* Status badges */}
-                        <div className="mt-0.5 flex items-center gap-2">
+                        {/* Second row: status */}
+                        <div className="mt-0.5 flex items-center gap-2 text-[10px]">
                           {hasPending && (
                             <BrandBadge
                               variant="warning"
@@ -492,9 +544,7 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                               {session.undoCount}
                             </BrandBadge>
                           )}
-                          {!hasPending && !hasUndo && (
-                            <span className="text-[10px] text-muted">无变更</span>
-                          )}
+                          {!hasPending && !hasUndo && <span className="text-muted">无变更</span>}
                         </div>
                       </button>
 
@@ -502,7 +552,7 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
                       {!isActive && (
                         <button
                           type="button"
-                          onClick={(e) => handleDelete(e, session.id)}
+                          onClick={() => handleDeleteClick(session.id)}
                           className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-danger-bg hover:text-danger"
                           title="删除会话"
                         >
