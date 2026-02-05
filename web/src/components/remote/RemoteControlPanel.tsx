@@ -13,6 +13,7 @@ import {
   BrandDialog,
   BrandDialogContent,
   BrandDialogHeader,
+  BrandDialogTitle,
   BrandDialogBody,
   BrandDialogFooter,
   BrandDialogClose,
@@ -117,7 +118,9 @@ export const RemoteControlPanel: React.FC<RemoteControlPanelProps> = ({ open, on
         }}
       >
         <BrandDialogHeader>
-          <h2 className="text-base font-semibold">{t('remote.title')}</h2>
+          <BrandDialogTitle className="text-base font-semibold">
+            {t('remote.title')}
+          </BrandDialogTitle>
           <BrandDialogClose className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
           </BrandDialogClose>

@@ -11,9 +11,19 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import { Clock, RotateCcw, HardDrive, Trash2, Check, Sparkles, Info } from 'lucide-react'
+import {
+  Clock,
+  RotateCcw,
+  HardDrive,
+  Trash2,
+  Check,
+  Info,
+  AlertTriangle,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { useSessionStore } from '@/store/session.store'
-import { useStorageInfo } from '@/hooks/useStorageInfo'
+import { useStorageInfo, type CleanupPreview } from '@/hooks/useStorageInfo'
 import { useSQLiteMode } from '@/hooks/useSQLiteMode'
 import type { StorageStatus } from '@/opfs/utils/storage-utils'
 import { BrandButton, BrandBadge, BrandSelectSeparator } from '@browser-fs-analyzer/ui'
@@ -57,6 +67,10 @@ const getStatusDotColor = (hasError: boolean, isInitialized: boolean, isOPFS: bo
 
 export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = () => {
   const [open, setOpen] = useState(false)
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
+  const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(null)
+  const [cleanupScope, setCleanupScope] = useState<'old' | 'all'>('old')
+  const [cleanupLoading, setCleanupLoading] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 点击外部关闭 dropdown（与 LanguageSwitcher 相同的模式）
@@ -84,8 +98,8 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
     sessions: storageSessions,
     loading: storageLoading,
     refresh,
-    cleanupOldSessions,
-    clearAllCache,
+    getCleanupPreview,
+    executeCleanup,
   } = useStorageInfo()
   const { isOPFS } = useSQLiteMode()
 
@@ -117,49 +131,59 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
 
       try {
         await deleteSession(sessionId)
+        toast.success('会话已删除')
         await refresh()
       } catch (error) {
         console.error('[SessionBadgeWithStorage] Failed to delete session:', error)
+        toast.error('删除会话失败')
       }
     },
     [deleteSession, refresh]
   )
 
-  // Handle cleanup old sessions
-  const handleCleanup = useCallback(async () => {
-    const days = prompt('清理多少天未活跃的会话？', '30')
-    if (!days) return
+  // Handle open cleanup dialog
+  const handleOpenCleanupDialog = useCallback(
+    async (scope: 'old' | 'all') => {
+      setCleanupScope(scope)
+      setCleanupLoading(true)
 
-    const daysNum = parseInt(days)
-    if (isNaN(daysNum) || daysNum < 1) {
-      alert('请输入有效的天数')
-      return
-    }
+      try {
+        const preview = await getCleanupPreview(scope, 30)
+        if (preview) {
+          setCleanupPreview(preview)
+          setCleanupDialogOpen(true)
+        } else {
+          toast.info(scope === 'old' ? '没有 30 天未活跃的会话可清理' : '没有可清理的缓存')
+        }
+      } catch (error) {
+        console.error('[SessionBadgeWithStorage] Failed to get cleanup preview:', error)
+        toast.error('获取清理信息失败')
+      } finally {
+        setCleanupLoading(false)
+      }
+    },
+    [getCleanupPreview]
+  )
+
+  // Handle execute cleanup
+  const handleExecuteCleanup = useCallback(async () => {
+    if (!cleanupPreview) return
+
+    setCleanupLoading(true)
 
     try {
-      const cleaned = await cleanupOldSessions(daysNum)
-      alert(`已清理 ${cleaned} 个旧会话`)
+      const cleaned = await executeCleanup(cleanupScope, 30)
+      toast.success(`已清理 ${cleaned} 个会话的文件缓存，释放 ${cleanupPreview.totalSizeFormatted}`)
+      setCleanupDialogOpen(false)
+      setCleanupPreview(null)
       await refresh()
     } catch (error) {
-      console.error('[SessionBadgeWithStorage] Failed to cleanup:', error)
+      console.error('[SessionBadgeWithStorage] Failed to execute cleanup:', error)
+      toast.error('清理失败，请重试')
+    } finally {
+      setCleanupLoading(false)
     }
-  }, [cleanupOldSessions, refresh])
-
-  // Handle clear all cache
-  const handleClearAll = useCallback(async () => {
-    if (
-      !confirm('确定要清空所有会话缓存吗？这不会删除对话记录，但会清空所有文件缓存和撤销历史。')
-    ) {
-      return
-    }
-
-    try {
-      await clearAllCache()
-      await refresh()
-    } catch (error) {
-      console.error('[SessionBadgeWithStorage] Failed to clear cache:', error)
-    }
-  }, [clearAllCache, refresh])
+  }, [cleanupPreview, cleanupScope, executeCleanup, refresh])
 
   // Get current session info
   const currentSession = sessions.find((s) => s.id === activeSessionId)
@@ -175,8 +199,149 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
       )}
 
       {open && <SessionDropdown />}
+
+      {/* Cleanup Confirmation Dialog */}
+      {cleanupDialogOpen && cleanupPreview && <CleanupDialog />}
     </div>
   )
+
+  function CleanupDialog() {
+    if (!cleanupPreview) return null
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 z-[60] bg-black/20"
+          onClick={() => setCleanupDialogOpen(false)}
+        />
+        {/* Dialog */}
+        <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-gray-200 bg-white shadow-xl">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-secondary" />
+              <span className="text-sm font-semibold text-secondary">清理文件缓存</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCleanupDialogOpen(false)}
+              className="rounded p-1 text-muted transition-colors hover:bg-gray-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="px-4 py-3">
+            {cleanupPreview.hasUnsavedChanges && (
+              <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="text-[10px] text-amber-800">
+                  <span className="font-semibold">注意：</span>
+                  将丢弃 {cleanupPreview.pendingCount} 个未保存的修改和{' '}
+                  {cleanupPreview.undoCount} 条撤销记录
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 text-xs text-secondary">
+              <div>将清理：</div>
+              <div className="ml-4 space-y-1">
+                <div>
+                  • {cleanupPreview.sessionCount} 个会话
+                  {cleanupScope === 'old' && ' (30天未活跃)'}
+                </div>
+                <div>• 约 {cleanupPreview.totalSizeFormatted} 文件缓存</div>
+                <div
+                  className={cn(
+                    cleanupPreview.hasUnsavedChanges ? 'text-amber-600' : 'text-emerald-600'
+                  )}
+                >
+                  • {cleanupPreview.pendingCount} 个未保存的修改
+                </div>
+              </div>
+            </div>
+
+            {/* Scope Selection */}
+            <div className="mt-3 space-y-2">
+              <div className="text-[10px] font-medium text-muted uppercase">选择清理范围</div>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setCleanupScope('old')}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
+                    cleanupScope === 'old'
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'hover:bg-gray-50 text-secondary'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'h-3 w-3 rounded-full border',
+                      cleanupScope === 'old' ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                    )}
+                  />
+                  仅清理旧会话 (30天未活跃)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCleanupScope('all')}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
+                    cleanupScope === 'all'
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'hover:bg-gray-50 text-secondary'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'h-3 w-3 rounded-full border',
+                      cleanupScope === 'all' ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                    )}
+                  />
+                  清理所有会话缓存
+                </button>
+              </div>
+            </div>
+
+            {/* Help text */}
+            <div className="mt-3 flex items-start gap-1.5 text-[9px] leading-tight text-muted">
+              <Info className="mt-0.5 h-2.5 w-2.5 shrink-0" />
+              <p>对话记录和会话信息不会被删除，下次访问文件时会重新从本地磁盘读取。</p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => setCleanupDialogOpen(false)}
+              disabled={cleanupLoading}
+              className="rounded-md px-3 py-1.5 text-xs text-secondary transition-colors hover:bg-gray-100 disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleExecuteCleanup}
+              disabled={cleanupLoading}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-xs text-white transition-colors',
+                cleanupPreview.hasUnsavedChanges
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-danger hover:bg-red-600',
+                'disabled:opacity-50'
+              )}
+            >
+              {cleanupLoading ? '清理中...' : '确认清理'}
+            </button>
+          </div>
+        </div>
+      </>
+    )
+  }
 
   function SessionDropdown() {
     return (
@@ -353,32 +518,21 @@ export const SessionBadgeWithStorage: React.FC<SessionBadgeWithStorageProps> = (
 
           <BrandSelectSeparator />
 
-          {/* Footer - Actions */}
+          {/* Footer - Cleanup Action */}
           <div className="px-4 py-2">
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={handleCleanup}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-secondary transition-colors hover:bg-gray-50"
-                title="删除 30 天未活跃的会话缓存（不影响对话记录）"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                清理旧会话 (30天未活跃)
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-danger transition-colors hover:bg-danger-bg"
-                title="清空所有会话的文件缓存和撤销历史（不影响对话记录）"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                清空所有缓存
-              </button>
-              {/* Help text */}
-              <p className="px-1 text-[9px] leading-tight text-muted">
-                注：以上操作仅清理缓存数据，不影响对话记录
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenCleanupDialog('old')}
+              disabled={cleanupLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs text-secondary transition-colors hover:bg-gray-50 disabled:opacity-50"
+              title="清理旧会话的文件缓存，释放存储空间"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {cleanupLoading ? '加载中...' : '清理文件缓存'}
+            </button>
+            <p className="px-1 pt-1.5 text-[9px] leading-tight text-muted">
+              仅清理文件缓存，不影响对话记录和会话信息
+            </p>
           </div>
         </div>
       </>

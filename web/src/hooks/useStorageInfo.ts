@@ -54,6 +54,27 @@ export interface StorageInfo {
   status: StorageStatus
 }
 
+/** Cleanup preview information */
+export interface CleanupPreview {
+  /** Number of sessions that will be cleaned */
+  sessionCount: number
+  /** Total cache size that will be freed */
+  totalSize: number
+  /** Total size formatted */
+  totalSizeFormatted: string
+  /** Number of pending changes that will be lost */
+  pendingCount: number
+  /** Number of undo records that will be lost */
+  undoCount: number
+  /** Whether there are any unsaved changes */
+  hasUnsavedChanges: boolean
+  /** List of session names that will be cleaned */
+  sessionNames: string[]
+}
+
+/** Cleanup scope */
+export type CleanupScope = 'old' | 'all'
+
 /** Hook result */
 export interface UseStorageInfoResult {
   /** Storage information */
@@ -66,9 +87,13 @@ export interface UseStorageInfoResult {
   error: string | null
   /** Refresh storage info (optionally calculate session sizes) */
   refresh: (includeSessionSizes?: boolean) => Promise<void>
-  /** Cleanup old sessions */
+  /** Get cleanup preview before executing */
+  getCleanupPreview: (scope: CleanupScope, days?: number) => Promise<CleanupPreview | null>
+  /** Execute cleanup with scope */
+  executeCleanup: (scope: CleanupScope, days?: number) => Promise<number>
+  /** @deprecated Use executeCleanup instead */
   cleanupOldSessions: (days: number) => Promise<number>
-  /** Clear all cache */
+  /** @deprecated Use executeCleanup instead */
   clearAllCache: () => Promise<void>
 }
 
@@ -320,13 +345,14 @@ export function useStorageInfo(): UseStorageInfoResult {
 
       for (const session of inactiveSessions) {
         try {
-          // Delete from OPFS
-          await manager.deleteSession(session.id)
-          // Delete from SQLite (cascade deletes related records)
-          await repo.deleteSession(session.id)
-          cleanedCount++
+          // Clear OPFS workspace cache (keeps session record)
+          const workspace = await manager.getSession(session.id)
+          if (workspace) {
+            await workspace.clear()
+            cleanedCount++
+          }
         } catch (e) {
-          console.error(`Failed to delete session ${session.id}:`, e)
+          console.error(`Failed to clear session ${session.id}:`, e)
         }
       }
 
@@ -361,12 +387,99 @@ export function useStorageInfo(): UseStorageInfoResult {
     await refresh()
   }, [refresh])
 
+  /**
+   * Get cleanup preview - shows what will be cleaned before executing
+   */
+  const getCleanupPreview = useCallback(
+    async (scope: CleanupScope, days: number = 30): Promise<CleanupPreview | null> => {
+      const repo = getSessionRepository()
+
+      let sessionsToClean: Session[]
+
+      if (scope === 'old') {
+        // Get inactive sessions
+        sessionsToClean = await repo.findInactiveSessions(days)
+      } else {
+        // Get all sessions
+        sessionsToClean = await repo.findAllSessions()
+      }
+
+      if (sessionsToClean.length === 0) {
+        return null
+      }
+
+      // Calculate totals
+      let totalSize = 0
+      let totalPending = 0
+      let totalUndo = 0
+      const sessionNames: string[] = []
+
+      for (const session of sessionsToClean) {
+        totalSize += session.cacheSize || 0
+        totalPending += session.pendingCount || 0
+        totalUndo += session.undoCount || 0
+        sessionNames.push(session.name)
+      }
+
+      return {
+        sessionCount: sessionsToClean.length,
+        totalSize,
+        totalSizeFormatted: formatBytes(totalSize),
+        pendingCount: totalPending,
+        undoCount: totalUndo,
+        hasUnsavedChanges: totalPending > 0,
+        sessionNames,
+      }
+    }, [])
+
+  /**
+   * Execute cleanup with specified scope
+   */
+  const executeCleanup = useCallback(
+    async (scope: CleanupScope, days: number = 30): Promise<number> => {
+      const repo = getSessionRepository()
+      const manager = await getSessionManager()
+
+      let sessionsToClean: Session[]
+
+      if (scope === 'old') {
+        sessionsToClean = await repo.findInactiveSessions(days)
+      } else {
+        sessionsToClean = await repo.findAllSessions()
+      }
+
+      let cleanedCount = 0
+
+      for (const session of sessionsToClean) {
+        try {
+          // Clear OPFS workspace cache (keeps session record)
+          const workspace = await manager.getSession(session.id)
+          if (workspace) {
+            await workspace.clear()
+            cleanedCount++
+          }
+        } catch (e) {
+          console.error(`Failed to clear session ${session.id}:`, e)
+        }
+      }
+
+      // Refresh after cleanup
+      await refresh()
+
+      return cleanedCount
+    },
+    [refresh]
+  )
+
   return {
     storage,
     sessions: sessionStorageList,
     loading,
     error,
     refresh,
+    getCleanupPreview,
+    executeCleanup,
+    // Deprecated: use executeCleanup instead
     cleanupOldSessions,
     clearAllCache,
   }

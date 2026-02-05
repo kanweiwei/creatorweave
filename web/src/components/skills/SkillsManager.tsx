@@ -12,6 +12,8 @@ import { Plus, Search, RefreshCw, FolderOpen, User, Building, X, Inbox } from 'l
 import {
   BrandDialog,
   BrandDialogContent,
+  BrandDialogHeader,
+  BrandDialogTitle,
   BrandDialogClose,
   BrandButton,
   BrandInput,
@@ -129,12 +131,14 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
       <BrandDialog open={open} onOpenChange={onClose}>
         <BrandDialogContent className="flex max-h-[600px] max-w-2xl flex-col overflow-hidden p-0">
           {/* Header */}
-          <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-6">
-            <h2 className="text-lg font-semibold text-gray-900">{t('skills.title')}</h2>
+          <BrandDialogHeader className="h-16 px-6">
+            <BrandDialogTitle className="text-lg font-semibold text-gray-900">
+              {t('skills.title')}
+            </BrandDialogTitle>
             <BrandDialogClose className="text-gray-400 hover:text-gray-600">
               <X className="h-5 w-5" />
             </BrandDialogClose>
-          </div>
+          </BrandDialogHeader>
 
           {/* Search & Filter Bar */}
           <div className="flex shrink-0 items-center gap-3 border-b border-gray-200 px-6 py-4">
