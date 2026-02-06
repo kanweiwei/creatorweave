@@ -608,11 +608,11 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
   // File Discovery Actions
   // ========================================================================
 
-  setFileTree: (tree) => {
+  setFileTree: async (tree) => {
     set({ fileTree: tree })
     // Update file discovery service with new tree
     if (tree) {
-      const flatTree = fileDiscoveryService.convertFileTreeToFlat(tree)
+      const flatTree = await fileDiscoveryService.convertFileTreeToFlat(tree)
       console.log('[RemoteStore] File tree updated:', flatTree.length, 'files')
     }
   },
@@ -640,7 +640,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
       return []
     }
 
-    const results = fileDiscoveryService.search(query, [fileTree], { limit })
+    const results = await fileDiscoveryService.search(query, [fileTree], { limit })
     console.log('[RemoteStore] Search results:', results.length, 'files')
     return results
   },
@@ -677,7 +677,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
       console.log('[RemoteStore] Collected', allFiles.length, 'entries for file tree')
 
       // Build hierarchical tree
-      const tree = fileDiscoveryService.buildFileTreeFromMetadata(allFiles)
+      const tree = await fileDiscoveryService.buildFileTreeFromMetadata(allFiles)
 
       if (tree) {
         get().setFileTree(tree)

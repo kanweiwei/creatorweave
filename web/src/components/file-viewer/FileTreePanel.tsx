@@ -182,12 +182,12 @@ function TreeNodeRow({
       className={`group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-3 text-xs transition-colors ${
         selected ? 'bg-primary-50 text-primary-700' : 'hover:bg-hover text-secondary'
       }`}
-      style={{ paddingLeft: `${indent + 12}px` }}
+      style={{ paddingLeft: `${indent + 4}px` }}
       onClick={isDir ? onToggle : onClick}
       title={node.path}
     >
-      {/* Expand/collapse arrow */}
-      {isDir ? (
+      {/* Expand/collapse arrow (directories only) */}
+      {isDir && (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
           {expanded ? (
             <ChevronDown className="text-tertiary h-3.5 w-3.5 transition-transform" />
@@ -195,8 +195,6 @@ function TreeNodeRow({
             <ChevronRight className="text-tertiary h-3.5 w-3.5 transition-transform" />
           )}
         </span>
-      ) : (
-        <span className="h-4 w-4 shrink-0" />
       )}
 
       {/* Icon */}
@@ -217,7 +215,7 @@ function TreeNodeRow({
 
       {/* Size for files */}
       {!isDir && node.size !== undefined && node.size > 0 && (
-        <span className="text-tertiary shrink-0 text-[10px] tabular-nums">
+        <span className="text-tertiary shrink-0 text-xs tabular-nums">
           {formatBytes(node.size)}
         </span>
       )}
@@ -349,7 +347,6 @@ export function FileTreePanel({
           const fileHandle = handle as FileSystemFileHandle
           try {
             const file = await fileHandle.getFile()
-            console.log('[FileTree] Loaded file:', name, 'size:', file.size, 'type:', file.type)
             children.push({ name, path, kind: 'file', size: file.size, handle: fileHandle })
           } catch (err) {
             console.warn('[FileTree] Failed to get file details for:', name, err)
@@ -498,7 +495,7 @@ export function FileTreePanel({
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="border-subtle flex items-center justify-between border-b px-2 py-1">
-        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-primary">
+        <span className="truncate text-xs font-semibold uppercase tracking-wider text-primary">
           {rootName || directoryHandle.name}
         </span>
         <BrandButton

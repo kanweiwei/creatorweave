@@ -21,10 +21,14 @@ interface AgentState {
   directoryName: string | null
   /** Whether handle restoration is in progress */
   isRestoringHandle: boolean
+  /** Handle that needs user activation to restore permissions */
+  pendingHandle: FileSystemDirectoryHandle | null
 
   // Actions
   setDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => void
   restoreDirectoryHandle: () => Promise<void>
+  /** Request permission for pending handle (must be called from user activation) */
+  requestPendingHandlePermission: () => Promise<boolean>
 }
 
 /** Open the dedicated IndexedDB for directory handle storage */
@@ -95,10 +99,12 @@ export const useAgentStore = create<AgentState>()(
     directoryHandle: null,
     directoryName: null,
     isRestoringHandle: false,
+    pendingHandle: null,
 
     setDirectoryHandle: (handle) => {
       set((state) => {
         state.directoryHandle = handle
+        state.pendingHandle = null // Clear pending handle when setting new handle
         // Treat empty string as null (some browsers return empty name)
         state.directoryName = handle?.name && handle.name.trim() ? handle.name : null
       })
@@ -135,21 +141,61 @@ export const useAgentStore = create<AgentState>()(
           return
         }
 
-        console.log('[AgentStore] Found saved handle, verifying permissions...')
-        const granted = await verifyPermission(handle)
+        console.log('[AgentStore] Found saved handle, checking permissions...')
+        const opts: FileSystemHandlePermissionDescriptor = { mode: 'readwrite' }
+        const permission = await handle.queryPermission(opts)
 
-        if (granted) {
-          console.log('[AgentStore] Permission granted, restoring handle:', handle.name)
+        if (permission === 'granted') {
+          console.log('[AgentStore] Permission already granted, restoring handle:', handle.name)
           set((state) => {
             state.directoryHandle = handle
-            // Treat empty string as null (some browsers return empty name)
             state.directoryName = handle.name && handle.name.trim() ? handle.name : null
+            state.pendingHandle = null
           })
+        } else if (permission === 'prompt') {
+          // Permission is in prompt state - try to request immediately
+          // This will only work if called during user activation, otherwise it will fail with SecurityError
+          console.log('[AgentStore] Permission is prompt, requesting...')
+          try {
+            const result = await handle.requestPermission(opts)
+            if (result === 'granted') {
+              console.log('[AgentStore] Permission granted, restoring handle:', handle.name)
+              set((state) => {
+                state.directoryHandle = handle
+                state.directoryName = handle.name && handle.name.trim() ? handle.name : null
+                state.pendingHandle = null
+              })
+            } else {
+              console.warn('[AgentStore] Permission denied after request')
+              throw new Error('Permission denied')
+            }
+          } catch (err) {
+            // SecurityError: User activation required - save as pending
+            if (err instanceof Error && err.name === 'SecurityError') {
+              console.log(
+                '[AgentStore] User activation required, saving as pending handle:',
+                handle.name
+              )
+              set((state) => {
+                state.pendingHandle = handle
+              })
+              toast.info('点击下方按钮恢复文件夹访问权限', {
+                action: {
+                  label: '恢复',
+                  onClick: () => {
+                    const store = useAgentStore.getState()
+                    store.requestPendingHandlePermission()
+                  },
+                },
+              })
+            } else {
+              throw err
+            }
+          }
         } else {
-          console.warn('[AgentStore] Permission verification failed for handle:', handle.name)
-          // Permission denied - notify user and clear the stale handle from IndexedDB
+          // Permission denied
+          console.warn('[AgentStore] Permission denied for handle:', handle.name)
           toast.info('文件夹权限已过期，请重新选择文件夹')
-          // Clear the stale handle so we don't keep prompting for permission
           await persistHandle(null)
         }
       } catch (error) {
@@ -159,6 +205,9 @@ export const useAgentStore = create<AgentState>()(
         if (error instanceof Error) {
           if (error.name === 'NotFoundError') {
             console.log('[AgentStore] Handle not found in IndexedDB (may have been cleared)')
+          } else if (error.name === 'SecurityError' || error.message.includes('User activation')) {
+            console.log('[AgentStore] User activation required for permission request')
+            // This is expected - handle will be in IndexedDB, user needs to click to restore
           } else if (error.message.includes('permission') || error.message.includes('Permission')) {
             console.log('[AgentStore] Permission error during restoration')
           } else {
@@ -169,6 +218,47 @@ export const useAgentStore = create<AgentState>()(
         set((state) => {
           state.isRestoringHandle = false
         })
+      }
+    },
+
+    requestPendingHandlePermission: async () => {
+      const state = useAgentStore.getState()
+      const handle = state.pendingHandle
+
+      if (!handle) {
+        console.warn('[AgentStore] No pending handle to request permission for')
+        return false
+      }
+
+      try {
+        console.log('[AgentStore] Requesting permission for pending handle:', handle.name)
+        const granted = await verifyPermission(handle)
+
+        if (granted) {
+          console.log('[AgentStore] Permission granted, restoring handle:', handle.name)
+          set((state) => {
+            state.directoryHandle = handle
+            state.directoryName = handle.name && handle.name.trim() ? handle.name : null
+            state.pendingHandle = null
+          })
+          toast.success('文件夹权限已恢复')
+          return true
+        } else {
+          console.warn('[AgentStore] Permission denied for handle:', handle.name)
+          toast.error('文件夹权限被拒绝，请重新选择文件夹')
+          // Clear the pending handle
+          set((state) => {
+            state.pendingHandle = null
+          })
+          await persistHandle(null)
+          return false
+        }
+      } catch (error) {
+        console.error('[AgentStore] Failed to request permission for pending handle:', error)
+        toast.error(
+          '恢复文件夹权限失败: ' + (error instanceof Error ? error.message : String(error))
+        )
+        return false
       }
     },
   }))
@@ -207,6 +297,7 @@ declare global {
       handle: FileSystemDirectoryHandle | null
       name: string | null
       isRestoring: boolean
+      pendingHandleName: string | null
     }
   }
 }
@@ -334,5 +425,6 @@ window.__getHandleState = () => {
     handle: state.directoryHandle,
     name: state.directoryName,
     isRestoring: state.isRestoringHandle,
+    pendingHandleName: state.pendingHandle?.name || null,
   }
 }

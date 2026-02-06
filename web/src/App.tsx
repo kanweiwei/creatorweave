@@ -9,6 +9,7 @@ import { useAgentStore } from '@/store/agent.store'
 import { attemptReconnect } from '@/store/remote.store'
 import { useWorkspaceStore } from '@/store/workspace.store'
 import { initStorage, setupAutoSave } from '@/storage'
+import { requestPersistentStorage } from '@/opfs'
 import { useT } from '@/i18n'
 
 function App() {
@@ -18,7 +19,6 @@ function App() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
-  const restoreDirectoryHandle = useAgentStore((s) => s.restoreDirectoryHandle)
   const initializeWorkspaces = useWorkspaceStore((s) => s.initialize)
   const t = useT() // i18n hook
 
@@ -186,8 +186,8 @@ function App() {
 
       if (!mounted) return
 
-      // Restore directory handle (await to ensure it completes before UI renders)
-      await restoreDirectoryHandle()
+      // Don't restore directory handle on load - it requires user activation
+      // User will click to restore permission when needed
 
       // Initialize workspaces
       try {
@@ -252,6 +252,30 @@ function App() {
       window.removeEventListener('error', handleError)
       window.removeEventListener('unhandledrejection', handleUnhandledRejection)
     }
+  }, [])
+
+  // Request persistent storage and restore directory handle on first user interaction
+  useEffect(() => {
+    console.log('[Storage] Setting up persistent storage listener...')
+
+    const handleFirstInteraction = async () => {
+      console.log('[Storage] User interaction detected, requesting persistent storage...')
+      const persisted = await requestPersistentStorage()
+      console.log('[Storage] Persistent storage result:', persisted ? 'GRANTED ✅' : 'DENIED ❌')
+
+      // Also try to restore directory handle permission if pending
+      const { requestPendingHandlePermission, pendingHandle } = useAgentStore.getState()
+      if (pendingHandle) {
+        console.log('[Storage] Pending handle found, requesting permission...')
+        const granted = await requestPendingHandlePermission()
+        console.log('[Storage] Handle permission result:', granted ? 'GRANTED ✅' : 'DENIED ❌')
+      }
+    }
+
+    // Listen for first user interaction
+    window.addEventListener('click', handleFirstInteraction, { once: true })
+    window.addEventListener('keydown', handleFirstInteraction, { once: true })
+    window.addEventListener('touchstart', handleFirstInteraction, { once: true })
   }, [])
 
   if (!isSupportedBrowser) {

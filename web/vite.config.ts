@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { sqlitePlugin } from './src/sqlite/vite-plugin-sqlite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,6 +10,55 @@ export default defineConfig({
   plugins: [
     react(),
     sqlitePlugin(), // SQLite WASM support for @sqlite.org/sqlite-wasm (set verbose: true for debugging)
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['wasm/**/*.wasm', 'icon-*.png', 'icon.svg'],
+      // Disable in dev to avoid COOP/COEP conflicts
+      disable: process.env.NODE_ENV === 'development',
+      manifest: {
+        name: 'Browser FS Analyzer',
+        short_name: 'BFSA',
+        description: 'Browser-based file system analyzer with SQLite storage and plugin support',
+        theme_color: '#3b82f6',
+        background_color: '#0f172a',
+        display: 'standalone',
+        orientation: 'any',
+        icons: [
+          {
+            src: '/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: '/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+        ],
+        categories: ['utilities', 'developer', 'productivity'],
+        shortcuts: [
+          {
+            name: 'New Session',
+            short_name: 'New',
+            description: 'Start a new analysis session',
+            url: './?new=true',
+            icons: [{ src: '/icon-192x192.png', sizes: '192x192' }],
+          },
+        ],
+      },
+      workbox: {
+        // Only precache static assets
+        globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
+        // Disable navigateFallback - don't intercept SPA navigation
+        navigateFallback: null,
+        cleanupOutdatedCaches: true,
+        // Don't use runtimeCaching - it conflicts with COOP/COEP
+        // Static assets will be precached, dynamic requests go to network
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+      },
+    }),
   ],
   define: {
     'process.env': {},

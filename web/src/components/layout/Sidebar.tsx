@@ -205,9 +205,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
       >
         {/* Collapse button */}
         <div className="border-subtle flex items-center justify-between border-b bg-white px-2 py-1">
-          <span className="text-tertiary text-[10px] font-semibold uppercase tracking-wider">
-            对话
-          </span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">对话</span>
           <BrandButton
             iconButton
             variant="ghost"
