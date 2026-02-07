@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react'
-import { Settings, Sparkles, Wrench, KeyRound, Server, List, Zap } from 'lucide-react'
+import { Settings, Sparkles, Wrench, KeyRound, Server, List, Keyboard } from 'lucide-react'
 import { useHasApiKey } from '@/store/settings.store'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { MCPSettingsDialog } from '@/components/mcp'
@@ -24,14 +24,21 @@ import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
 import { FolderSelector } from './FolderSelector'
 import { useT } from '@/i18n'
 import { BrandButton } from '@browser-fs-analyzer/ui'
+import { ThemeToggle } from '@/components/workspace'
 
 interface TopBarProps {
   onSkillsManagerOpen?: () => void
   onToolsPanelOpen?: () => void
-  onQuickActionsOpen?: () => void
+  onCommandPaletteOpen?: () => void
+  onWorkspaceSettingsOpen?: () => void
 }
 
-export function TopBar({ onSkillsManagerOpen, onToolsPanelOpen, onQuickActionsOpen }: TopBarProps) {
+export function TopBar({
+  onSkillsManagerOpen,
+  onToolsPanelOpen,
+  onCommandPaletteOpen,
+  onWorkspaceSettingsOpen,
+}: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mcpSettingsOpen, setMcpSettingsOpen] = useState(false)
   const hasApiKey = useHasApiKey() // Use the reactive hook that syncs with database
@@ -74,14 +81,22 @@ export function TopBar({ onSkillsManagerOpen, onToolsPanelOpen, onQuickActionsOp
           {/* Language Switcher */}
           <LanguageSwitcher />
 
+          {/* Theme Toggle */}
+          <ThemeToggle />
+
+          {/* Workspace Settings (Phase 4) */}
+          <BrandButton iconButton onClick={onWorkspaceSettingsOpen} title="Workspace Settings">
+            <Settings className="h-[14px] w-[14px]" />
+          </BrandButton>
+
           {/* Tools Panel */}
           <BrandButton iconButton onClick={onToolsPanelOpen} title="Available Tools">
             <List className="h-[14px] w-[14px]" />
           </BrandButton>
 
-          {/* Quick Actions */}
-          <BrandButton iconButton onClick={onQuickActionsOpen} title="Quick Actions (Cmd+K)">
-            <Zap className="h-[14px] w-[14px]" />
+          {/* Quick Actions / Command Palette (Phase 4) */}
+          <BrandButton iconButton onClick={onCommandPaletteOpen} title="Command Palette (Cmd+K)">
+            <Keyboard className="h-[14px] w-[14px]" />
           </BrandButton>
 
           {/* Skills */}

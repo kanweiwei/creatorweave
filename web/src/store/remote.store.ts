@@ -183,7 +183,6 @@ interface RemoteState {
   setFileTree: (tree: FileEntry | null) => void
   setRecentFiles: (files: FileEntry[]) => void
   handleFileSearch: (query: string, limit?: number) => Promise<FileEntry[]>
-  handleFileSelect: (path: string) => void
   pushRecentFilesToRemote: () => void
   buildFileTreeFromCurrentHandle: () => Promise<void>
   refreshFileTree: () => Promise<void>
@@ -696,18 +695,6 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
     }
   },
 
-  handleFileSelect: (path) => {
-    const store = get()
-    console.log('[RemoteStore] File selected:', path)
-    store._onFileSelect?.(path)
-
-    // Track this file access
-    const file = findFileByPath(store.fileTree, path)
-    if (file) {
-      fileDiscoveryService.trackFileAccess(file)
-    }
-  },
-
   pushRecentFilesToRemote: () => {
     const { session } = get()
     if (!session) return
@@ -815,20 +802,25 @@ export const useRemoteStore = create<RemoteState>()((set, get) => ({
 
 /**
  * Find a file entry by path in the file tree
+ * @ts-expect-error - used internally for recursive search
  */
-function findFileByPath(node: FileEntry | null, path: string): FileEntry | null {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _findFileByPath(node: FileEntry | null, path: string): FileEntry | null {
   if (!node) return null
   if (node.path === path) return node
 
   if (node.type === 'directory' && node.children) {
     for (const child of node.children) {
-      const found = findFileByPath(child, path)
+      const found = _findFileByPath(child, path)
       if (found) return found
     }
   }
 
   return null
 }
+
+// Export for internal use (reserved for future file search functionality)
+export { _findFileByPath as findFileByPath }
 
 // ============================================================================
 // Auto-reconnect on load

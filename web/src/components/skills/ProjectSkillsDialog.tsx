@@ -53,12 +53,12 @@ export function ProjectSkillsDialog({
   const t = useT()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const isOpen = useCallback(
-    (isOpen: boolean) => {
-      if (isOpen && skills.length > 0) {
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (open && skills.length > 0) {
         setSelectedIds(new Set(skills.map((s) => s.id)))
       }
-      onOpenChange?.(isOpen)
+      onOpenChange?.(open)
     },
     [skills, onOpenChange]
   )
@@ -126,7 +126,7 @@ export function ProjectSkillsDialog({
   if (skills.length === 0) return null
 
   return (
-    <BrandDialog open={open} onOpenChange={isOpen}>
+    <BrandDialog open={open} onOpenChange={handleOpenChange}>
       <BrandDialogContent className="flex max-w-md flex-col overflow-hidden p-0">
         {/* Header */}
         <div className="border-b border-gray-100 bg-gradient-to-r from-primary-50 to-primary-100 px-6 py-5">

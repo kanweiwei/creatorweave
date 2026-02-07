@@ -22,6 +22,7 @@ import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
 import { useSettingsStore } from '@/store/settings.store'
 import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
+import { useWorkspacePreferencesStore } from '@/store/workspace-preferences.store'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { ConversationView } from '@/components/agent/ConversationView'
@@ -34,6 +35,16 @@ import { scanProjectSkills } from '@/skills/skill-scanner'
 import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
 import { createUserMessage } from '@/agent/message-types'
+import {
+  CommandPalette,
+  OnboardingTour,
+  DEFAULT_ONBOARDING_STEPS,
+  KeyboardShortcutsHelp,
+  RecentFilesPanel,
+  WorkspaceSettingsDialog,
+  type Command,
+} from '@/components/workspace'
+import { initializeTheme } from '@/store/theme.store'
 
 export function WorkspaceLayout() {
   const {
@@ -58,10 +69,28 @@ export function WorkspaceLayout() {
   const skillsStore = useSkillsStore()
   const skillsLoaded = useSkillsStore((s) => s.loaded) // Reactive state
 
+  // Phase 4: Workspace preferences state
+  const {
+    panelSizes,
+    panelState,
+    addRecentFile,
+    setPreviewRatio,
+    setSidebarCollapsed,
+    setActiveResourceTab,
+  } = useWorkspacePreferencesStore()
+
+  // Phase 4: Dialog states
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false)
+  const [showRecentFiles, setShowRecentFiles] = useState(false)
+
   // File preview state (push-squeeze panel)
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
   const [previewFileHandle, setPreviewFileHandle] = useState<FileSystemFileHandle | null>(null)
-  const [previewRatio, setPreviewRatio] = useState(60) // preview takes 60% of main area
+
+  // Use panel sizes from preferences store
+  const previewRatio = panelSizes.previewRatio
 
   // Drag divider for preview panel
   const dividerRef = useRef<{ startX: number; startRatio: number } | null>(null)
@@ -80,7 +109,8 @@ export function WorkspaceLayout() {
     setPendingMessage(null)
   }, [])
 
-  const handleFileSelect = useCallback((path: string, handle: FileSystemFileHandle) => {
+  // @ts-expect-error - reserved for future file preview functionality
+  const _handleFileSelect = useCallback((path: string, handle: FileSystemFileHandle) => {
     setPreviewFilePath(path)
     setPreviewFileHandle(handle)
   }, [])
@@ -124,6 +154,85 @@ export function WorkspaceLayout() {
     setShowProjectSkillsDialog(false)
     setProjectSkills([])
   }, [])
+
+  // Phase 4: Initialize theme system on mount
+  useEffect(() => {
+    const cleanup = initializeTheme()
+    return cleanup
+  }, [])
+
+  // Phase 4: Command palette commands
+  const commands: Command[] = [
+    {
+      id: 'new-conversation',
+      label: 'New Conversation',
+      description: 'Start a new conversation',
+      category: 'Conversations',
+      handler: () => {
+        const newConv = createNew('New conversation')
+        setActive(newConv.id)
+      },
+    },
+    {
+      id: 'toggle-sidebar',
+      label: 'Toggle Sidebar',
+      description: 'Show or hide the sidebar',
+      category: 'View',
+      handler: () => setSidebarCollapsed(!panelState.sidebarCollapsed),
+    },
+    {
+      id: 'open-recent-files',
+      label: 'Recent Files',
+      description: 'View recently accessed files',
+      category: 'View',
+      handler: () => setShowRecentFiles(true),
+    },
+    {
+      id: 'open-skills',
+      label: 'Skills Manager',
+      description: 'Manage your skills',
+      category: 'Tools',
+      handler: handleSkillsManagerOpen,
+    },
+    {
+      id: 'open-tools',
+      label: 'Tools Panel',
+      description: 'Open tools panel',
+      category: 'Tools',
+      handler: () => setToolsPanelOpen(true),
+    },
+    {
+      id: 'keyboard-shortcuts',
+      label: 'Keyboard Shortcuts',
+      description: 'View all keyboard shortcuts',
+      category: 'Help',
+      handler: () => setShowShortcutsHelp(true),
+    },
+    {
+      id: 'workspace-settings',
+      label: 'Workspace Settings',
+      description: 'Configure workspace preferences',
+      category: 'Settings',
+      handler: () => setShowWorkspaceSettings(true),
+    },
+  ]
+
+  // Phase 4: Track recent files
+  const handleFileSelectWithTracking = useCallback(
+    (path: string, handle: FileSystemFileHandle) => {
+      setPreviewFilePath(path)
+      setPreviewFileHandle(handle)
+
+      // Add to recent files
+      const { directoryName } = useAgentStore.getState()
+      addRecentFile({
+        path,
+        timestamp: Date.now(),
+        directoryHandleName: directoryName || undefined,
+      })
+    },
+    [addRecentFile]
+  )
 
   // Initialize skills on mount
   useEffect(() => {
@@ -195,28 +304,83 @@ export function WorkspaceLayout() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + K to open Quick Actions
+      // Cmd/Ctrl + K to open Command Palette (replaces Quick Actions)
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setQuickActionsOpen(true)
+        setShowCommandPalette(true)
+        return
+      }
+
+      // Cmd/Ctrl + B to toggle sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault()
+        setSidebarCollapsed(!panelState.sidebarCollapsed)
+        return
+      }
+
+      // Cmd/Ctrl + , to open workspace settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault()
+        setShowWorkspaceSettings(true)
+        return
+      }
+
+      // Cmd/Ctrl + 1/2/3 to switch resource tabs
+      if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '3') {
+        e.preventDefault()
+        const tabs: Array<'files' | 'plugins' | 'changes'> = ['files', 'plugins', 'changes']
+        const tabIndex = Number.parseInt(e.key) - 1
+        if (tabIndex < tabs.length) {
+          setActiveResourceTab(tabs[tabIndex])
+        }
+        return
+      }
+
+      // ? with Shift to show keyboard shortcuts
+      if (e.key === '?' && e.shiftKey) {
+        e.preventDefault()
+        setShowShortcutsHelp(true)
         return
       }
 
       // ESC to close panels
       if (e.key === 'Escape') {
-        if (quickActionsOpen) {
+        if (showCommandPalette) {
+          setShowCommandPalette(false)
+        } else if (showShortcutsHelp) {
+          setShowShortcutsHelp(false)
+        } else if (showWorkspaceSettings) {
+          setShowWorkspaceSettings(false)
+        } else if (showRecentFiles) {
+          setShowRecentFiles(false)
+        } else if (quickActionsOpen) {
           setQuickActionsOpen(false)
         } else if (toolsPanelOpen) {
           setToolsPanelOpen(false)
         } else if (skillsManagerOpen) {
           setSkillsManagerOpen(false)
+        } else if (previewFilePath) {
+          handleClosePreview()
         }
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [quickActionsOpen, toolsPanelOpen, skillsManagerOpen])
+  }, [
+    showCommandPalette,
+    showShortcutsHelp,
+    showWorkspaceSettings,
+    showRecentFiles,
+    quickActionsOpen,
+    toolsPanelOpen,
+    skillsManagerOpen,
+    previewFilePath,
+    panelState.sidebarCollapsed,
+    setSidebarCollapsed,
+    setActiveResourceTab,
+    handleClosePreview,
+  ])
 
   // Register callbacks for remote messages (Host mode)
   useEffect(() => {
@@ -297,7 +461,7 @@ export function WorkspaceLayout() {
     (e: React.MouseEvent) => {
       e.preventDefault()
       if (!mainRef.current) return
-      dividerRef.current = { startX: e.clientX, startRatio: previewRatio }
+      dividerRef.current = { startX: e.clientX, startRatio: panelSizes.previewRatio }
 
       const mainWidth = mainRef.current.clientWidth
 
@@ -319,7 +483,7 @@ export function WorkspaceLayout() {
       document.addEventListener('mousemove', handleMove)
       document.addEventListener('mouseup', handleUp)
     },
-    [previewRatio]
+    [panelSizes.previewRatio, setPreviewRatio]
   )
 
   const hasActiveConversation = !!activeConversationId
@@ -330,10 +494,11 @@ export function WorkspaceLayout() {
       <TopBar
         onSkillsManagerOpen={handleSkillsManagerOpen}
         onToolsPanelOpen={() => setToolsPanelOpen(true)}
-        onQuickActionsOpen={() => setQuickActionsOpen(true)}
+        onCommandPaletteOpen={() => setShowCommandPalette(true)}
+        onWorkspaceSettingsOpen={() => setShowWorkspaceSettings(true)}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar onFileSelect={handleFileSelect} selectedFilePath={previewFilePath} />
+        <Sidebar onFileSelect={handleFileSelectWithTracking} selectedFilePath={previewFilePath} />
 
         {/* Main area: conversation + optional file preview */}
         <div ref={mainRef} className="flex flex-1 overflow-hidden">
@@ -393,6 +558,52 @@ export function WorkspaceLayout() {
         skills={projectSkills}
         onConfirm={handleProjectSkillsConfirm}
         onSkip={handleProjectSkillsSkip}
+      />
+
+      {/* Phase 4: Command Palette */}
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={() => setShowCommandPalette(false)}
+        commands={commands}
+      />
+
+      {/* Phase 4: Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onOpenChange={() => setShowShortcutsHelp(false)}
+      />
+
+      {/* Phase 4: Workspace Settings Dialog */}
+      <WorkspaceSettingsDialog
+        open={showWorkspaceSettings}
+        onOpenChange={() => setShowWorkspaceSettings(false)}
+      />
+
+      {/* Phase 4: Recent Files Panel */}
+      {showRecentFiles && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowRecentFiles(false)}
+        >
+          <div className="h-[60vh] w-[400px]" onClick={(e) => e.stopPropagation()}>
+            <RecentFilesPanel
+              onFileSelect={(path) => {
+                setShowRecentFiles(false)
+                // Find and select the file
+                const file = document.querySelector(`[data-file-path="${path}"]`) as HTMLElement
+                file?.click()
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Phase 4: Onboarding Tour */}
+      <OnboardingTour
+        steps={DEFAULT_ONBOARDING_STEPS}
+        autoStart={true}
+        onComplete={() => console.log('[WorkspaceLayout] Onboarding tour completed')}
+        onSkip={() => console.log('[WorkspaceLayout] Onboarding tour skipped')}
       />
     </div>
   )

@@ -228,6 +228,31 @@ export const zhCN = {
       qrHint: '或者使用 iOS 相机扫描二维码自动加入',
     },
   },
+
+  // Phase 4: 工作区功能
+  recentFiles: {
+    title: '最近文件',
+    empty: '暂无最近文件',
+    emptyHint: '您打开的文件将显示在这里',
+    remove: '从最近移除',
+    confirmClear: '确定要清除所有最近文件吗？',
+    count: '{count} 个最近文件',
+  },
+
+  commandPalette: {
+    placeholder: '输入命令或搜索...',
+  },
+
+  onboarding: {
+    dontShowAgain: '不再显示',
+    previous: '上一步',
+    next: '下一步',
+    complete: '完成',
+  },
+
+  workspace: {
+    title: '工作区',
+  },
 } as const
 
 export default zhCN

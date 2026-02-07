@@ -219,6 +219,31 @@ export const enUS = {
       qrHint: 'Or scan QR code with iOS camera to join automatically',
     },
   },
+
+  // Phase 4: Workspace Features
+  recentFiles: {
+    title: 'Recent Files',
+    empty: 'No recent files',
+    emptyHint: 'Files you open will appear here',
+    remove: 'Remove from recent',
+    confirmClear: 'Are you sure you want to clear all recent files?',
+    count: '{count} recent files',
+  },
+
+  commandPalette: {
+    placeholder: 'Type a command or search...',
+  },
+
+  onboarding: {
+    dontShowAgain: "Don't show again",
+    previous: 'Previous',
+    next: 'Next',
+    complete: 'Complete',
+  },
+
+  workspace: {
+    title: 'Workspace',
+  },
 } as const
 
 export default enUS

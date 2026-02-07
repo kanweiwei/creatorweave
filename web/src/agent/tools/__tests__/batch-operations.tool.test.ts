@@ -19,18 +19,22 @@ const mockWriteFile = vi.fn()
 const mockGetPendingChanges = vi.fn(() => [])
 
 vi.mock('@/store/opfs.store', () => ({
-  useOPFSStore: () => ({
-    readFile: mockReadFile,
-    writeFile: mockWriteFile,
-    getPendingChanges: mockGetPendingChanges,
-  }),
+  useOPFSStore: {
+    getState: vi.fn(() => ({
+      readFile: mockReadFile,
+      writeFile: mockWriteFile,
+      getPendingChanges: mockGetPendingChanges,
+    })),
+  },
 }))
 
 // Mock remote store
 vi.mock('@/store/remote.store', () => ({
-  useRemoteStore: () => ({
-    session: null,
-  }),
+  useRemoteStore: {
+    getState: vi.fn(() => ({
+      session: null,
+    })),
+  },
 }))
 
 // Mock undo manager
@@ -45,6 +49,11 @@ const mockTraverseDirectory = async function* () {
   yield { type: 'file' as const, name: 'test.ts', path: 'test.ts', size: 1000 }
   yield { type: 'file' as const, name: 'example.ts', path: 'src/example.ts', size: 1500 }
   yield { type: 'file' as const, name: 'data.json', path: 'data.json', size: 500 }
+  yield { type: 'file' as const, name: 'test.txt', path: 'test.txt', size: 50 }
+  yield { type: 'file' as const, name: 'data.txt', path: 'src/data.txt', size: 100 }
+  yield { type: 'file' as const, name: 'large.txt', path: 'large.txt', size: 300000 }
+  yield { type: 'file' as const, name: 'binary.bin', path: 'binary.bin', size: 3 }
+  yield { type: 'file' as const, name: 'image.png', path: 'image.png', size: 4 }
 }
 
 vi.mock('@/services/traversal.service', () => ({
@@ -52,7 +61,28 @@ vi.mock('@/services/traversal.service', () => ({
 }))
 
 vi.mock('@/services/fsAccess.service', () => ({
-  resolveFileHandle: vi.fn(),
+  resolveFileHandle: vi.fn(async (_handle: FileSystemDirectoryHandle, path: string) => {
+    // Create a mock file handle
+    const mockFile = {
+      async getFile() {
+        // Return content based on file path
+        const contentMap: Record<string, string> = {
+          'test.ts': 'function test() { return 42; }',
+          'src/example.ts': 'interface Example { value: number; }',
+          'data.json': '{"key": "value"}',
+          'test.txt': 'Name: John, Age: 30\nCity: NYC',
+          'src/data.txt': 'Line 1\nLine 2\nLine 3',
+          'large.txt': 'x'.repeat(300000),
+        }
+        return {
+          async text() {
+            return contentMap[path] || 'default content'
+          },
+        } as File
+      },
+    }
+    return mockFile as unknown as FileSystemFileHandle
+  }),
 }))
 
 describe('batch_edit tool', () => {
@@ -66,7 +96,7 @@ describe('batch_edit tool', () => {
     // Default mock implementations
     mockReadFile.mockResolvedValue({
       content: 'function oldName() {\n  return "hello";\n}',
-      size: 100,
+      metadata: { size: 100, mtime: Date.now() },
     })
     mockWriteFile.mockResolvedValue(undefined)
   })
@@ -128,7 +158,7 @@ describe('batch_edit tool', () => {
     it('should handle files without matches', async () => {
       mockReadFile.mockResolvedValue({
         content: 'function somethingElse() {}',
-        size: 50,
+        metadata: { size: 50, mtime: Date.now() },
       })
 
       const args = {
@@ -150,7 +180,7 @@ describe('batch_edit tool', () => {
     it('should support regex patterns', async () => {
       mockReadFile.mockResolvedValue({
         content: 'function test123() { return 456; }',
-        size: 100,
+        metadata: { size: 100, mtime: Date.now() },
       })
 
       const args = {
@@ -185,7 +215,7 @@ describe('batch_edit tool', () => {
     it('should use capture groups in replacement', async () => {
       mockReadFile.mockResolvedValue({
         content: 'Name: John, Age: 30',
-        size: 50,
+        metadata: { size: 50, mtime: Date.now() },
       })
 
       const args = {
@@ -237,7 +267,7 @@ describe('batch_edit tool', () => {
     it('should handle binary files', async () => {
       mockReadFile.mockResolvedValue({
         content: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-        size: 4,
+        metadata: { size: 4, mtime: Date.now() },
       })
 
       const args = {
@@ -395,7 +425,7 @@ describe('file_batch_read tool', () => {
     }
     mockReadFile.mockResolvedValue({
       content: 'file content',
-      size: 100,
+      metadata: { size: 100, mtime: Date.now() },
     })
   })
 
@@ -433,7 +463,7 @@ describe('file_batch_read tool', () => {
     it('should include file size information', async () => {
       mockReadFile.mockResolvedValue({
         content: 'test content',
-        size: 256,
+        metadata: { size: 256, mtime: Date.now() },
       })
 
       const args = {
@@ -450,7 +480,7 @@ describe('file_batch_read tool', () => {
     it('should format total size', async () => {
       mockReadFile.mockResolvedValue({
         content: 'x'.repeat(2048),
-        size: 2048,
+        metadata: { size: 2048, mtime: Date.now() },
       })
 
       const args = {
@@ -477,7 +507,7 @@ describe('file_batch_read tool', () => {
     it('should enforce file size limit', async () => {
       mockReadFile.mockResolvedValue({
         content: 'x'.repeat(300000),
-        size: 300000,
+        metadata: { size: 300000, mtime: Date.now() },
       })
 
       const args = {
@@ -532,7 +562,7 @@ describe('file_batch_read tool', () => {
     it('should handle binary files', async () => {
       mockReadFile.mockResolvedValue({
         content: new Uint8Array([0x00, 0x01, 0x02]),
-        size: 3,
+        metadata: { size: 3, mtime: Date.now() },
       })
 
       const args = {
@@ -555,7 +585,7 @@ describe('tool integration', () => {
 
     mockReadFile.mockResolvedValue({
       content: 'test content',
-      size: 100,
+      metadata: { size: 100, mtime: Date.now() },
     })
 
     const batchEditPromise = batchEditExecutor(

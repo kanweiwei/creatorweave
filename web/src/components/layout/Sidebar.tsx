@@ -91,7 +91,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(260)
   const [resourceTab, setResourceTab] = useState<ResourceTab>('files')
-  const [conversationRatio, setConversationRatio] = useState(loadConversationRatio)
+  const [conversationRatio, _setConversationRatio] = useState(loadConversationRatio)
 
   // Drag sidebar width (horizontal)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -163,7 +163,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
 
         // Constrain to min/max values
         newRatio = Math.max(MIN_CONVERSATION_RATIO, Math.min(MAX_CONVERSATION_RATIO, newRatio))
-        setConversationRatio(newRatio)
+        _setConversationRatio(newRatio)
       }
 
       const handleUp = () => {
