@@ -41,6 +41,15 @@ import {
   query_excel_executor,
 } from './excel-integration.tool'
 
+import {
+  generate_chart,
+  generate_chart_executor,
+  export_visualization,
+  export_visualization_executor,
+  data_summary,
+  data_summary_executor,
+} from './data-visualization.tool'
+
 // ============================================================================
 // User Persona Types
 // ============================================================================
@@ -208,6 +217,44 @@ export const NEW_TOOL_REGISTRY: Record<
       complexity: 'intermediate',
     },
   },
+
+  // ==================== Data Visualization ====================
+  generate_chart: {
+    definition: generate_chart,
+    executor: generate_chart_executor,
+    metadata: {
+      name: 'generate_chart',
+      description: 'Generate charts (bar, line, pie, scatter, histogram) from data',
+      personas: ['data-analyst', 'student', 'office-worker'],
+      category: 'visualization',
+      tags: ['chart', 'visualization', 'graph'],
+      complexity: 'beginner',
+    },
+  },
+  export_visualization: {
+    definition: export_visualization,
+    executor: export_visualization_executor,
+    metadata: {
+      name: 'export_visualization',
+      description: 'Export visualizations as PNG, SVG, or data as CSV',
+      personas: ['data-analyst', 'office-worker'],
+      category: 'visualization',
+      tags: ['export', 'visualization', 'download'],
+      complexity: 'beginner',
+    },
+  },
+  data_summary: {
+    definition: data_summary,
+    executor: data_summary_executor,
+    metadata: {
+      name: 'data_summary',
+      description: 'Generate data summary with statistics and distributions',
+      personas: ['data-analyst', 'student'],
+      category: 'visualization',
+      tags: ['statistics', 'summary', 'distribution'],
+      complexity: 'beginner',
+    },
+  },
 }
 
 // ============================================================================
@@ -302,6 +349,9 @@ export const PERSONA_TOOL_RECOMMENDATIONS: Record<UserPersona, string[]> = {
     // New tools
     'read_excel',
     'analyze_excel',
+    'generate_chart',
+    'export_visualization',
+    'data_summary',
     't_test',
     'correlation',
     'anova',
