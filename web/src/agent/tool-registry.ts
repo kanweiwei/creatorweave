@@ -28,6 +28,24 @@ import {
   goToDefinitionExecutor,
 } from './tools/code-intelligence.tool'
 import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm-bridge.tool'
+import {
+  batchEditDefinition,
+  batchEditExecutor,
+  advancedSearchDefinition,
+  advancedSearchExecutor,
+  fileBatchReadDefinition,
+  fileBatchReadExecutor,
+} from './tools/batch-operations.tool'
+import {
+  analyzeDataDefinition,
+  analyzeDataExecutor,
+  generateChartDefinition,
+  generateChartExecutor,
+  filterDataDefinition,
+  filterDataExecutor,
+  aggregateDataDefinition,
+  aggregateDataExecutor,
+} from './tools/data-analysis.tool'
 
 // Import skill tools
 import {
@@ -126,6 +144,15 @@ export class ToolRegistry {
     this.register(extractSymbolsDefinition, extractSymbolsExecutor)
     this.register(findReferencesDefinition, findReferencesExecutor)
     this.register(goToDefinitionDefinition, goToDefinitionExecutor)
+    // Batch operations tools
+    this.register(batchEditDefinition, batchEditExecutor)
+    this.register(advancedSearchDefinition, advancedSearchExecutor)
+    this.register(fileBatchReadDefinition, fileBatchReadExecutor)
+    // Data analysis tools
+    this.register(analyzeDataDefinition, analyzeDataExecutor)
+    this.register(generateChartDefinition, generateChartExecutor)
+    this.register(filterDataDefinition, filterDataExecutor)
+    this.register(aggregateDataDefinition, aggregateDataExecutor)
   }
 
   /** Register a WASM plugin as an Agent tool */

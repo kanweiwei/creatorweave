@@ -6,26 +6,19 @@
  * - 数据表格（带排序、筛选）
  * - 简单统计图表（柱状图、折线图、饼图）
  * - 图表导出功能
+ * - Chart.js 集成
  */
 
-import { useState, useMemo } from 'react'
-import {
-  X,
-  Download,
-  Maximize2,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  BarChart3,
-  LineChart,
-  PieChart,
-} from 'lucide-react'
+import { useState, useMemo, useRef } from 'react'
+import { X, Download, Maximize2, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react'
+import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js/auto'
+import { Chart } from 'react-chartjs-2'
 
 //=============================================================================
 // Types
 //=============================================================================
 
-export type VisualizationType = 'image' | 'table' | 'bar' | 'line' | 'pie' | 'stats'
+export type VisualizationType = 'image' | 'table' | 'bar' | 'line' | 'pie' | 'scatter' | 'stats'
 
 export interface VisualizationData {
   type: VisualizationType
@@ -38,6 +31,12 @@ export interface VisualizationData {
   tableColumns?: string[]
   // Chart data
   chartData?: ChartDataPoint[] | Record<string, unknown>[]
+  // Chart options
+  chartOptions?: {
+    xAxis?: string
+    yAxis?: string
+    colorBy?: string
+  }
   // Stats
   stats?: Record<string, number>
 }
@@ -46,6 +45,8 @@ interface ChartDataPoint {
   label: string
   value: number
   category?: string
+  x?: number
+  y?: number
 }
 
 interface DataVisualizationProps {
@@ -239,8 +240,9 @@ function TableViewer({
   )
 }
 
-// Simple Bar Chart
-function BarChart({ data }: { data: ChartDataPoint[] }) {
+// Simple Bar Chart (fallback)
+// @ts-expect-error - reserved for future use as fallback chart
+function _SimpleBarChart({ data }: { data: ChartDataPoint[] }) {
   const maxValue = Math.max(...data.map((d) => d.value), 1)
 
   return (
@@ -262,6 +264,260 @@ function BarChart({ data }: { data: ChartDataPoint[] }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Chart.js Bar Chart
+function ChartBarChart({ data }: { data: ChartDataPoint[] }) {
+  const chartRef = useRef<ChartJS<'bar'>>(null)
+
+  const chartData: ChartData<'bar'> = {
+    labels: data.map((d) => d.label),
+    datasets: [
+      {
+        label: 'Value',
+        data: data.map((d) => d.value),
+        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+        borderColor: 'rgb(59, 130, 246)',
+        borderWidth: 1,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => `${context.parsed.y}: ${context.label}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+      },
+    },
+  }
+
+  const handleExport = () => {
+    const chart = chartRef.current
+    if (chart) {
+      const url = chart.toBase64Image()
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'bar-chart.png'
+      a.click()
+    }
+  }
+
+  return (
+    <div className="flex h-96 w-full flex-col gap-4">
+      <div className="flex-1">
+        <Chart ref={chartRef} type="bar" data={chartData} options={options} />
+      </div>
+      <button
+        onClick={handleExport}
+        className="flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+      >
+        <Download className="h-4 w-4" />
+        Export Chart
+      </button>
+    </div>
+  )
+}
+
+// Chart.js Line Chart
+function ChartLineChart({ data }: { data: ChartDataPoint[] }) {
+  const chartRef = useRef<ChartJS<'line'>>(null)
+
+  const chartData: ChartData<'line'> = {
+    labels: data.map((d) => d.label),
+    datasets: [
+      {
+        label: 'Value',
+        data: data.map((d) => d.value),
+        borderColor: 'rgb(59, 130, 246)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+      },
+    },
+  }
+
+  const handleExport = () => {
+    const chart = chartRef.current
+    if (chart) {
+      const url = chart.toBase64Image()
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'line-chart.png'
+      a.click()
+    }
+  }
+
+  return (
+    <div className="flex h-96 w-full flex-col gap-4">
+      <div className="flex-1">
+        <Chart ref={chartRef} type="line" data={chartData} options={options} />
+      </div>
+      <button
+        onClick={handleExport}
+        className="flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+      >
+        <Download className="h-4 w-4" />
+        Export Chart
+      </button>
+    </div>
+  )
+}
+
+// Chart.js Pie Chart
+function ChartPieChart({ data }: { data: ChartDataPoint[] }) {
+  const chartRef = useRef<ChartJS<'pie'>>(null)
+
+  const colors = [
+    'rgba(59, 130, 246, 0.7)',
+    'rgba(16, 185, 129, 0.7)',
+    'rgba(245, 158, 11, 0.7)',
+    'rgba(239, 68, 68, 0.7)',
+    'rgba(139, 92, 246, 0.7)',
+    'rgba(236, 72, 153, 0.7)',
+    'rgba(14, 165, 233, 0.7)',
+    'rgba(168, 85, 247, 0.7)',
+  ]
+
+  const borderColors = colors.map((c) => c.replace('0.7', '1'))
+
+  const chartData: ChartData<'pie'> = {
+    labels: data.map((d) => d.label),
+    datasets: [
+      {
+        data: data.map((d) => d.value),
+        backgroundColor: colors.slice(0, data.length),
+        borderColor: borderColors.slice(0, data.length),
+        borderWidth: 1,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'pie'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right' as const,
+      },
+    },
+  }
+
+  const handleExport = () => {
+    const chart = chartRef.current
+    if (chart) {
+      const url = chart.toBase64Image()
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'pie-chart.png'
+      a.click()
+    }
+  }
+
+  return (
+    <div className="flex h-96 w-full flex-col gap-4">
+      <div className="flex-1">
+        <Chart ref={chartRef} type="pie" data={chartData} options={options} />
+      </div>
+      <button
+        onClick={handleExport}
+        className="flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+      >
+        <Download className="h-4 w-4" />
+        Export Chart
+      </button>
+    </div>
+  )
+}
+
+// Chart.js Scatter Chart
+function ChartScatterChart({ data }: { data: ChartDataPoint[] }) {
+  const chartRef = useRef<ChartJS<'scatter'>>(null)
+
+  const scatterData = data
+    .filter((d) => d.x !== undefined && d.y !== undefined)
+    .map((d) => ({ x: d.x!, y: d.y! }))
+
+  const chartData: ChartData<'scatter'> = {
+    datasets: [
+      {
+        label: 'Data Points',
+        data: scatterData,
+        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+        borderColor: 'rgb(59, 130, 246)',
+        borderWidth: 1,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'scatter'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+    },
+    scales: {
+      x: {
+        type: 'linear' as const,
+        position: 'bottom' as const,
+      },
+    },
+  }
+
+  const handleExport = () => {
+    const chart = chartRef.current
+    if (chart) {
+      const url = chart.toBase64Image()
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'scatter-chart.png'
+      a.click()
+    }
+  }
+
+  return (
+    <div className="flex h-96 w-full flex-col gap-4">
+      <div className="flex-1">
+        <Chart ref={chartRef} type="scatter" data={chartData} options={options} />
+      </div>
+      <button
+        onClick={handleExport}
+        className="flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+      >
+        <Download className="h-4 w-4" />
+        Export Chart
+      </button>
     </div>
   )
 }
@@ -306,30 +562,19 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
 
       case 'bar':
         if (!data.chartData) return null
-        return <BarChart data={data.chartData as ChartDataPoint[]} />
+        return <ChartBarChart data={data.chartData as ChartDataPoint[]} />
 
       case 'line':
         if (!data.chartData) return null
-        // For now, use bar chart as fallback
-        return (
-          <div className="py-8 text-center text-neutral-500">
-            <LineChart className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
-            <p>Line chart visualization coming soon</p>
-            <p className="mt-2 text-sm">Currently displaying as bar chart</p>
-            <BarChart data={data.chartData as ChartDataPoint[]} />
-          </div>
-        )
+        return <ChartLineChart data={data.chartData as ChartDataPoint[]} />
 
       case 'pie':
         if (!data.chartData) return null
-        return (
-          <div className="py-8 text-center text-neutral-500">
-            <PieChart className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
-            <p>Pie chart visualization coming soon</p>
-            <p className="mt-2 text-sm">Currently displaying as bar chart</p>
-            <BarChart data={data.chartData as ChartDataPoint[]} />
-          </div>
-        )
+        return <ChartPieChart data={data.chartData as ChartDataPoint[]} />
+
+      case 'scatter':
+        if (!data.chartData) return null
+        return <ChartScatterChart data={data.chartData as ChartDataPoint[]} />
 
       case 'stats':
         if (!data.stats) return null
