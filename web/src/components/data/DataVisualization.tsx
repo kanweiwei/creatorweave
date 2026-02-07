@@ -16,24 +16,16 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
-  Filter,
   BarChart3,
   LineChart,
   PieChart,
-  Table,
 } from 'lucide-react'
 
 //=============================================================================
 // Types
 //=============================================================================
 
-export type VisualizationType =
-  | 'image'
-  | 'table'
-  | 'bar'
-  | 'line'
-  | 'pie'
-  | 'stats'
+export type VisualizationType = 'image' | 'table' | 'bar' | 'line' | 'pie' | 'stats'
 
 export interface VisualizationData {
   type: VisualizationType
@@ -80,13 +72,13 @@ function ImageViewer({
     <div className="flex flex-col items-center gap-4">
       <div className="max-w-full overflow-auto rounded-lg border border-neutral-200 bg-white p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={filename || 'Chart'} className="max-w-full h-auto" />
+        <img src={src} alt={filename || 'Chart'} className="h-auto max-w-full" />
       </div>
       {filename && <p className="text-sm text-neutral-500">{filename}</p>}
       {onExport && (
         <button
           onClick={onExport}
-          className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
         >
           <Download className="h-4 w-4" />
           Export Image
@@ -112,7 +104,8 @@ function TableViewer({
   const normalizedData = useMemo(() => {
     if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
       // Convert string[][] to object[]
-      const cols = columns || Object.keys(data[0] as Record<string, unknown>)
+      const firstRow = data[0] as unknown[]
+      const cols = columns || (Array.isArray(firstRow) ? firstRow.map((_, i) => `col${i}`) : [])
       return (data as string[][]).map((row) => {
         const obj: Record<string, unknown> = {}
         row.forEach((val, idx) => {
@@ -141,7 +134,11 @@ function TableViewer({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       result = result.filter((row) =>
-        tableColumns.some((col) => String(row[col] || '').toLowerCase().includes(query))
+        tableColumns.some((col) =>
+          String(row[col] || '')
+            .toLowerCase()
+            .includes(query)
+        )
       )
     }
 
@@ -155,9 +152,7 @@ function TableViewer({
         }
         const aStr = String(aVal || '')
         const bStr = String(bVal || '')
-        return sortDirection === 'asc'
-          ? aStr.localeCompare(bStr)
-          : bStr.localeCompare(aStr)
+        return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr)
       })
     }
 
@@ -188,7 +183,7 @@ function TableViewer({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search table..."
-            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-10 pr-4 text-sm focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100"
+            className="focus:border-primary-300 w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100"
           />
         </div>
         <span className="text-sm text-neutral-500">
@@ -198,15 +193,15 @@ function TableViewer({
       </div>
 
       {/* Table */}
-      <div className="overflow-auto rounded-lg border border-neutral-200 max-h-[400px]">
+      <div className="max-h-[400px] overflow-auto rounded-lg border border-neutral-200">
         <table className="w-full text-sm">
-          <thead className="bg-neutral-50 sticky top-0">
+          <thead className="sticky top-0 bg-neutral-50">
             <tr>
               {tableColumns.map((column) => (
                 <th
                   key={column}
                   onClick={() => handleSort(column)}
-                  className="px-4 py-3 text-left font-medium text-neutral-700 cursor-pointer hover:bg-neutral-100 transition-colors select-none"
+                  className="cursor-pointer select-none px-4 py-3 text-left font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
                 >
                   <div className="flex items-center gap-2">
                     <span>{column}</span>
@@ -228,7 +223,7 @@ function TableViewer({
             {displayData.map((row, idx) => (
               <tr key={idx} className="hover:bg-neutral-50">
                 {tableColumns.map((column) => (
-                  <td key={column} className="px-4 py-3 text-neutral-700 whitespace-nowrap">
+                  <td key={column} className="whitespace-nowrap px-4 py-3 text-neutral-700">
                     {String(row[column] ?? '')}
                   </td>
                 ))}
@@ -250,18 +245,18 @@ function BarChart({ data }: { data: ChartDataPoint[] }) {
 
   return (
     <div className="w-full">
-      <div className="flex items-end gap-2 h-64">
+      <div className="flex h-64 items-end gap-2">
         {data.map((item, idx) => (
           <div
             key={idx}
-            className="flex-1 flex flex-col items-center gap-2 group"
+            className="group flex flex-1 flex-col items-center gap-2"
             title={`${item.label}: ${item.value}`}
           >
             <div
-              className="w-full bg-primary-500 rounded-t-sm transition-all group-hover:bg-primary-600"
+              className="w-full rounded-t-sm bg-primary-500 transition-all group-hover:bg-primary-600"
               style={{ height: `${(item.value / maxValue) * 100}%` }}
             />
-            <span className="text-xs text-neutral-600 truncate w-full text-center">
+            <span className="w-full truncate text-center text-xs text-neutral-600">
               {item.label}
             </span>
           </div>
@@ -274,14 +269,14 @@ function BarChart({ data }: { data: ChartDataPoint[] }) {
 // Simple Stats Display
 function StatsViewer({ stats }: { stats: Record<string, number> }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
       {Object.entries(stats).map(([key, value]) => (
         <div
           key={key}
           className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-center"
         >
-          <p className="text-sm font-medium text-neutral-600 capitalize">{key}</p>
-          <p className="text-2xl font-semibold text-primary-600 mt-1">
+          <p className="text-sm font-medium capitalize text-neutral-600">{key}</p>
+          <p className="mt-1 text-2xl font-semibold text-primary-600">
             {typeof value === 'number' ? value.toLocaleString() : value}
           </p>
         </div>
@@ -301,7 +296,9 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
     switch (data.type) {
       case 'image':
         if (!data.imageData) return null
-        return <ImageViewer src={data.imageData} filename={data.imageFilename} onExport={onExport} />
+        return (
+          <ImageViewer src={data.imageData} filename={data.imageFilename} onExport={onExport} />
+        )
 
       case 'table':
         if (!data.tableData) return null
@@ -315,10 +312,10 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
         if (!data.chartData) return null
         // For now, use bar chart as fallback
         return (
-          <div className="text-center text-neutral-500 py-8">
-            <LineChart className="h-12 w-12 mx-auto mb-4 text-neutral-300" />
+          <div className="py-8 text-center text-neutral-500">
+            <LineChart className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
             <p>Line chart visualization coming soon</p>
-            <p className="text-sm mt-2">Currently displaying as bar chart</p>
+            <p className="mt-2 text-sm">Currently displaying as bar chart</p>
             <BarChart data={data.chartData as ChartDataPoint[]} />
           </div>
         )
@@ -326,10 +323,10 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
       case 'pie':
         if (!data.chartData) return null
         return (
-          <div className="text-center text-neutral-500 py-8">
-            <PieChart className="h-12 w-12 mx-auto mb-4 text-neutral-300" />
+          <div className="py-8 text-center text-neutral-500">
+            <PieChart className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
             <p>Pie chart visualization coming soon</p>
-            <p className="text-sm mt-2">Currently displaying as bar chart</p>
+            <p className="mt-2 text-sm">Currently displaying as bar chart</p>
             <BarChart data={data.chartData as ChartDataPoint[]} />
           </div>
         )
@@ -340,8 +337,8 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
 
       default:
         return (
-          <div className="text-center text-neutral-500 py-8">
-            <BarChart3 className="h-12 w-12 mx-auto mb-4 text-neutral-300" />
+          <div className="py-8 text-center text-neutral-500">
+            <BarChart3 className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
             <p>Unsupported visualization type</p>
           </div>
         )
@@ -350,24 +347,22 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
 
   return (
     <div
-      className={`bg-white rounded-2xl shadow-xl ${
+      className={`rounded-2xl bg-white shadow-xl ${
         viewMode === 'fullscreen' ? 'fixed inset-4 z-50 flex flex-col' : ''
       }`}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
         <div>
-          <h3 className="font-semibold text-neutral-900">
-            {data.title || 'Data Visualization'}
-          </h3>
-          <p className="text-sm text-neutral-500 mt-0.5 capitalize">
+          <h3 className="font-semibold text-neutral-900">{data.title || 'Data Visualization'}</h3>
+          <p className="mt-0.5 text-sm capitalize text-neutral-500">
             {data.type} {data.type === 'image' && data.imageFilename && `• ${data.imageFilename}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode(viewMode === 'embedded' ? 'fullscreen' : 'embedded')}
-            className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
+            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
             title={viewMode === 'embedded' ? 'Fullscreen' : 'Exit fullscreen'}
           >
             <Maximize2 className="h-5 w-5" />
@@ -375,7 +370,7 @@ export function DataVisualization({ data, onClose, onExport }: DataVisualization
           {onClose && (
             <button
               onClick={onClose}
-              className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
+              className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
             >
               <X className="h-5 w-5" />
             </button>

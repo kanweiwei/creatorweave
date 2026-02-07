@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Info,
   Code,
-  Database,
   FileSearch,
   Terminal,
   Zap,
@@ -25,6 +24,8 @@ import { getToolRegistry } from '@/agent/tool-registry'
 // Types
 //=============================================================================
 
+// Note: ToolCategory type is reserved for future category-based filtering
+// @ts-expect-error - reserved for future category-based filtering
 interface ToolCategory {
   id: string
   name: string
@@ -99,7 +100,8 @@ interface ToolsPanelProps {
 //=============================================================================
 
 export function ToolsPanel({ isOpen, onClose }: ToolsPanelProps) {
-  const t = useT()
+  // @ts-expect-error - reserved for future i18n implementation
+  const _t = useT()
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['discovery']))
   const [selectedTool, setSelectedTool] = useState<ToolInfo | null>(null)

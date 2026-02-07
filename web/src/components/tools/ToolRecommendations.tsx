@@ -110,7 +110,7 @@ export function ToolRecommendations({
 
       {/* Recommendations */}
       <div className="divide-y divide-amber-200/50 border-t border-amber-200/50">
-        {recommendations.map((rec, index) => (
+        {recommendations.map((rec, _index) => (
           <div key={rec.toolName} className="px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               {/* Tool Info */}

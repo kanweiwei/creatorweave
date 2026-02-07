@@ -68,7 +68,7 @@ export class ToolRegistry {
       return await withAutoRetry(async () => entry.executor(args, context))
     } catch (error) {
       // Format error for user consumption
-      const userMessage = formatErrorForUser(error)
+      const userMessage = formatErrorForUser(error as string | Error)
       return JSON.stringify({ error: userMessage })
     }
   }
@@ -87,7 +87,7 @@ export class ToolRegistry {
     try {
       return await entry.executor(args, context)
     } catch (error) {
-      const userMessage = formatErrorForUser(error)
+      const userMessage = formatErrorForUser(error as string | Error)
       return JSON.stringify({ error: userMessage })
     }
   }

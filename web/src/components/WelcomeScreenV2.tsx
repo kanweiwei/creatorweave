@@ -10,7 +10,17 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Send, FolderOpen, Sparkles, ChevronRight, Code, BarChart3, BookOpen, FileText, Upload } from 'lucide-react'
+import {
+  Send,
+  FolderOpen,
+  Sparkles,
+  ChevronRight,
+  Code,
+  BarChart3,
+  BookOpen,
+  FileText,
+  Upload,
+} from 'lucide-react'
 import { useSettingsStore } from '@/store/settings.store'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
@@ -98,9 +108,21 @@ interface QuickAction {
   icon: React.ElementType
 }
 
+// Note: QUICK_ACTIONS is reserved for future quick action implementations
+// @ts-expect-error - reserved for future use
 const QUICK_ACTIONS: QuickAction[] = [
-  { id: 'folder', text: 'Open Project Folder', textKey: 'folderSelector.openFolder', icon: FolderOpen },
-  { id: 'capabilities', text: 'View Capabilities', textKey: 'welcome.viewCapabilities', icon: Sparkles },
+  {
+    id: 'folder',
+    text: 'Open Project Folder',
+    textKey: 'folderSelector.openFolder',
+    icon: FolderOpen,
+  },
+  {
+    id: 'capabilities',
+    text: 'View Capabilities',
+    textKey: 'welcome.viewCapabilities',
+    icon: Sparkles,
+  },
 ]
 
 //=============================================================================
@@ -172,26 +194,23 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      setIsDragging(false)
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
 
-      const files = e.dataTransfer.files
-      if (files && files.length > 0) {
-        setDraggedFiles(files)
-        // Generate a prompt based on the dropped files
-        const fileNames = Array.from(files)
-          .map((f) => f.name)
-          .slice(0, 3)
-          .join(', ')
-        const moreCount = files.length > 3 ? ` and ${files.length - 3} more` : ''
-        setInput(`I've uploaded: ${fileNames}${moreCount}. Please help me analyze these files.`)
-      }
-    },
-    []
-  )
+    const files = e.dataTransfer.files
+    if (files && files.length > 0) {
+      setDraggedFiles(files)
+      // Generate a prompt based on the dropped files
+      const fileNames = Array.from(files)
+        .map((f) => f.name)
+        .slice(0, 3)
+        .join(', ')
+      const moreCount = files.length > 3 ? ` and ${files.length - 3} more` : ''
+      setInput(`I've uploaded: ${fileNames}${moreCount}. Please help me analyze these files.`)
+    }
+  }, [])
 
   const getFileTypeIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -253,10 +272,12 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
                     : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100'
                 }`}
               >
-                <div className={`mb-2 rounded-lg p-2 ${isSelected ? 'bg-white/50' : 'bg-neutral-200'}`}>
+                <div
+                  className={`mb-2 rounded-lg p-2 ${isSelected ? 'bg-white/50' : 'bg-neutral-200'}`}
+                >
                   <Icon className="h-5 w-5" />
                 </div>
-                <h3 className="mb-1 font-semibold text-sm text-neutral-900">{persona.title}</h3>
+                <h3 className="mb-1 text-sm font-semibold text-neutral-900">{persona.title}</h3>
                 <p className="text-xs text-neutral-500">{persona.description}</p>
               </button>
             )
@@ -273,7 +294,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
                   key={idx}
                   type="button"
                   onClick={() => handleExampleClick(example.text)}
-                  className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                  className="hover:border-primary-300 flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
                 >
                   <span>{example.text}</span>
                   <ChevronRight className="h-3 w-3" />
@@ -287,8 +308,8 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
         <div className="relative mb-6">
           {/* Drag overlay */}
           {isDragging && (
-            <div className="absolute inset-0 -m-2 z-10 rounded-3xl border-2 border-dashed border-primary-400 bg-primary-50/90 flex flex-col items-center justify-center">
-              <Upload className="h-12 w-12 text-primary-500 mb-4" />
+            <div className="border-primary-400 absolute inset-0 z-10 -m-2 flex flex-col items-center justify-center rounded-3xl border-2 border-dashed bg-primary-50/90">
+              <Upload className="mb-4 h-12 w-12 text-primary-500" />
               <p className="text-lg font-medium text-primary-700">Drop files here</p>
               <p className="text-sm text-primary-600">Supports CSV, Excel, PDF, images, and more</p>
             </div>
@@ -300,14 +321,14 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
             onKeyDown={handleKeyDown}
             placeholder={hasApiKey ? t('welcome.placeholder') : t('welcome.placeholderNoKey')}
             rows={3}
-            className="focus:border-primary-300 focus:ring-primary-300 w-full resize-none rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:ring-2 transition-all shadow-sm"
+            className="focus:border-primary-300 focus:ring-primary-300 w-full resize-none rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:ring-2"
             disabled={!hasApiKey}
           />
 
           {/* Dropped files indicator */}
           {draggedFiles && (
-            <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl bg-neutral-100 border border-neutral-200 p-3">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-neutral-200 bg-neutral-100 p-3">
+              <div className="mb-2 flex items-center gap-2">
                 <Upload className="h-4 w-4 text-primary-600" />
                 <span className="text-sm font-medium text-neutral-700">
                   {draggedFiles.length} file{draggedFiles.length > 1 ? 's' : ''} ready
@@ -329,7 +350,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
                       className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-xs text-neutral-600"
                     >
                       <span>{getFileTypeIcon(file.name)}</span>
-                      <span className="truncate max-w-[100px]">{file.name}</span>
+                      <span className="max-w-[100px] truncate">{file.name}</span>
                     </div>
                   ))}
                 {draggedFiles.length > 5 && (
@@ -344,7 +365,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
             type="button"
             onClick={handleSubmit}
             disabled={!input.trim() || !hasApiKey}
-            className="absolute bottom-4 right-4 rounded-xl bg-primary-600 p-2 text-white shadow-sm hover:bg-primary-700 disabled:opacity-30 disabled:hover:bg-primary-600 transition-colors"
+            className="absolute bottom-4 right-4 rounded-xl bg-primary-600 p-2 text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-30 disabled:hover:bg-primary-600"
             title={t('welcome.send')}
           >
             <Send className="h-4 w-4" />
@@ -357,7 +378,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
             <button
               type="button"
               onClick={handleSelectFolder}
-              className="flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-normal text-neutral-600 transition-colors hover:bg-neutral-50 hover:border-neutral-300"
+              className="flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-normal text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-50"
             >
               <FolderOpen className="h-4 w-4" />
               {t('folderSelector.openFolder')}
@@ -367,7 +388,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
             type="button"
             onClick={() => setInput('What can you help me with?')}
             disabled={!hasApiKey}
-            className="flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-normal text-neutral-600 transition-colors hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-50"
+            className="flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-normal text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
             {t('welcome.viewCapabilities') || 'View Capabilities'}

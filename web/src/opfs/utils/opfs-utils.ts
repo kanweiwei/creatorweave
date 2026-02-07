@@ -234,8 +234,8 @@ export async function getDirectorySize(
   let size = 0
   let fileCount = 0
 
-  // @ts-expect-error - values() return type is not accurate in TypeScript
-  const iterator = dirHandle.values()
+  // Use type assertion for browser API compatibility
+  const iterator = (dirHandle as any).values()
 
   for await (const entry of iterator) {
     if (entry.kind === 'file') {

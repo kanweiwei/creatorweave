@@ -9,7 +9,7 @@
  * - 可折叠/展开
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   X,
   Search,
@@ -21,11 +21,14 @@ import {
   Terminal,
   FolderOpen,
   Clock,
+  Sparkles,
+  TrendingUp,
 } from 'lucide-react'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { useSettingsStore } from '@/store/settings.store'
 import { createUserMessage } from '@/agent/message-types'
+import { getIntelligenceCoordinator } from '@/agent/intelligence-coordinator'
 
 //=============================================================================
 // Types
@@ -179,6 +182,7 @@ interface QuickActionsPanelProps {
   isOpen: boolean
   onClose: () => void
   onStartConversation?: (text: string) => void
+  activeTab?: 'actions' | 'smart' | 'upload'
 }
 
 //=============================================================================
@@ -189,17 +193,30 @@ export function QuickActionsPanel({
   isOpen,
   onClose,
   onStartConversation,
+  activeTab: controlledTab,
 }: QuickActionsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<ActionCategory>('all')
   const [recentFiles, setRecentFiles] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<'actions' | 'smart' | 'upload'>(
+    controlledTab || 'actions'
+  )
+  const [projectType, setProjectType] = useState<string | null>(null)
+  const [smartSuggestions, setSmartSuggestions] = useState<
+    Array<{
+      id: string
+      title: string
+      description: string
+      prompt: string
+    }>
+  >([])
 
   const { directoryHandle, setDirectoryHandle } = useAgentStore()
   const { activeConversationId, createNew, setActive, runAgent, updateMessages } =
     useConversationStore()
   const { providerType, modelName, maxTokens } = useSettingsStore()
 
-  // Get recent files from localStorage
+  // Load recent files from localStorage
   useState(() => {
     try {
       const stored = localStorage.getItem('recent-files')
@@ -210,6 +227,47 @@ export function QuickActionsPanel({
       // Ignore
     }
   })
+
+  // Load project type and smart suggestions
+  useEffect(() => {
+    const loadSmartData = async () => {
+      if (!directoryHandle) return
+
+      try {
+        const coordinator = getIntelligenceCoordinator()
+
+        // Detect project type
+        const detected = await coordinator.quickDetectProjectType(directoryHandle)
+        if (detected) {
+          setProjectType(detected.type)
+        }
+
+        // Get tool recommendations
+        const allTools = coordinator.getAllTools()
+        const suggestions = []
+
+        // Get top 3 tools across all categories
+        for (const [_category, tools] of Object.entries(allTools)) {
+          for (const tool of tools.slice(0, 1)) {
+            suggestions.push({
+              id: tool.toolName,
+              title: tool.displayName,
+              description: tool.reason,
+              prompt: `Help me use the ${tool.displayName} tool`,
+            })
+            if (suggestions.length >= 5) break
+          }
+          if (suggestions.length >= 5) break
+        }
+
+        setSmartSuggestions(suggestions)
+      } catch (error) {
+        console.warn('[QuickActionsPanel] Failed to load smart data:', error)
+      }
+    }
+
+    loadSmartData()
+  }, [directoryHandle])
 
   // Filter actions by category and search
   const filteredActions = QUICK_ACTIONS.filter((action) => {
@@ -300,105 +358,274 @@ export function QuickActionsPanel({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="border-b border-neutral-200 px-6 py-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search actions..."
-              className="focus:border-primary-300 w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
-          </div>
-        </div>
-
-        {/* Category Tabs */}
-        <div className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-4 py-2">
-          {CATEGORIES.map((cat) => {
-            const Icon = cat.icon
-            const isActive = selectedCategory === cat.id
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id as ActionCategory)}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-neutral-600 hover:bg-neutral-100'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{cat.name}</span>
-              </button>
-            )
-          })}
+        {/* Tab Navigation */}
+        <div className="flex border-b border-neutral-200 px-2">
+          <button
+            onClick={() => setActiveTab('actions')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'actions'
+                ? 'border-b-2 border-primary-500 text-primary-600'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            <Zap className="h-4 w-4" />
+            Actions
+          </button>
+          <button
+            onClick={() => setActiveTab('smart')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'smart'
+                ? 'border-b-2 border-primary-500 text-primary-600'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            Smart
+          </button>
+          <button
+            onClick={() => setActiveTab('upload')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'upload'
+                ? 'border-b-2 border-primary-500 text-primary-600'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            <FolderOpen className="h-4 w-4" />
+            Upload
+          </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* Quick Actions */}
-          <div className="mb-6">
-            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">
-              Actions
-            </h3>
-            <div className="space-y-2">
-              {filteredActions.map((action) => {
-                const Icon = action.icon
-                return (
-                  <button
-                    key={action.id}
-                    onClick={() => handleActionClick(action)}
-                    className="hover:border-primary-300 flex w-full items-start gap-3 rounded-xl border border-neutral-200 p-3 text-left transition-colors hover:bg-primary-50/50"
-                  >
-                    <div className="mt-0.5 rounded-lg bg-primary-50 p-2">
-                      <Icon className="h-4 w-4 text-primary-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-neutral-900">{action.label}</p>
-                      <p className="mt-0.5 text-xs text-neutral-500">{action.description}</p>
-                    </div>
-                    <ChevronRight className="mt-1 h-4 w-4 text-neutral-400" />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Recent Files */}
-          {recentFiles.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Recent Files
-              </h3>
-              <div className="space-y-1">
-                {recentFiles.map((file, idx) => (
-                  <button
-                    key={idx}
-                    className="group flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-neutral-100"
-                  >
-                    <Clock className="h-4 w-4 text-neutral-400 group-hover:text-neutral-600" />
-                    <span className="truncate text-sm text-neutral-700">{file}</span>
-                  </button>
-                ))}
+        <div className="flex-1 overflow-y-auto">
+          {/* Actions Tab */}
+          {activeTab === 'actions' && (
+            <div className="p-4">
+              {/* Search */}
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search actions..."
+                    className="focus:border-primary-300 w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
               </div>
+
+              {/* Category Tabs */}
+              <div className="mb-4 flex gap-1 overflow-x-auto">
+                {CATEGORIES.map((cat) => {
+                  const Icon = cat.icon
+                  const isActive = selectedCategory === cat.id
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id as ActionCategory)}
+                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-primary-100 text-primary-700'
+                          : 'text-neutral-600 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{cat.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Quick Actions List */}
+              <div className="space-y-2">
+                {filteredActions.map((action) => {
+                  const Icon = action.icon
+                  return (
+                    <button
+                      key={action.id}
+                      onClick={() => handleActionClick(action)}
+                      className="hover:border-primary-300 flex w-full items-start gap-3 rounded-xl border border-neutral-200 p-3 text-left transition-colors hover:bg-primary-50/50"
+                    >
+                      <div className="mt-0.5 rounded-lg bg-primary-50 p-2">
+                        <Icon className="h-4 w-4 text-primary-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-neutral-900">{action.label}</p>
+                        <p className="mt-0.5 text-xs text-neutral-500">{action.description}</p>
+                      </div>
+                      <ChevronRight className="mt-1 h-4 w-4 text-neutral-400" />
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Recent Files */}
+              {recentFiles.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                    Recent Files
+                  </h3>
+                  <div className="space-y-1">
+                    {recentFiles.map((file, idx) => (
+                      <button
+                        key={idx}
+                        className="group flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-neutral-100"
+                      >
+                        <Clock className="h-4 w-4 text-neutral-400 group-hover:text-neutral-600" />
+                        <span className="truncate text-sm text-neutral-700">{file}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* No Directory Warning */}
-          {!directoryHandle && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="mb-3 text-sm text-amber-800">
-                No folder selected. Some actions may not work properly.
-              </p>
-              <button
-                onClick={handleSelectFolder}
-                className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-              >
-                <FolderOpen className="h-4 w-4" />
-                Select Folder
-              </button>
+          {/* Smart Tab */}
+          {activeTab === 'smart' && (
+            <div className="p-4">
+              {/* Project Type Badge */}
+              {projectType && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2">
+                  <Sparkles className="h-4 w-4 text-primary-600" />
+                  <span className="text-primary-900 text-sm font-medium">
+                    {projectType.charAt(0).toUpperCase() + projectType.slice(1)} Project Detected
+                  </span>
+                </div>
+              )}
+
+              {/* Smart Suggestions */}
+              <div className="mb-2">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-neutral-700">Suggested for You</h3>
+                  <button
+                    onClick={() => {
+                      // Refresh suggestions
+                      const coordinator = getIntelligenceCoordinator()
+                      const allTools = coordinator.getAllTools()
+                      const suggestions = []
+                      for (const [_category, tools] of Object.entries(allTools)) {
+                        for (const tool of tools.slice(0, 1)) {
+                          suggestions.push({
+                            id: tool.toolName,
+                            title: tool.displayName,
+                            description: tool.reason,
+                            prompt: `Help me use the ${tool.displayName} tool`,
+                          })
+                          if (suggestions.length >= 5) break
+                        }
+                        if (suggestions.length >= 5) break
+                      }
+                      setSmartSuggestions(suggestions)
+                    }}
+                    className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    title="Refresh suggestions"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {smartSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.id}
+                      onClick={() => {
+                        if (activeConversationId) {
+                          const userMsg = createUserMessage(suggestion.prompt)
+                          const currentConv = useConversationStore
+                            .getState()
+                            .conversations.find((c) => c.id === activeConversationId)
+                          const currentMessages = currentConv
+                            ? [...currentConv.messages, userMsg]
+                            : [userMsg]
+                          updateMessages(activeConversationId, currentMessages)
+                          runAgent(
+                            activeConversationId,
+                            providerType,
+                            modelName,
+                            maxTokens,
+                            directoryHandle
+                          )
+                        } else if (onStartConversation) {
+                          onStartConversation(suggestion.prompt)
+                        }
+                        onClose()
+                      }}
+                      className="hover:border-primary-300 flex w-full items-start gap-3 rounded-xl border border-neutral-200 p-3 text-left transition-colors hover:bg-primary-50/50"
+                    >
+                      <div className="mt-0.5 rounded-lg bg-gradient-to-br from-primary-50 to-purple-50 p-2">
+                        <Sparkles className="h-4 w-4 text-primary-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-neutral-900">{suggestion.title}</p>
+                        <p className="mt-0.5 text-xs text-neutral-500">{suggestion.description}</p>
+                      </div>
+                      <ChevronRight className="mt-1 h-4 w-4 text-neutral-400" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Project-Specific Suggestions */}
+              {projectType === 'typescript' && (
+                <div className="mt-6">
+                  <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                    TypeScript Actions
+                  </h3>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        const prompt =
+                          'Analyze the TypeScript code structure, find all types, interfaces, and their relationships'
+                        if (onStartConversation) onStartConversation(prompt)
+                        onClose()
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors hover:bg-neutral-100"
+                    >
+                      <Code className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-neutral-700">Analyze Types & Interfaces</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const prompt = 'Find all React components and their props'
+                        if (onStartConversation) onStartConversation(prompt)
+                        onClose()
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors hover:bg-neutral-100"
+                    >
+                      <Code className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-neutral-700">Find React Components</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Upload Tab */}
+          {activeTab === 'upload' && (
+            <div className="p-4">
+              {/* Folder Selection */}
+              <div className="mb-4 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50 p-6 text-center">
+                <FolderOpen className="mx-auto mb-3 h-10 w-10 text-neutral-400" />
+                <p className="mb-2 text-sm font-medium text-neutral-900">Select Project Folder</p>
+                <p className="mb-4 text-xs text-neutral-500">
+                  Choose a folder to analyze its contents
+                </p>
+                <button
+                  onClick={handleSelectFolder}
+                  className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+                >
+                  Browse Folders
+                </button>
+              </div>
+
+              {/* Current Folder Info */}
+              {directoryHandle && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <p className="mb-1 text-sm font-medium text-green-900">Folder Selected</p>
+                  <p className="text-xs text-green-700">{directoryHandle.name}</p>
+                </div>
+              )}
             </div>
           )}
         </div>

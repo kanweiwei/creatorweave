@@ -30,7 +30,7 @@ import {
 // Phase 2: Intelligence enhancements
 import { getIntelligenceCoordinator } from './intelligence-coordinator'
 // Phase 2 P1: Predictive file loading
-import { triggerPrefetch, clearPrefetchCache } from './prefetch'
+import { triggerPrefetch } from './prefetch'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
@@ -198,7 +198,10 @@ export class AgentLoop {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
 
-    const userMessage = lastUserMsg.content || ''
+    // Extract user message content for potential future use in prefetch prediction
+    // Currently using recentMessages pattern, but individual message may be used for more targeted prediction
+    // Void to avoid unused variable warning
+    void (lastUserMsg.content || '')
 
     // Extract recent messages for context
     const recentMessages: string[] = []
