@@ -19,6 +19,14 @@ import { grepDefinition, grepExecutor } from './tools/grep.tool'
 import { listFilesDefinition, listFilesExecutor } from './tools/list-files.tool'
 import { pythonCodeDefinition, pythonCodeExecutor } from './tools/python.tool'
 import { javascriptCodeDefinition, javascriptCodeExecutor } from './tools/javascript-execution.tool'
+import {
+  extractSymbolsDefinition,
+  extractSymbolsExecutor,
+  findReferencesDefinition,
+  findReferencesExecutor,
+  goToDefinitionDefinition,
+  goToDefinitionExecutor,
+} from './tools/code-intelligence.tool'
 import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm-bridge.tool'
 
 // Import skill tools
@@ -114,6 +122,10 @@ export class ToolRegistry {
     this.register(listFilesDefinition, listFilesExecutor)
     this.register(pythonCodeDefinition, pythonCodeExecutor)
     this.register(javascriptCodeDefinition, javascriptCodeExecutor)
+    // Code intelligence tools
+    this.register(extractSymbolsDefinition, extractSymbolsExecutor)
+    this.register(findReferencesDefinition, findReferencesExecutor)
+    this.register(goToDefinitionDefinition, goToDefinitionExecutor)
   }
 
   /** Register a WASM plugin as an Agent tool */

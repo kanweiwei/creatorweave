@@ -176,6 +176,17 @@ interface ConversationState {
   setSuggestedFollowUp: (conversationId: string, suggestion: string) => void
   clearSuggestedFollowUp: (conversationId: string) => void
   getSuggestedFollowUp: (conversationId: string) => string
+
+  // Thread management actions
+  createThread: (conversationId: string, messageId: string, title?: string) => void
+  mergeThreads: (conversationId: string, sourceThreadId: string, targetThreadId: string) => void
+  deleteThread: (conversationId: string, threadId: string) => void
+  toggleThreadCollapsed: (conversationId: string, threadId: string) => void
+  navigateToNextThread: (conversationId: string) => string | null
+  navigateToPreviousThread: (conversationId: string) => string | null
+  getActiveThreadId: (conversationId: string) => string | null
+  setActiveThread: (conversationId: string, threadId: string) => void
+  forkThread: (conversationId: string, messageId: string, title?: string) => void
 }
 
 export const useConversationStoreSQLite = create<ConversationState>()(
@@ -1066,6 +1077,175 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
     getSuggestedFollowUp: (conversationId: string) => {
       return get().suggestedFollowUps.get(conversationId) || ''
+    },
+
+    // Thread management actions
+    createThread: (conversationId: string, messageId: string, title?: string) => {
+      const { createThread: createThreadUtil } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return
+
+      const message = conv.messages.find((m) => m.id === messageId)
+      if (!message) return
+
+      const thread = createThreadUtil(message, title)
+      const threadId = thread.id
+
+      set((state) => {
+        const c = state.conversations.find((c) => c.id === conversationId)
+        if (!c) return
+
+        // Update message with thread ID
+        const msgIndex = c.messages.findIndex((m) => m.id === messageId)
+        if (msgIndex !== -1) {
+          c.messages[msgIndex] = { ...c.messages[msgIndex], threadId }
+        }
+
+        c.updatedAt = Date.now()
+      })
+
+      const updatedConv = get().conversations.find((c) => c.id === conversationId)
+      if (updatedConv) {
+        persistConversation(updatedConv).catch((error) => {
+          console.error('[conversation.store] Failed to persist thread creation:', error)
+          toast.error('线程创建失败')
+        })
+      }
+    },
+
+    mergeThreads: (conversationId: string, sourceThreadId: string, targetThreadId: string) => {
+      const { mergeThreads: mergeThreadsUtil } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return
+
+      const updatedMessages = mergeThreadsUtil(conv.messages, sourceThreadId, targetThreadId)
+
+      set((state) => {
+        const c = state.conversations.find((c) => c.id === conversationId)
+        if (!c) return
+
+        c.messages = updatedMessages
+        c.updatedAt = Date.now()
+      })
+
+      const updatedConv = get().conversations.find((c) => c.id === conversationId)
+      if (updatedConv) {
+        persistConversation(updatedConv).catch((error) => {
+          console.error('[conversation.store] Failed to persist thread merge:', error)
+          toast.error('线程合并失败')
+        })
+      }
+    },
+
+    deleteThread: (conversationId: string, threadId: string) => {
+      const { deleteThread: deleteThreadUtil } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return
+
+      const updatedMessages = deleteThreadUtil(conv.messages, threadId)
+
+      set((state) => {
+        const c = state.conversations.find((c) => c.id === conversationId)
+        if (!c) return
+
+        c.messages = updatedMessages
+        c.updatedAt = Date.now()
+      })
+
+      const updatedConv = get().conversations.find((c) => c.id === conversationId)
+      if (updatedConv) {
+        persistConversation(updatedConv).catch((error) => {
+          console.error('[conversation.store] Failed to persist thread deletion:', error)
+          toast.error('线程删除失败')
+        })
+      }
+    },
+
+    toggleThreadCollapsed: (conversationId: string, threadId: string) => {
+      set((state) => {
+        const c = state.conversations.find((c) => c.id === conversationId)
+        if (!c) return
+
+        // Find first message in thread and toggle a metadata flag
+        const msgIndex = c.messages.findIndex((m) => m.threadId === threadId)
+        if (msgIndex !== -1) {
+          // Use message metadata to store collapsed state
+          const isCollapsed = !!(c.messages[msgIndex] as any)._collapsed
+          ;(c.messages[msgIndex] as any)._collapsed = !isCollapsed
+        }
+      })
+    },
+
+    navigateToNextThread: (conversationId: string) => {
+      const { getNextThread } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return null
+
+      const activeThreadId = get().getActiveThreadId(conversationId)
+      const nextThreadId = getNextThread(conv.messages, activeThreadId || undefined)
+      return nextThreadId
+    },
+
+    navigateToPreviousThread: (conversationId: string) => {
+      const { getPreviousThread } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return null
+
+      const activeThreadId = get().getActiveThreadId(conversationId)
+      const prevThreadId = getPreviousThread(conv.messages, activeThreadId || undefined)
+      return prevThreadId
+    },
+
+    getActiveThreadId: (conversationId: string) => {
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return null
+
+      // Get active thread from conversation metadata
+      return (conv as any)._activeThreadId || null
+    },
+
+    setActiveThread: (conversationId: string, threadId: string) => {
+      set((state) => {
+        const c = state.conversations.find((c) => c.id === conversationId)
+        if (!c) return
+        ;(c as any)._activeThreadId = threadId
+      })
+    },
+
+    forkThread: (conversationId: string, messageId: string, title?: string) => {
+      const { forkThread: forkThreadUtil } = require('@/agent/thread-utils')
+      const conv = get().conversations.find((c) => c.id === conversationId)
+      if (!conv) return
+
+      try {
+        const { messages: updatedMessages, newThreadId } = forkThreadUtil(
+          conv.messages,
+          messageId,
+          title
+        )
+
+        set((state) => {
+          const c = state.conversations.find((c) => c.id === conversationId)
+          if (!c) return
+
+          c.messages = updatedMessages
+          c.updatedAt = Date.now()
+          ;(c as any)._activeThreadId = newThreadId
+        })
+
+        const updatedConv = get().conversations.find((c) => c.id === conversationId)
+        if (updatedConv) {
+          persistConversation(updatedConv).catch((error) => {
+            console.error('[conversation.store] Failed to persist thread fork:', error)
+            toast.error('线程分支创建失败')
+          })
+        }
+
+        toast.success('线程分支创建成功')
+      } catch (error) {
+        console.error('[conversation.store] Failed to fork thread:', error)
+        toast.error('线程分支创建失败')
+      }
     },
   }))
 )
