@@ -1,9 +1,12 @@
 /**
  * Tool Registry - manages tool registration, lookup, and execution.
+ *
+ * Integrated with intelligent error handling for better user experience.
  */
 
 import type { ToolDefinition, ToolExecutor, ToolEntry, ToolContext } from './tools/tool-types'
 import type { PluginMetadata } from '@/types/plugin'
+import { formatErrorForUser, withAutoRetry } from './error-handling'
 
 // Import built-in tools
 import { fileReadDefinition, fileReadExecutor } from './tools/file-read.tool'
@@ -14,6 +17,8 @@ import { fileSyncDefinition, fileSyncExecutor } from './tools/file-sync.tool'
 import { globDefinition, globExecutor } from './tools/glob.tool'
 import { grepDefinition, grepExecutor } from './tools/grep.tool'
 import { listFilesDefinition, listFilesExecutor } from './tools/list-files.tool'
+import { pythonCodeDefinition, pythonCodeExecutor } from './tools/python.tool'
+import { javascriptCodeDefinition, javascriptCodeExecutor } from './tools/javascript-execution.tool'
 import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm-bridge.tool'
 
 // Import skill tools
@@ -47,8 +52,29 @@ export class ToolRegistry {
     return Array.from(this.tools.values()).map((entry) => entry.definition)
   }
 
-  /** Execute a tool by name */
+  /** Execute a tool by name with intelligent error handling */
   async execute(
+    name: string,
+    args: Record<string, unknown>,
+    context: ToolContext
+  ): Promise<string> {
+    const entry = this.tools.get(name)
+    if (!entry) {
+      return JSON.stringify({ error: `Unknown tool: ${name}` })
+    }
+
+    try {
+      // Use auto-retry for transient errors
+      return await withAutoRetry(async () => entry.executor(args, context))
+    } catch (error) {
+      // Format error for user consumption
+      const userMessage = formatErrorForUser(error)
+      return JSON.stringify({ error: userMessage })
+    }
+  }
+
+  /** Execute a tool without retry (for special cases) */
+  async executeNoRetry(
     name: string,
     args: Record<string, unknown>,
     context: ToolContext
@@ -61,9 +87,8 @@ export class ToolRegistry {
     try {
       return await entry.executor(args, context)
     } catch (error) {
-      return JSON.stringify({
-        error: `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
-      })
+      const userMessage = formatErrorForUser(error)
+      return JSON.stringify({ error: userMessage })
     }
   }
 
@@ -87,6 +112,8 @@ export class ToolRegistry {
     this.register(globDefinition, globExecutor)
     this.register(grepDefinition, grepExecutor)
     this.register(listFilesDefinition, listFilesExecutor)
+    this.register(pythonCodeDefinition, pythonCodeExecutor)
+    this.register(javascriptCodeDefinition, javascriptCodeExecutor)
   }
 
   /** Register a WASM plugin as an Agent tool */

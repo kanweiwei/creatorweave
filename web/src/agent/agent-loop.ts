@@ -21,28 +21,19 @@ import { ToolRegistry } from './tool-registry'
 import { getSkillManager } from '@/skills/skill-manager'
 import type { SkillMatchContext } from '@/skills/skill-types'
 import { getMCPManager } from '@/mcp'
+import {
+  UNIVERSAL_SYSTEM_PROMPT,
+  buildEnhancedSystemPrompt,
+  shouldShowToolDiscovery,
+  getToolDiscoveryMessage,
+} from './prompts/universal-system-prompt'
+// Phase 2: Intelligence enhancements
+import { getIntelligenceCoordinator } from './intelligence-coordinator'
+// Phase 2 P1: Predictive file loading
+import { triggerPrefetch, clearPrefetchCache } from './prefetch'
 
 const MAX_ITERATIONS = 20
-const DEFAULT_SYSTEM_PROMPT = `You are a powerful AI assistant running in the browser with full access to the user's local project files through tools.
-
-IMPORTANT: You CAN and MUST use the provided tools to interact with the user's file system. You are NOT a regular chatbot - you have real tool-calling capabilities. Never say "I cannot access files" or "I cannot view files" - instead, USE the tools to do it.
-
-Available built-in tools:
-- file_read: Read file contents by path
-- file_write: Write/create files (auto-creates directories)
-- file_edit: Apply text replacements to files
-- glob: Search for files by pattern (e.g. "**/*.ts")
-- grep: Search file contents with regex
-- list_files: List directory structure as a tree
-
-When the user asks about files, code, or their project:
-1. Use list_files or glob to discover the project structure
-2. Use file_read to read relevant files
-3. Use grep to search for specific patterns
-4. For MCP tools that need file access (e.g., Excel analysis): the system will automatically prompt for file upload when needed
-5. ALWAYS call the appropriate tool - never guess or refuse
-
-Always read files before editing them. Be concise and helpful.`
+const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
 
 export interface AgentCallbacks {
   /** Called when a new assistant message starts */
@@ -93,6 +84,8 @@ export interface AgentLoopConfig {
   toolContext: ToolContext
   systemPrompt?: string
   maxIterations?: number
+  /** Optional session ID for memory tracking */
+  sessionId?: string
 }
 
 export class AgentLoop {
@@ -103,6 +96,7 @@ export class AgentLoop {
   private maxIterations: number
   private baseSystemPrompt: string
   private abortController: AbortController | null = null
+  private sessionId?: string
 
   constructor(config: AgentLoopConfig) {
     this.provider = config.provider
@@ -111,6 +105,7 @@ export class AgentLoop {
     this.toolContext = config.toolContext
     this.maxIterations = config.maxIterations || MAX_ITERATIONS
     this.baseSystemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT
+    this.sessionId = config.sessionId
     this.contextManager.setSystemPrompt(this.baseSystemPrompt)
   }
 
@@ -122,8 +117,27 @@ export class AgentLoop {
 
   /** Inject matching skills and MCP services into the system prompt */
   private async injectEnhancements(messages: Message[]): Promise<void> {
-    // Start with base system prompt
-    let enhancedPrompt = this.baseSystemPrompt
+    // Extract user message for scenario detection (use the last user message)
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    const userMessage = lastUserMsg?.content || ''
+
+    // Start with base system prompt, enhanced with scenario detection
+    let enhancedPrompt = buildEnhancedSystemPrompt(this.baseSystemPrompt, userMessage)
+
+    // Phase 2: Inject intelligent enhancements (tool recs, project fingerprint, memory)
+    try {
+      const coordinator = getIntelligenceCoordinator()
+      const intelligenceResult = await coordinator.enhanceSystemPrompt(enhancedPrompt, {
+        directoryHandle: this.toolContext.directoryHandle || undefined,
+        userMessage,
+        sessionId: this.sessionId,
+      })
+
+      enhancedPrompt = intelligenceResult.systemPrompt
+    } catch (error) {
+      console.warn('[AgentLoop] Failed to inject intelligence enhancements:', error)
+      // Continue without intelligence enhancements
+    }
 
     // Inject MCP services block AND register MCP tools
     try {
@@ -142,17 +156,24 @@ export class AgentLoop {
       console.warn('[AgentLoop] Failed to inject MCP services:', error)
     }
 
-    // Extract user message for skill matching (use the last user message)
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    // Extract user message for skill matching
     if (lastUserMsg) {
       const context: SkillMatchContext = {
-        userMessage: lastUserMsg.content || '',
+        userMessage: userMessage,
       }
 
       const skillManager = getSkillManager()
       const skillsBlock = skillManager.getEnhancedSystemPrompt('', context)
       if (skillsBlock) {
         enhancedPrompt += skillsBlock
+      }
+    }
+
+    // Tool discovery: if user asks about capabilities, inject discovery message
+    if (shouldShowToolDiscovery(userMessage)) {
+      const discoveryMsg = getToolDiscoveryMessage(userMessage)
+      if (discoveryMsg) {
+        enhancedPrompt += '\n\n' + discoveryMsg
       }
     }
 
@@ -164,6 +185,73 @@ export class AgentLoop {
     this.abortController?.abort()
   }
 
+  //=============================================================================
+  // Phase 2 P1: Predictive File Loading
+  //=============================================================================
+
+  /**
+   * Trigger prefetch if new user message is detected
+   * This runs in background to load files before the agent needs them
+   */
+  private async triggerPrefetchIfNeeded(messages: Message[]): Promise<void> {
+    // Find the last user message
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUserMsg) return
+
+    const userMessage = lastUserMsg.content || ''
+
+    // Extract recent messages for context
+    const recentMessages: string[] = []
+    const recentFiles: string[] = []
+
+    for (const msg of messages.slice(-10)) {
+      if (msg.role === 'user') {
+        recentMessages.push(msg.content || '')
+      }
+      // Extract file paths from tool calls
+      if (msg.role === 'assistant' && msg.toolCalls) {
+        for (const tc of msg.toolCalls) {
+          if (tc.function.name === 'file_read') {
+            try {
+              const args = JSON.parse(tc.function.arguments)
+              if (args.path) {
+                recentFiles.push(args.path as string)
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    }
+
+    // Get project type from intelligence coordinator
+    let projectType = 'typescript'
+    try {
+      const coordinator = getIntelligenceCoordinator()
+      if (this.toolContext.directoryHandle) {
+        const detected = await coordinator.quickDetectProjectType(this.toolContext.directoryHandle)
+        if (detected) {
+          projectType = detected.type
+        }
+      }
+    } catch {
+      // Use default type
+    }
+
+    // Trigger prefetch in background (don't await)
+    triggerPrefetch({
+      directoryHandle: this.toolContext.directoryHandle,
+      recentMessages,
+      recentFiles,
+      projectType,
+      activeFile: recentFiles[recentFiles.length - 1],
+      sessionId: this.sessionId,
+    }).catch((error) => {
+      console.warn('[AgentLoop] Prefetch failed:', error)
+    })
+  }
+
   /**
    * Run the agent loop with a list of messages.
    * Appends new assistant/tool messages and returns the full updated list.
@@ -173,6 +261,9 @@ export class AgentLoop {
     const signal = this.abortController.signal
     // Start with input messages (keep as immutable, use concat to add new messages)
     let allMessages = messages
+
+    // Phase 2 P1: Trigger predictive file loading before processing
+    await this.triggerPrefetchIfNeeded(messages)
 
     // Inject matching skills and MCP services into system prompt
     await this.injectEnhancements(messages)

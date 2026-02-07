@@ -25,10 +25,11 @@ import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { ConversationView } from '@/components/agent/ConversationView'
-import { WelcomeScreen } from '@/components/WelcomeScreen'
+import { WelcomeScreenV2 } from '@/components/WelcomeScreenV2'
 import { FilePreview } from '@/components/file-viewer/FilePreview'
 import { SkillsManager } from '@/components/skills/SkillsManager'
 import { ProjectSkillsDialog } from '@/components/skills/ProjectSkillsDialog'
+import { ToolsPanel, QuickActionsPanel } from '@/components/tools'
 import { scanProjectSkills } from '@/skills/skill-scanner'
 import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
@@ -52,6 +53,8 @@ export function WorkspaceLayout() {
   const [skillsManagerOpen, setSkillsManagerOpen] = useState(false)
   const [projectSkills, setProjectSkills] = useState<SkillMetadata[]>([])
   const [showProjectSkillsDialog, setShowProjectSkillsDialog] = useState(false)
+  const [toolsPanelOpen, setToolsPanelOpen] = useState(false)
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const skillsStore = useSkillsStore()
   const skillsLoaded = useSkillsStore((s) => s.loaded) // Reactive state
 
@@ -189,6 +192,32 @@ export function WorkspaceLayout() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [previewFilePath, handleClosePreview])
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K to open Quick Actions
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setQuickActionsOpen(true)
+        return
+      }
+
+      // ESC to close panels
+      if (e.key === 'Escape') {
+        if (quickActionsOpen) {
+          setQuickActionsOpen(false)
+        } else if (toolsPanelOpen) {
+          setToolsPanelOpen(false)
+        } else if (skillsManagerOpen) {
+          setSkillsManagerOpen(false)
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [quickActionsOpen, toolsPanelOpen, skillsManagerOpen])
+
   // Register callbacks for remote messages (Host mode)
   useEffect(() => {
     if (role !== 'host') {
@@ -298,7 +327,11 @@ export function WorkspaceLayout() {
 
   return (
     <div className="flex h-screen flex-col bg-white">
-      <TopBar onSkillsManagerOpen={handleSkillsManagerOpen} />
+      <TopBar
+        onSkillsManagerOpen={handleSkillsManagerOpen}
+        onToolsPanelOpen={() => setToolsPanelOpen(true)}
+        onQuickActionsOpen={() => setQuickActionsOpen(true)}
+      />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar onFileSelect={handleFileSelect} selectedFilePath={previewFilePath} />
 
@@ -315,7 +348,7 @@ export function WorkspaceLayout() {
                 onInitialMessageConsumed={handleInitialMessageConsumed}
               />
             ) : (
-              <WelcomeScreen onStartConversation={handleStartConversation} />
+              <WelcomeScreenV2 onStartConversation={handleStartConversation} />
             )}
           </main>
 
@@ -343,6 +376,16 @@ export function WorkspaceLayout() {
 
       {/* Skills Manager Dialog */}
       <SkillsManager open={skillsManagerOpen} onClose={() => setSkillsManagerOpen(false)} />
+
+      {/* Tools Panel */}
+      <ToolsPanel isOpen={toolsPanelOpen} onClose={() => setToolsPanelOpen(false)} />
+
+      {/* Quick Actions Panel */}
+      <QuickActionsPanel
+        isOpen={quickActionsOpen}
+        onClose={() => setQuickActionsOpen(false)}
+        onStartConversation={handleStartConversation}
+      />
 
       {/* Project Skills Discovery Dialog */}
       <ProjectSkillsDialog

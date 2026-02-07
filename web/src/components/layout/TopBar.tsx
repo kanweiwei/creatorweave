@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react'
-import { Settings, Sparkles, Wrench, KeyRound, Server } from 'lucide-react'
+import { Settings, Sparkles, Wrench, KeyRound, Server, List, Zap } from 'lucide-react'
 import { useHasApiKey } from '@/store/settings.store'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { MCPSettingsDialog } from '@/components/mcp'
@@ -27,9 +27,11 @@ import { BrandButton } from '@browser-fs-analyzer/ui'
 
 interface TopBarProps {
   onSkillsManagerOpen?: () => void
+  onToolsPanelOpen?: () => void
+  onQuickActionsOpen?: () => void
 }
 
-export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
+export function TopBar({ onSkillsManagerOpen, onToolsPanelOpen, onQuickActionsOpen }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mcpSettingsOpen, setMcpSettingsOpen] = useState(false)
   const hasApiKey = useHasApiKey() // Use the reactive hook that syncs with database
@@ -71,6 +73,16 @@ export function TopBar({ onSkillsManagerOpen }: TopBarProps) {
 
           {/* Language Switcher */}
           <LanguageSwitcher />
+
+          {/* Tools Panel */}
+          <BrandButton iconButton onClick={onToolsPanelOpen} title="Available Tools">
+            <List className="h-[14px] w-[14px]" />
+          </BrandButton>
+
+          {/* Quick Actions */}
+          <BrandButton iconButton onClick={onQuickActionsOpen} title="Quick Actions (Cmd+K)">
+            <Zap className="h-[14px] w-[14px]" />
+          </BrandButton>
 
           {/* Skills */}
           <BrandButton

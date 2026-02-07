@@ -55,9 +55,12 @@ export const fileReadExecutor: ToolExecutor = async (args, context) => {
     } else {
       // Binary content - return as base64
       const buffer = content instanceof ArrayBuffer ? content : await content.arrayBuffer()
+      // Browser-compatible base64 encoding
+      const uint8Array = new Uint8Array(buffer)
+      const base64 = btoa(String.fromCharCode(...uint8Array))
       return JSON.stringify({
         binary: true,
-        content: Buffer.from(buffer).toString('base64'),
+        content: base64,
         size: metadata.size,
         contentType: metadata.contentType,
       })

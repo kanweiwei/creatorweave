@@ -12,13 +12,19 @@ export const globDefinition: ToolDefinition = {
   function: {
     name: 'glob',
     description:
-      'Search for files matching a glob pattern (e.g. "**/*.ts", "src/**/*.tsx"). Returns a list of matching file paths. Useful for finding files before reading or editing them.',
+      'Search for files by pattern. Use this FIRST when user mentions filenames or file types.' +
+      '\n\nExamples:' +
+      '\n- "find sales.csv" → glob(pattern="**/*sales*.csv")' +
+      '\n- "all CSV files" → glob(pattern="**/*.csv")' +
+      '\n- "TypeScript files in src" → glob(pattern="src/**/*.ts")' +
+      '\n- "all test files" → glob(pattern="**/*.test.*")' +
+      '\n- "Excel files" → glob(pattern="**/*.xlsx")',
     parameters: {
       type: 'object',
       properties: {
         pattern: {
           type: 'string',
-          description: 'Glob pattern to match files (e.g. "**/*.ts", "src/components/*.tsx")',
+          description: 'Glob pattern to match files (e.g. "**/*.csv", "**/*sales*", "src/**/*.tsx")',
         },
         path: {
           type: 'string',

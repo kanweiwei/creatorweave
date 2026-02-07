@@ -18,6 +18,9 @@ import './styles/globals.css'
 import './components/plugins/plugin-ui.css'
 import 'sonner/dist/styles.css'
 
+// Import Python module to initialize window.__executePython
+import '@/python'
+
 // React Grab - 仅开发环境初始化
 if (import.meta.env.DEV) {
   import('react-grab')
