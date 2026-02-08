@@ -42,6 +42,7 @@ import {
   KeyboardShortcutsHelp,
   RecentFilesPanel,
   WorkspaceSettingsDialog,
+  buildEnhancedCommands,
   type Command,
 } from '@/components/workspace'
 import { initializeTheme } from '@/store/theme.store'
@@ -161,61 +162,51 @@ export function WorkspaceLayout() {
     return cleanup
   }, [])
 
-  // Phase 4: Command palette commands
-  const commands: Command[] = [
-    {
-      id: 'new-conversation',
-      label: 'New Conversation',
-      description: 'Start a new conversation',
-      category: 'Conversations',
-      handler: () => {
-        const newConv = createNew('New conversation')
-        setActive(newConv.id)
-      },
+  // Phase 4: Enhanced command palette commands
+  const commands: Command[] = buildEnhancedCommands({
+    // Conversations
+    onNewConversation: () => {
+      const newConv = createNew('New conversation')
+      setActive(newConv.id)
     },
-    {
-      id: 'toggle-sidebar',
-      label: 'Toggle Sidebar',
-      description: 'Show or hide the sidebar',
-      category: 'View',
-      handler: () => setSidebarCollapsed(!panelState.sidebarCollapsed),
+    onContinueLast: () => {
+      // TODO: Implement continue last conversation
+      console.log('[WorkspaceLayout] Continue last conversation')
     },
-    {
-      id: 'open-recent-files',
-      label: 'Recent Files',
-      description: 'View recently accessed files',
-      category: 'View',
-      handler: () => setShowRecentFiles(true),
+
+    // Files
+    onOpenFile: () => {
+      // TODO: Implement file picker
+      console.log('[WorkspaceLayout] Open file')
     },
-    {
-      id: 'open-skills',
-      label: 'Skills Manager',
-      description: 'Manage your skills',
-      category: 'Tools',
-      handler: handleSkillsManagerOpen,
+    onShowRecentFiles: () => setShowRecentFiles(true),
+
+    // View
+    onToggleSidebar: () => setSidebarCollapsed(!panelState.sidebarCollapsed),
+    onToggleTheme: () => {
+      // TODO: Toggle theme
+      console.log('[WorkspaceLayout] Toggle theme')
     },
-    {
-      id: 'open-tools',
-      label: 'Tools Panel',
-      description: 'Open tools panel',
-      category: 'Tools',
-      handler: () => setToolsPanelOpen(true),
+
+    // Tools
+    onOpenSkills: handleSkillsManagerOpen,
+    onOpenTools: () => setToolsPanelOpen(true),
+    onOpenMCP: () => {
+      // TODO: Open MCP settings
+      console.log('[WorkspaceLayout] Open MCP')
     },
-    {
-      id: 'keyboard-shortcuts',
-      label: 'Keyboard Shortcuts',
-      description: 'View all keyboard shortcuts',
-      category: 'Help',
-      handler: () => setShowShortcutsHelp(true),
+
+    // Settings & Help
+    onOpenSettings: () => setShowWorkspaceSettings(true),
+    onShowShortcuts: () => setShowShortcutsHelp(true),
+
+    // Messages
+    onSendMessage: (text: string) => {
+      const conv = createNew(text.slice(0, 30))
+      setActive(conv.id)
+      setPendingMessage(text)
     },
-    {
-      id: 'workspace-settings',
-      label: 'Workspace Settings',
-      description: 'Configure workspace preferences',
-      category: 'Settings',
-      handler: () => setShowWorkspaceSettings(true),
-    },
-  ]
+  })
 
   // Phase 4: Track recent files
   const handleFileSelectWithTracking = useCallback(

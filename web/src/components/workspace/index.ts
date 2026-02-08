@@ -11,5 +11,8 @@ export { RecentFilesPanel } from './RecentFilesPanel'
 export { ThemeToggle } from './ThemeToggle'
 export { WorkspaceSettingsDialog } from './WorkspaceSettingsDialog'
 
+// Enhanced commands
+export { buildEnhancedCommands } from './command-palette-commands'
+
 export type { Command } from './CommandPalette'
 export type { TourStep } from './OnboardingTour'

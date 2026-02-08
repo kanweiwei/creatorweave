@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { Search, Terminal } from 'lucide-react'
 import {
   BrandDialog,
@@ -20,7 +21,7 @@ export interface Command {
   id: string
   label: string
   description?: string
-  icon?: React.ReactNode
+  icon?: ReactNode
   keywords?: string[]
   handler: () => void
   category?: string
