@@ -165,6 +165,11 @@ class AgentBus {
    * Find agents that can handle a specific task type
    */
   findAgentsForTask(taskType: string): AgentCapabilities[] {
+    // Also check if taskType is an agent ID
+    if (this.agents.has(taskType)) {
+      const agent = this.agents.get(taskType)
+      return agent ? [agent] : []
+    }
     return Array.from(this.agents.values()).filter((agent) => agent.canHandle.includes(taskType))
   }
 
@@ -278,6 +283,12 @@ class AgentBus {
           ...task,
           status: agent ? 'in_progress' : 'failed',
           startedAt: Date.now(),
+        }
+
+        if (!agent) {
+          updatedTask.error = `Agent not found: ${task.assignedTo[0]}`
+          updatedTask.completedAt = Date.now()
+          return updatedTask
         }
 
         if (agent) {
@@ -511,6 +522,11 @@ export async function sendTaskToAgent(
   payload?: unknown
 ): Promise<AgentResponse> {
   const bus = getAgentBus()
+
+  // Check if agent exists first
+  if (!bus.getAgent(agentId)) {
+    throw new Error(`Agent not found: ${agentId}`)
+  }
 
   return new Promise((resolve, reject) => {
     const message = createMessage(

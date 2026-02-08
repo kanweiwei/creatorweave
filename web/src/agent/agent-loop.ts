@@ -277,7 +277,7 @@ export class AgentLoop {
 
         // Convert to chat format and trim to context window
         const chatMessages = messagesToChatMessages(allMessages)
-        const trimmedMessages = this.contextManager.trimMessages(chatMessages)
+        const trimmedMessages = this.contextManager.trimMessages(chatMessages).messages
 
         // Stream LLM response
         const tools = this.toolRegistry.getToolDefinitions()
