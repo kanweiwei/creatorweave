@@ -3,6 +3,8 @@ import { Toaster, toast } from 'sonner'
 import { isSupported } from '@/services/fsAccess.service'
 import { UnsupportedBrowser } from '@/components/UnsupportedBrowser'
 import { WorkspaceLayout } from '@/components/layout/WorkspaceLayout'
+import { MobileLayout } from '@/components/mobile'
+import { useMobile } from '@/components/mobile/useMobile'
 import { StorageLoading } from '@/components/StorageLoading'
 import { DatabaseRefreshDialog } from '@/components/DatabaseRefreshDialog'
 import { useAgentStore } from '@/store/agent.store'
@@ -280,6 +282,9 @@ function App() {
     window.addEventListener('touchstart', handleFirstInteraction, { once: true })
   }, [])
 
+  // Responsive layout detection - must be called before any conditional returns
+  const isMobile = useMobile()
+
   if (!isSupportedBrowser) {
     return <UnsupportedBrowser />
   }
@@ -308,7 +313,7 @@ function App() {
 
   return (
     <>
-      <WorkspaceLayout />
+      {isMobile ? <MobileLayout>{<WorkspaceLayout />}</MobileLayout> : <WorkspaceLayout />}
       <InstallPrompt />
       <PWAUpdateBanner />
       <DatabaseRefreshDialog isOpen={false} />

@@ -23,6 +23,7 @@ import { useAgentStore } from '@/store/agent.store'
 import { useSettingsStore } from '@/store/settings.store'
 import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
 import { useWorkspacePreferencesStore } from '@/store/workspace-preferences.store'
+import { useMobile } from '@/components/mobile/useMobile'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { ConversationView } from '@/components/agent/ConversationView'
@@ -94,6 +95,10 @@ export function WorkspaceLayout() {
     exportFilename,
     closeExport: closeExportPanel,
   } = useExport()
+
+  // Mobile sidebar state
+  const isMobile = useMobile()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   // File preview state (push-squeeze panel)
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
@@ -490,9 +495,19 @@ export function WorkspaceLayout() {
         onToolsPanelOpen={() => setToolsPanelOpen(true)}
         onCommandPaletteOpen={() => setShowCommandPalette(true)}
         onWorkspaceSettingsOpen={() => setShowWorkspaceSettings(true)}
+        onMenuOpen={() => setIsSidebarOpen(true)}
+        isMobile={isMobile}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar onFileSelect={handleFileSelectWithTracking} selectedFilePath={previewFilePath} />
+        {/* Mobile sidebar overlay */}
+        {isMobile && isSidebarOpen && (
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setIsSidebarOpen(false)} />
+        )}
+
+        {/* Sidebar - hidden on mobile when closed */}
+        {(!isMobile || isSidebarOpen) && (
+          <Sidebar onFileSelect={handleFileSelectWithTracking} selectedFilePath={previewFilePath} />
+        )}
 
         {/* Main area: conversation + optional file preview */}
         <div ref={mainRef} className="flex flex-1 overflow-hidden">

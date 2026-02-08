@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react'
-import { Settings, Sparkles, Wrench, KeyRound, Server, List, Keyboard } from 'lucide-react'
+import { Settings, Sparkles, Wrench, KeyRound, Server, List, Keyboard, Menu } from 'lucide-react'
 import { useHasApiKey } from '@/store/settings.store'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { MCPSettingsDialog } from '@/components/mcp'
@@ -31,6 +31,10 @@ interface TopBarProps {
   onToolsPanelOpen?: () => void
   onCommandPaletteOpen?: () => void
   onWorkspaceSettingsOpen?: () => void
+  /** Called when menu button is pressed on mobile */
+  onMenuOpen?: () => void
+  /** Whether the device is mobile */
+  isMobile?: boolean
 }
 
 export function TopBar({
@@ -38,6 +42,8 @@ export function TopBar({
   onToolsPanelOpen,
   onCommandPaletteOpen,
   onWorkspaceSettingsOpen,
+  onMenuOpen,
+  isMobile,
 }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mcpSettingsOpen, setMcpSettingsOpen] = useState(false)
@@ -47,8 +53,13 @@ export function TopBar({
   return (
     <>
       <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-gray-200 bg-background px-4">
-        {/* Left: Logo + Name */}
+        {/* Left: Menu button (mobile) + Logo + Name */}
         <div className="flex items-center gap-2.5">
+          {isMobile && (
+            <BrandButton iconButton onClick={onMenuOpen} title="菜单" data-tour="menu">
+              <Menu className="h-[14px] w-[14px]" />
+            </BrandButton>
+          )}
           <Sparkles className="h-5 w-5 text-primary-600" />
           <span className="text-base font-medium text-primary">{t('topbar.productName')}</span>
         </div>
