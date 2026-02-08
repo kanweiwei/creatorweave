@@ -12,7 +12,7 @@ import type { ChatMessage } from '../llm/llm-provider'
 // Mock token counter - inline factory for proper hoisting
 vi.mock('../llm/token-counter', () => {
   return {
-    estimateMessageTokens: vi.fn((msg: ChatMessage): number => {
+    estimateMessageTokens: vi.fn((msg: { content: string | object }): number => {
       if (typeof msg.content === 'string') {
         return Math.ceil(msg.content.length / 3)
       }

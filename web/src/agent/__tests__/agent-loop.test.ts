@@ -82,6 +82,7 @@ function createMockToolRegistry() {
     execute: vi.fn(async (name: string, args: Record<string, unknown>) => {
       return `Executed ${name} with ${JSON.stringify(args)}`
     }),
+    registerMCPTools: vi.fn(() => Promise.resolve()),
   } as any
 }
 

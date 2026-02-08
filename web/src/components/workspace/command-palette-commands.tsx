@@ -27,6 +27,10 @@ import {
   Sparkles,
   Layout,
   Moon,
+  FileText,
+  FileJson,
+  FileSpreadsheet,
+  Image,
 } from 'lucide-react'
 import type { Command } from './CommandPalette'
 
@@ -191,6 +195,42 @@ export function buildEnhancedCommands(handlers: CommandHandlers): Command[] {
       icon: <Save className="h-4 w-4" />,
       keywords: ['export', 'save', 'download', 'csv', 'excel'],
       handler: () => handlers.onSendMessage('Export the analysis results.'),
+    },
+    {
+      id: 'export-csv',
+      label: 'Export as CSV',
+      description: 'Export data to CSV format',
+      category: COMMAND_CATEGORIES.DATA_ANALYST,
+      icon: <FileText className="h-4 w-4" />,
+      keywords: ['export', 'csv', 'comma', 'separated'],
+      handler: () => handlers.onSendMessage('Export the current data to CSV format.'),
+    },
+    {
+      id: 'export-json',
+      label: 'Export as JSON',
+      description: 'Export data to JSON format',
+      category: COMMAND_CATEGORIES.DATA_ANALYST,
+      icon: <FileJson className="h-4 w-4" />,
+      keywords: ['export', 'json', 'structured'],
+      handler: () => handlers.onSendMessage('Export the current data to JSON format.'),
+    },
+    {
+      id: 'export-excel',
+      label: 'Export as Excel',
+      description: 'Export data to Excel workbook',
+      category: COMMAND_CATEGORIES.DATA_ANALYST,
+      icon: <FileSpreadsheet className="h-4 w-4" />,
+      keywords: ['export', 'excel', 'xlsx', 'spreadsheet'],
+      handler: () => handlers.onSendMessage('Export the current data to Excel format.'),
+    },
+    {
+      id: 'export-chart-image',
+      label: 'Export Chart as Image',
+      description: 'Export chart to PNG image',
+      category: COMMAND_CATEGORIES.DATA_ANALYST,
+      icon: <Image className="h-4 w-4" />,
+      keywords: ['export', 'chart', 'image', 'png', 'picture'],
+      handler: () => handlers.onSendMessage('Export the current chart as a PNG image.'),
     },
 
     // ========== Student ==========

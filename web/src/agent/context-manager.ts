@@ -81,7 +81,7 @@ export class ContextManager {
       : null
 
     const systemTokens = systemMessage ? estimateMessageTokens(systemMessage) : 0
-    let availableTokens = budget - systemTokens
+    const availableTokens = budget - systemTokens
 
     if (availableTokens <= 0) {
       // System prompt alone exceeds budget - truncate it

@@ -45,6 +45,7 @@ import {
   buildEnhancedCommands,
   type Command,
 } from '@/components/workspace'
+import { ExportPanel, useExport } from '@/components/export'
 import { initializeTheme } from '@/store/theme.store'
 
 export function WorkspaceLayout() {
@@ -86,6 +87,14 @@ export function WorkspaceLayout() {
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false)
   const [showRecentFiles, setShowRecentFiles] = useState(false)
 
+  // Export panel state
+  const {
+    isExportPanelOpen: isExportOpen,
+    exportData,
+    exportFilename,
+    closeExport: closeExportPanel,
+  } = useExport()
+
   // File preview state (push-squeeze panel)
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
   const [previewFileHandle, setPreviewFileHandle] = useState<FileSystemFileHandle | null>(null)
@@ -108,12 +117,6 @@ export function WorkspaceLayout() {
 
   const handleInitialMessageConsumed = useCallback(() => {
     setPendingMessage(null)
-  }, [])
-
-  // @ts-expect-error - reserved for future file preview functionality
-  const _handleFileSelect = useCallback((path: string, handle: FileSystemFileHandle) => {
-    setPreviewFilePath(path)
-    setPreviewFileHandle(handle)
   }, [])
 
   const handleClosePreview = useCallback(() => {
@@ -596,6 +599,26 @@ export function WorkspaceLayout() {
         onComplete={() => console.log('[WorkspaceLayout] Onboarding tour completed')}
         onSkip={() => console.log('[WorkspaceLayout] Onboarding tour skipped')}
       />
+
+      {/* Export Panel */}
+      {isExportOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={closeExportPanel}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <ExportPanel
+              data={exportData}
+              defaultFilename={exportFilename}
+              onExportComplete={(result) => {
+                console.log('[WorkspaceLayout] Export completed:', result)
+                closeExportPanel()
+              }}
+              onClose={closeExportPanel}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

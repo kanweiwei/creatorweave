@@ -44,10 +44,11 @@ Browser FS Analyzer is a **browser-based AI workspace** that enables natural lan
 - **Data Preview**: Preview JSON, CSV, and other structured data formats
 - **Batch Operations**: Apply changes to multiple files at once
 - **Advanced Search**: Regex-based search with context lines
+- **Data Export**: Export analysis results to CSV, JSON, Excel, or image formats
 
 ### Workspace Management
 - **Theme Support**: Light, dark, and system theme options
-- **Keyboard Shortcuts**: Command palette for quick access to all features
+- **Keyboard Shortcuts**: Command palette for quick access to all features (press `Ctrl+K` or `Cmd+K`)
 - **Recent Files**: Quick access to recently viewed files
 - **Layout Persistence**: Your workspace layout is saved automatically
 - **Onboarding Tour**: Guided tour for first-time users
@@ -57,6 +58,23 @@ Browser FS Analyzer is a **browser-based AI workspace** that enables natural lan
 - **Tools Panel**: Access development tools and utilities
 - **Python Integration**: Execute Python code in the browser (Pyodide)
 - **MCP Settings**: Configure Model Context Protocol providers
+
+### User Scenarios
+- **Developers**: Code understanding, refactoring, debugging, and code review
+- **Data Analysts**: Data exploration, visualization, and report generation
+- **Students**: Learning assistance, problem-solving with step-by-step guidance
+- **Office Workers**: Document processing, data transformation, and automation
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd + K` | Open command palette |
+| `Ctrl/Cmd + B` | Toggle sidebar |
+| `Ctrl/Cmd + ,` | Open workspace settings |
+| `Ctrl/Cmd + 1/2/3` | Switch resource tabs |
+| `Shift + ?` | Show keyboard shortcuts |
+| `Escape` | Close panels/dialogs |
 
 ## Getting Started
 
