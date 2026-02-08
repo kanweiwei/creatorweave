@@ -6,11 +6,11 @@
  * This module provides:
  * - Type definitions for Git operations
  * - Filesystem abstraction using LightningFS
- * - Commands: log, status, diff
+ * - Commands: log, status, diff, commit
  *
  * Usage:
  * ```typescript
- * import { initGitFs, gitLog, gitStatus, gitDiff } from './git'
+ * import { initGitFs, gitLog, gitStatus, gitDiff, gitCommit } from './git'
  *
  * // Initialize the filesystem
  * const fs = await initGitFs()
@@ -19,6 +19,7 @@
  * const logResult = await gitLog(fs, '/path/to/repo')
  * const statusResult = await gitStatus(fs, '/path/to/repo')
  * const diffResult = await gitDiff(fs, '/path/to/repo')
+ * const commitResult = await gitCommit(fs, '/path/to/repo', { message: 'feat: new feature' })
  * ```
  */
 
@@ -44,6 +45,8 @@ export type {
   GitResult,
   GitAddOptions,
   GitAddResult,
+  GitCommitOptions,
+  GitCommitResult,
 } from './types'
 
 // Utils
@@ -80,3 +83,9 @@ export {
   gitReset,
   gitResetFiles,
 } from './commands/gitAdd'
+export {
+  gitCommit,
+  gitCommitAmend,
+  gitCommitWithSignature,
+  gitInitialCommit,
+} from './commands/gitCommit'

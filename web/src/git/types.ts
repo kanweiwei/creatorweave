@@ -367,3 +367,41 @@ export interface GitAddResult {
   /** Array of errors for files that failed to add */
   errors: Array<{ filepath: string; error: string }>
 }
+
+/**
+ * Options for gitCommit operation
+ */
+export interface GitCommitOptions {
+  /** Commit message (required) */
+  message: string
+  /** Author name (optional, will use git config if not provided) */
+  author?: { name: string; email: string }
+  /** Optional file paths to commit (commits all staged files if not provided) */
+  filepaths?: string[]
+  /** Parent commit SHA (for amending or specific parent) */
+  parent?: string
+  /** GPG signing key ID (if GPG signing is enabled) */
+  signingKey?: string
+}
+
+/**
+ * Result of gitCommit operation
+ */
+export interface GitCommitResult {
+  /** Commit hash (full SHA) */
+  sha: string
+  /** Abbreviated commit hash (7 characters) */
+  shortSha: string
+  /** Commit message */
+  message: string
+  /** Author information */
+  author: { name: string; email: string; timestamp: number }
+  /** Committer information */
+  committer: { name: string; email: string; timestamp: number }
+  /** Tree hash */
+  tree: string
+  /** Parent commit hashes */
+  parents: string[]
+  /** GPG signature (if present) */
+  signature?: string
+}
