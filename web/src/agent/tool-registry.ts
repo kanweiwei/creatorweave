@@ -47,6 +47,14 @@ import {
   aggregateDataExecutor,
 } from './tools/data-analysis.tool'
 
+// Import code review tools
+import {
+  code_review,
+  code_review_executor,
+  batch_code_review,
+  batch_code_review_executor,
+} from './tools/code-review.tool'
+
 // Import skill tools
 import {
   generateReadSkillTool,
@@ -153,6 +161,9 @@ export class ToolRegistry {
     this.register(generateChartDefinition, generateChartExecutor)
     this.register(filterDataDefinition, filterDataExecutor)
     this.register(aggregateDataDefinition, aggregateDataExecutor)
+    // Code review tools
+    this.register(code_review, code_review_executor)
+    this.register(batch_code_review, batch_code_review_executor)
   }
 
   /** Register a WASM plugin as an Agent tool */

@@ -60,6 +60,13 @@ import {
 } from './code-analysis.tool'
 
 import {
+  code_review,
+  code_review_executor,
+  batch_code_review,
+  batch_code_review_executor,
+} from './code-review.tool'
+
+import {
   convert_format,
   convert_format_executor,
   aggregate_data,
@@ -312,6 +319,32 @@ export const NEW_TOOL_REGISTRY: Record<
     },
   },
 
+  // ==================== Code Review ====================
+  code_review: {
+    definition: code_review,
+    executor: code_review_executor,
+    metadata: {
+      name: 'code_review',
+      description: 'Review code for style, performance, security, and best practice issues',
+      personas: ['developer'],
+      category: 'code-analysis',
+      tags: ['review', 'quality', 'security', 'performance', 'style'],
+      complexity: 'intermediate',
+    },
+  },
+  batch_code_review: {
+    definition: batch_code_review,
+    executor: batch_code_review_executor,
+    metadata: {
+      name: 'batch_code_review',
+      description: 'Review multiple files for quality issues in a single operation',
+      personas: ['developer'],
+      category: 'code-analysis',
+      tags: ['review', 'batch', 'quality', 'security', 'performance'],
+      complexity: 'intermediate',
+    },
+  },
+
   // ==================== Utility Tools ====================
   convert_format: {
     definition: convert_format,
@@ -437,6 +470,8 @@ export const PERSONA_TOOL_RECOMMENDATIONS: Record<UserPersona, string[]> = {
     'analyze_code',
     'find_patterns',
     'refactor_suggestions',
+    'code_review',
+    'batch_code_review',
   ],
   'data-analyst': [
     // From existing tools
