@@ -347,3 +347,23 @@ export interface GitResult<T> {
   /** Execution time in milliseconds */
   duration?: number
 }
+
+/**
+ * Options for gitAdd operation
+ */
+export interface GitAddOptions {
+  /** File path to add (relative to repository root) */
+  filepath: string
+  /** Optional directory (if filepath is relative) */
+  dir?: string
+}
+
+/**
+ * Result of gitAdd operation
+ */
+export interface GitAddResult {
+  /** Array of successfully added files */
+  added: string[]
+  /** Array of errors for files that failed to add */
+  errors: Array<{ filepath: string; error: string }>
+}

@@ -42,6 +42,8 @@ export type {
   GitRef,
   GitError,
   GitResult,
+  GitAddOptions,
+  GitAddResult,
 } from './types'
 
 // Utils
@@ -70,3 +72,11 @@ export {
   gitDiffStats,
   gitHasUncommittedChanges,
 } from './commands/gitDiff'
+export {
+  gitAdd,
+  gitAddAll,
+  gitAddPattern,
+  gitRemove,
+  gitReset,
+  gitResetFiles,
+} from './commands/gitAdd'
