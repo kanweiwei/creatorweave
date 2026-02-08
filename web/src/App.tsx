@@ -12,6 +12,7 @@ import { initStorage, setupAutoSave } from '@/storage'
 import { requestPersistentStorage } from '@/opfs'
 import { useT } from '@/i18n'
 import { PWAUpdateBanner } from '@/pwa/PWAUpdateBanner'
+import { InstallPrompt } from '@/pwa/InstallPrompt'
 
 function App() {
   const [isSupportedBrowser, setIsSupportedBrowser] = useState(true)
@@ -308,6 +309,7 @@ function App() {
   return (
     <>
       <WorkspaceLayout />
+      <InstallPrompt />
       <PWAUpdateBanner />
       <DatabaseRefreshDialog isOpen={false} />
       <Toaster position="bottom-right" />
