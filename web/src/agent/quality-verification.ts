@@ -291,10 +291,7 @@ export class QualityVerifier {
   /**
    * Try to auto-fix issues
    */
-  private async tryAutoFix(
-    context: ValidationContext,
-    issues: QualityIssue[]
-  ): Promise<boolean> {
+  private async tryAutoFix(_context: ValidationContext, issues: QualityIssue[]): Promise<boolean> {
     let fixed = false
 
     for (let attempt = 0; attempt < this.config.maxAutoFixAttempts; attempt++) {
@@ -305,9 +302,7 @@ export class QualityVerifier {
       }
 
       // Collect fix suggestions
-      const fixes = fixableIssues
-        .filter((i) => i.suggestion)
-        .map((i) => i.suggestion!)
+      const fixes = fixableIssues.filter((i) => i.suggestion).map((i) => i.suggestion!)
 
       if (fixes.length > 0) {
         // Would apply fixes here based on context
@@ -390,7 +385,8 @@ export class QualityVerifier {
     const content = context.message.content || ''
 
     // Check for TypeScript content or project type
-    const isTypeScriptProject = context.projectType === 'typescript' ||
+    const isTypeScriptProject =
+      context.projectType === 'typescript' ||
       content.includes('typescript') ||
       content.includes('ts-') ||
       content.includes('.ts')
@@ -406,7 +402,8 @@ export class QualityVerifier {
       for (const pattern of patterns) {
         const matches = content.match(pattern.regex)
         if (matches && matches.length > 0) {
-          for (const _match of matches) {
+          const count = matches.length
+          for (let i = 0; i < count; i++) {
             issues.push({
               type: 'type_error',
               severity: 'warning',
@@ -467,12 +464,12 @@ export class QualityVerifier {
       },
     ]
 
-    for (const { pattern, type, message, severity } of securityPatterns) {
-      if (pattern.test(content)) {
+    for (const securityPattern of securityPatterns) {
+      if (securityPattern.pattern.test(content)) {
         issues.push({
-          type,
-          severity,
-          message,
+          type: securityPattern.type as IssueType,
+          severity: securityPattern.severity,
+          message: securityPattern.message,
           canAutoFix: false,
         })
       }
@@ -484,10 +481,7 @@ export class QualityVerifier {
       passed: issues.filter((i) => i.severity === 'error').length === 0,
       score,
       issues,
-      suggestions:
-        issues.length > 0
-          ? ['Review and fix security issues before deploying']
-          : [],
+      suggestions: issues.length > 0 ? ['Review and fix security issues before deploying'] : [],
     }
   }
 
@@ -619,7 +613,8 @@ export function generateVerificationReport(result: VerificationResult): string {
     lines.push('### Category Scores')
     lines.push('')
     for (const cat of result.categories) {
-      const bar = '█'.repeat(Math.floor(cat.score / 10)) + '░'.repeat(10 - Math.floor(cat.score / 10))
+      const bar =
+        '█'.repeat(Math.floor(cat.score / 10)) + '░'.repeat(10 - Math.floor(cat.score / 10))
       lines.push(`| ${cat.name.padEnd(20)} | ${bar} | ${cat.score.toFixed(0)}/100 |`)
     }
     lines.push('')

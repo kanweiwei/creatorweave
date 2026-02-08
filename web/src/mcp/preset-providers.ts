@@ -46,7 +46,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://github.com/mcp/github',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Create a GitHub Personal Access Token (classic) with scopes:
@@ -82,7 +82,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://gitlab.com/api/mcp',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Create a GitLab Personal Access Token with scopes:
@@ -117,7 +117,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://jira.example.com/mcp',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Create a Jira API token:
@@ -165,7 +165,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'http://localhost:3001/mcp-database',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
       env: {
         DATABASE_URL: 'postgresql://user:password@localhost:5432/database',
         DATABASE_TYPE: 'postgres',
@@ -202,7 +202,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://google-drive-mcp.example.com',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Set up Google Cloud Console:
@@ -243,7 +243,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://notion-mcp.example.com',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Create a Notion Integration:
@@ -283,7 +283,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://slack-mcp.example.com',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Create a Slack App:
@@ -322,7 +322,7 @@ export const PRESET_PROVIDERS: MCPPresetProvider[] = [
       url: 'https://calendar-mcp.example.com',
       transport: 'sse',
       enabled: false,
-      type: 'preset',
+      type: 'user',
     },
     setupInstructions: `
 1. Set up Google Cloud Console:
@@ -365,7 +365,9 @@ export function getPresetProviders(): MCPPresetProvider[] {
 /**
  * Get providers by category
  */
-export function getProvidersByCategory(category: MCPPresetProvider['category']): MCPPresetProvider[] {
+export function getProvidersByCategory(
+  category: MCPPresetProvider['category']
+): MCPPresetProvider[] {
   return PRESET_PROVIDERS.filter((p) => p.category === category)
 }
 
@@ -404,9 +406,10 @@ export function getCategoriesWithCount(): Array<{ category: string; count: numbe
 /**
  * Validate provider configuration
  */
-export function validateProviderConfig(
-  provider: MCPPresetProvider
-): { valid: boolean; missingVars: string[] } {
+export function validateProviderConfig(provider: MCPPresetProvider): {
+  valid: boolean
+  missingVars: string[]
+} {
   const missingVars: string[] = []
 
   for (const envVar of provider.requiredEnvVars) {

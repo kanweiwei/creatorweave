@@ -2,10 +2,9 @@
  * Quality Verification Tests
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { QualityVerifier, getQualityVerifier, generateVerificationReport } from '../quality-verification'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { QualityVerifier, generateVerificationReport } from '../quality-verification'
 import type { ValidationContext } from '../quality-verification'
-import type { Message } from '@/components/agent/message-types'
 import type { ToolContext } from '@/agent/tools/tool-types'
 
 describe('Quality Verifier', () => {

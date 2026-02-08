@@ -2,14 +2,14 @@
  * Session State Serialization Tests
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   serializeConversation,
   deserializeConversation,
   serializeMessage,
   deserializeMessage,
 } from '../session-state-serialization'
-import type { Conversation, Message } from '@/components/agent/message-types'
+import type { Conversation, Message } from '@/agent/message-types'
 
 describe('Session State Serialization', () => {
   describe('serializeMessage / deserializeMessage', () => {
@@ -35,7 +35,7 @@ describe('Session State Serialization', () => {
         id: 'msg-2',
         role: 'assistant',
         content: 'I can help you with that.',
-        reasoningContent: 'Let me think about this...',
+        reasoning: 'Let me think about this...',
         timestamp: Date.now(),
       }
 
@@ -45,7 +45,7 @@ describe('Session State Serialization', () => {
       expect(deserialized.id).toBe(message.id)
       expect(deserialized.role).toBe(message.role)
       expect(deserialized.content).toBe(message.content)
-      expect(deserialized.reasoningContent).toBe(message.reasoningContent)
+      expect(deserialized.reasoning).toBe(message.reasoning)
     })
 
     it('should serialize and deserialize a message with tool calls', () => {
@@ -81,13 +81,8 @@ describe('Session State Serialization', () => {
         id: 'msg-4',
         role: 'tool',
         content: 'File content here',
-        toolResults: [
-          {
-            toolCallId: 'tc-1',
-            name: 'file_read',
-            content: 'File content here',
-          },
-        ],
+        toolCallId: 'tc-1',
+        name: 'file_read',
         timestamp: Date.now(),
       }
 
@@ -96,8 +91,8 @@ describe('Session State Serialization', () => {
 
       expect(deserialized.id).toBe(message.id)
       expect(deserialized.role).toBe(message.role)
-      expect(deserialized.toolResults).toHaveLength(1)
-      expect(deserialized.toolResults![0].content).toBe('File content here')
+      expect(deserialized.toolCallId).toBe('tc-1')
+      expect(deserialized.name).toBe('file_read')
     })
 
     it('should serialize and deserialize token usage', () => {
@@ -125,6 +120,7 @@ describe('Session State Serialization', () => {
 
   describe('serializeConversation / deserializeConversation', () => {
     it('should serialize and deserialize a complete conversation', () => {
+      const now = Date.now()
       const conversation: Conversation = {
         id: 'conv-1',
         title: 'Test Conversation',
@@ -133,20 +129,27 @@ describe('Session State Serialization', () => {
             id: 'msg-1',
             role: 'user',
             content: 'Hello!',
-            timestamp: Date.now(),
+            timestamp: now,
           },
           {
             id: 'msg-2',
             role: 'assistant',
             content: 'Hi there!',
-            timestamp: Date.now(),
+            timestamp: now,
           },
         ],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         status: 'idle',
-        messageCount: 2,
-        hasMore: false,
+        streamingContent: '',
+        streamingReasoning: '',
+        isReasoningStreaming: false,
+        completedReasoning: null,
+        isContentStreaming: false,
+        completedContent: null,
+        currentToolCall: null,
+        streamingToolArgs: '',
+        error: null,
       }
 
       const serialized = serializeConversation(conversation)
@@ -155,11 +158,11 @@ describe('Session State Serialization', () => {
       expect(deserialized.id).toBe(conversation.id)
       expect(deserialized.title).toBe(conversation.title)
       expect(deserialized.messages).toHaveLength(2)
-      expect(deserialized.messageCount).toBe(2)
       expect(deserialized.status).toBe('idle')
     })
 
     it('should handle conversation with tool calls and results', () => {
+      const now = Date.now()
       const conversation: Conversation = {
         id: 'conv-2',
         title: 'Code Analysis',
@@ -168,7 +171,7 @@ describe('Session State Serialization', () => {
             id: 'msg-1',
             role: 'user',
             content: 'Analyze this file',
-            timestamp: Date.now(),
+            timestamp: now,
           },
           {
             id: 'msg-2',
@@ -184,27 +187,29 @@ describe('Session State Serialization', () => {
                 },
               },
             ],
-            timestamp: Date.now(),
+            timestamp: now,
           },
           {
             id: 'msg-3',
             role: 'tool',
             content: 'console.log("hello")',
-            toolResults: [
-              {
-                toolCallId: 'tc-1',
-                name: 'file_read',
-                content: 'console.log("hello")',
-              },
-            ],
-            timestamp: Date.now(),
+            toolCallId: 'tc-1',
+            name: 'file_read',
+            timestamp: now,
           },
         ],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         status: 'idle',
-        messageCount: 3,
-        hasMore: false,
+        streamingContent: '',
+        streamingReasoning: '',
+        isReasoningStreaming: false,
+        completedReasoning: null,
+        isContentStreaming: false,
+        completedContent: null,
+        currentToolCall: null,
+        streamingToolArgs: '',
+        error: null,
       }
 
       const serialized = serializeConversation(conversation)
@@ -212,7 +217,7 @@ describe('Session State Serialization', () => {
 
       expect(deserialized.messages).toHaveLength(3)
       expect(deserialized.messages[1].toolCalls).toHaveLength(1)
-      expect(deserialized.messages[2].toolResults).toHaveLength(1)
+      expect(deserialized.messages[2].toolCallId).toBe('tc-1')
     })
   })
 })

@@ -5,11 +5,7 @@
  * Includes conversation history, agent memory, file state, and UI state.
  */
 
-import type {
-  Conversation,
-  Message,
-  Thread,
-} from '@/components/agent/message-types'
+import type { Conversation, Message, MessageRole } from '@/agent/message-types'
 import type { ProjectFingerprint } from '@/agent/project-fingerprint'
 import type { MemoryEntry } from '@/agent/context-memory'
 
@@ -54,15 +50,17 @@ export interface SerializedConversation {
   createdAt: number
   updatedAt: number
   status: 'idle' | 'pending' | 'streaming' | 'tool_calling' | 'error'
+  /** Computed message count */
   messageCount: number
+  /** Whether there are more messages (truncated) */
   hasMore: boolean
 }
 
 export interface SerializedMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool'
+  role: Exclude<MessageRole, 'system'>
   content: string | null
-  reasoningContent?: string
+  reasoning?: string | null
   toolCalls?: SerializedToolCall[]
   toolResults?: SerializedToolResult[]
   timestamp: number
@@ -183,8 +181,8 @@ export function serializeConversation(conversation: Conversation): SerializedCon
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     status: conversation.status,
-    messageCount: conversation.messageCount,
-    hasMore: conversation.hasMore,
+    messageCount: conversation.messages.length,
+    hasMore: false,
   }
 }
 
@@ -198,9 +196,17 @@ export function deserializeConversation(data: SerializedConversation): Conversat
     messages: data.messages.map(deserializeMessage),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
+    // Runtime state - set defaults
     status: data.status,
-    messageCount: data.messageCount,
-    hasMore: data.hasMore,
+    streamingContent: '',
+    streamingReasoning: '',
+    isReasoningStreaming: false,
+    completedReasoning: null,
+    isContentStreaming: false,
+    completedContent: null,
+    currentToolCall: null,
+    streamingToolArgs: '',
+    error: null,
   }
 }
 
@@ -208,55 +214,104 @@ export function deserializeConversation(data: SerializedConversation): Conversat
  * Serialize a message to JSON-compatible format
  */
 export function serializeMessage(message: Message): SerializedMessage {
-  return {
+  // Skip system messages
+  if (message.role === 'system') {
+    return {
+      id: message.id,
+      role: 'user',
+      content: null,
+      timestamp: message.timestamp,
+    }
+  }
+
+  const result: SerializedMessage = {
     id: message.id,
     role: message.role,
     content: message.content,
-    reasoningContent: 'reasoningContent' in message ? (message as { reasoningContent?: string }).reasoningContent : undefined,
-    toolCalls: message.toolCalls?.map((tc) => ({
+    timestamp: message.timestamp,
+  }
+
+  // Add reasoning if present
+  if (message.reasoning) {
+    result.reasoning = message.reasoning
+  }
+
+  // Add tool calls if present (for assistant role)
+  if (message.toolCalls && message.toolCalls.length > 0) {
+    result.toolCalls = message.toolCalls.map((tc) => ({
       id: tc.id,
       name: tc.function.name,
       arguments: tc.function.arguments,
-    })),
-    toolResults: message.toolResults?.map((tr) => ({
-      toolCallId: tr.toolCallId,
-      name: tr.name,
-      content: tr.content,
-    })),
-    timestamp: message.timestamp,
-    usage: message.usage,
+    }))
   }
+
+  // Add tool result info if present (for tool role)
+  if (message.role === 'tool' && (message.toolCallId || message.name)) {
+    result.toolResults = [
+      {
+        toolCallId: message.toolCallId || '',
+        name: message.name || '',
+        content: message.content || '',
+      },
+    ]
+  }
+
+  // Add usage if present
+  if (message.usage) {
+    result.usage = {
+      promptTokens: message.usage.promptTokens,
+      completionTokens: message.usage.completionTokens,
+      totalTokens: message.usage.totalTokens,
+    }
+  }
+
+  return result
 }
 
 /**
  * Deserialize a message from serialized format
  */
 export function deserializeMessage(data: SerializedMessage): Message {
-  return {
+  const result: Message = {
     id: data.id,
     role: data.role,
     content: data.content,
-    ...(data.reasoningContent && { reasoningContent: data.reasoningContent }),
-    ...(data.toolCalls && {
-      toolCalls: data.toolCalls.map((tc) => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: {
-          name: tc.name,
-          arguments: tc.arguments,
-        },
-      })),
-    }),
-    ...(data.toolResults && {
-      toolResults: data.toolResults.map((tr) => ({
-        toolCallId: tr.toolCallId,
-        name: tr.name,
-        content: tr.content,
-      })),
-    }),
     timestamp: data.timestamp,
-    usage: data.usage,
   }
+
+  // Add reasoning if present
+  if (data.reasoning) {
+    result.reasoning = data.reasoning
+  }
+
+  // Add tool calls if present
+  if (data.toolCalls && data.toolCalls.length > 0) {
+    result.toolCalls = data.toolCalls.map((tc) => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: {
+        name: tc.name,
+        arguments: tc.arguments,
+      },
+    }))
+  }
+
+  // Add tool result info if present (for tool role messages)
+  if (data.toolResults && data.toolResults.length > 0) {
+    result.toolCallId = data.toolResults[0].toolCallId
+    result.name = data.toolResults[0].name
+  }
+
+  // Add usage if present
+  if (data.usage) {
+    result.usage = {
+      promptTokens: data.usage.promptTokens,
+      completionTokens: data.usage.completionTokens,
+      totalTokens: data.usage.totalTokens,
+    }
+  }
+
+  return result
 }
 
 //=============================================================================
@@ -301,10 +356,7 @@ export class SessionStateManager {
   /**
    * Create a new empty session state
    */
-  createSessionState(
-    sessionId: string,
-    name: string = 'Untitled Session'
-  ): SessionState {
+  createSessionState(sessionId: string, name: string = 'Untitled Session'): SessionState {
     return {
       metadata: {
         id: sessionId,
@@ -516,7 +568,7 @@ export class SessionStateManager {
       request.onsuccess = () => {
         const result = request.result
         if (result) {
-          const { id, savedAt, ...state } = result
+          const { ...state } = result
           resolve(state as SessionState)
         } else {
           resolve(null)
@@ -574,7 +626,7 @@ export class SessionStateManager {
         const results = request.result || []
         resolve(
           results
-            .map(({ id, savedAt, ...metadata }) => metadata as SessionMetadata)
+            .map(({ ...metadata }) => metadata as SessionMetadata)
             .sort((a, b) => b.updatedAt - a.updatedAt)
         )
       }

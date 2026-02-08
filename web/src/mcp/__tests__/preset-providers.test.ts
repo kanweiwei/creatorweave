@@ -84,7 +84,7 @@ describe('Preset Providers', () => {
 
       expect(config.id).toBe('github')
       expect(config.name).toBe('GitHub')
-      expect(config.type).toBe('preset')
+      expect(config.type).toBe('user')
       expect(config.enabled).toBe(false)
     })
   })
@@ -164,7 +164,7 @@ describe('Preset Providers', () => {
 
       for (const provider of providers) {
         expect(provider.config.url).toBeDefined()
-        expect(provider.config.transport).toBe('sse' || 'streamable_http')
+        expect(provider.config.transport).toMatch(/^(sse|streamable_http)$/)
       }
     })
   })
