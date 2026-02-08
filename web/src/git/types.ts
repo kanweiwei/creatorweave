@@ -1,0 +1,349 @@
+/**
+ * Git Module Type Definitions
+ *
+ * Type definitions for Git operations using isomorphic-git in the browser.
+ */
+
+/**
+ * Git commit information
+ */
+export interface GitCommit {
+  /** Commit hash (full SHA) */
+  oid: string
+  /** Abbreviated commit hash (7 characters) */
+  shortOid: string
+  /** Commit message */
+  message: string
+  /** Commit author name */
+  authorName: string
+  /** Commit author email */
+  authorEmail: string
+  /** Author timestamp in milliseconds */
+  authorTimestamp: number
+  /** Committer name */
+  committerName: string
+  /** Committer email */
+  committerEmail: string
+  /** Committer timestamp in milliseconds */
+  committerTimestamp: number
+  /** Parent commit hashes */
+  parent: string[]
+  /** Tree hash */
+  tree: string
+  /** GPG signature (if present) */
+  signature?: string
+}
+
+/**
+ * Git status entry for a single file
+ */
+export interface GitStatusEntry {
+  /** File path relative to repository root */
+  path: string
+  /** File status classification */
+  status: GitStatusType
+  /** Staged changes indicator */
+  staged: boolean
+  /** Unstaged changes indicator */
+  unstaged: boolean
+  /** Untracked indicator */
+  untracked: boolean
+  /** Rename/copy similarity score (0-100) if applicable */
+  score?: number
+  /** Previous path if renamed/copied */
+  oldPath?: string
+}
+
+/**
+ * Git file status types
+ */
+export type GitStatusType =
+  /** Not modified */
+  | 'unmodified'
+  /** Modified in working directory */
+  | 'modified'
+  /** Added to staging area */
+  | 'added'
+  /** Deleted from working directory */
+  | 'deleted'
+  /** Renamed in working directory */
+  | 'renamed'
+  /** Copied in working directory */
+  | 'copied'
+  /** Untracked file */
+  | 'untracked'
+  /** Type change (e.g., regular file to symlink) */
+  | 'typechange'
+  /** Unmerged (conflicts) */
+  | 'unmerged'
+
+/**
+ * Git repository status summary
+ */
+export interface GitStatus {
+  /** Current branch name */
+  currentBranch: string
+  /** Whether repository is bare */
+  isBare: boolean
+  /** Whether repository is empty (no commits) */
+  isEmpty: boolean
+  /** All file status entries */
+  entries: GitStatusEntry[]
+  /** Number of staged files */
+  stagedCount: number
+  /** Number of unstaged files */
+  unstagedCount: number
+  /** Number of untracked files */
+  untrackedCount: number
+  /** Whether there are any conflicts */
+  hasConflicts: boolean
+  /** Current HEAD commit (if exists) */
+  currentCommit?: string
+  /** Current HEAD tree (if exists) */
+  currentTree?: string
+}
+
+/**
+ * Git diff entry for a single file
+ */
+export interface GitDiffEntry {
+  /** File path */
+  path: string
+  /** Previous path if renamed */
+  oldPath?: string
+  /** Whether this is a binary file */
+  isBinary: boolean
+  /** New file mode (e.g., '100644', '100755', '040000') */
+  newMode?: string
+  /** Previous file mode */
+  oldMode?: string
+  /** New file blob hash */
+  newBlob?: string
+  /** Previous file blob hash */
+  oldBlob?: string
+  /** Number of additions */
+  additions: number
+  /** Number of deletions */
+  deletions: number
+  /** Hunks of changes */
+  hunks: GitDiffHunk[]
+}
+
+/**
+ * A single hunk in a diff
+ */
+export interface GitDiffHunk {
+  /** Old file starting line number */
+  oldStart: number
+  /** Old file line count */
+  oldLines: number
+  /** New file starting line number */
+  newStart: number
+  /** New file line count */
+  newLines: number
+  /** Header showing function/context */
+  header: string
+  /** Lines of the hunk */
+  lines: GitDiffLine[]
+}
+
+/**
+ * A single line in a diff hunk
+ */
+export interface GitDiffLine {
+  /** Line type: 'context', 'addition', or 'deletion' */
+  type: 'context' | 'addition' | 'deletion'
+  /** Line content (without trailing newline) */
+  content: string
+  /** Line number in old file (if applicable) */
+  oldLineNumber?: number
+  /** Line number in new file (if applicable) */
+  newLineNumber?: number
+}
+
+/**
+ * Complete diff result for one or more files
+ */
+export interface GitDiff {
+  /** Array of diff entries */
+  entries: GitDiffEntry[]
+  /** Total additions across all files */
+  totalAdditions: number
+  /** Total deletions across all files */
+  totalDeletions: number
+  /** Whether any files are binary */
+  hasBinary: boolean
+}
+
+/**
+ * Git log options
+ */
+export interface GitLogOptions {
+  /** Maximum number of commits to return (0 for all) */
+  depth?: number
+  /** Skip commits from the start */
+  skip?: number
+  /** Include commit hashes in results */
+  includeHash?: boolean
+  /** Include file statistics */
+  includeStats?: boolean
+  /** Include body/description (not just first line of message) */
+  includeBody?: boolean
+  /** Reverse commit order (oldest first) */
+  reverse?: boolean
+}
+
+/**
+ * Git status options
+ */
+export interface GitStatusOptions {
+  /** Show all files (including unchanged) */
+  showAll?: boolean
+  /** Only show staged changes */
+  showStaged?: boolean
+  /** Only show unstaged changes */
+  showUnstaged?: boolean
+  /** Only show untracked files */
+  showUntracked?: boolean
+  /** Format as porcelain (machine-readable) */
+  porcelain?: boolean
+  /** Include similarity scores for renames/copies */
+  similarity?: boolean
+}
+
+/**
+ * Git diff options
+ */
+export interface GitDiffOptions {
+  /** Compare against this commit (default: HEAD) */
+  ref?: string
+  /** Compare against this commit for old version */
+  oldRef?: string
+  /** File path to filter (optional) */
+  path?: string
+  /** Include binary files */
+  includeBinary?: boolean
+  /** Include file stats */
+  includeStats?: boolean
+  /** Context lines around changes */
+  contextLines?: number
+  /** Detect renames/copies */
+  detectRenames?: boolean
+  /** Renaming similarity threshold (0-100) */
+  renameThreshold?: number
+  /** Copy detection */
+  detectCopies?: boolean
+}
+
+/**
+ * Git repository initialization options
+ */
+export interface GitInitOptions {
+  /** Repository bare status */
+  bare?: boolean
+  /** Default branch name */
+  defaultBranch?: string
+  /** Whether to make it a bare repository */
+  noCheckout?: boolean
+}
+
+/**
+ * Git configuration entry
+ */
+export interface GitConfigEntry {
+  /** Configuration key */
+  key: string
+  /** Configuration value */
+  value: string
+  /** Configuration scope (local, global, system) */
+  scope?: 'local' | 'global' | 'system'
+}
+
+/**
+ * Git blob content (file content at a specific commit/tree)
+ */
+export interface GitBlob {
+  /** Blob hash (SHA) */
+  oid: string
+  /** Blob size in bytes */
+  size: number
+  /** Content as Uint8Array */
+  content: Uint8Array
+  /** Content as text (if text file) */
+  text?: string
+}
+
+/**
+ * Git tree entry
+ */
+export interface GitTreeEntry {
+  /** Entry name (filename) */
+  name: string
+  /** Entry path */
+  path: string
+  /** Tree entry mode */
+  mode: string
+  /** Object hash */
+  oid: string
+  /** Object type ('blob' | 'tree') */
+  type: 'blob' | 'tree'
+  /** File size (for blobs) */
+  size?: number
+}
+
+/**
+ * Git reference (branch/tag)
+ */
+export interface GitRef {
+  /** Reference name (e.g., 'refs/heads/main') */
+  name: string
+  /** Shorthand name */
+  shortName: string
+  /** Reference type ('branch' | 'tag' | 'remote') */
+  type: 'branch' | 'tag' | 'remote'
+  /** Target commit hash */
+  oid: string
+  /** Is HEAD reference */
+  isHead?: boolean
+  /** Is current branch */
+  isCurrent?: boolean
+  /** Remote name (if remote branch) */
+  remote?: string
+}
+
+/**
+ * Error class for Git operations
+ */
+export class GitError extends Error {
+  /** Error code for programmatic handling */
+  code: string
+  /** Optional: command that failed */
+  command?: string
+  /** Optional: exit code */
+  exitCode?: number
+  /** Optional: stderr output */
+  stderr?: string
+
+  constructor(message: string, code: string, command?: string, exitCode?: number, stderr?: string) {
+    super(message)
+    this.name = 'GitError'
+    this.code = code
+    this.command = command
+    this.exitCode = exitCode
+    this.stderr = stderr
+  }
+}
+
+/**
+ * Result of a Git operation
+ */
+export interface GitResult<T> {
+  /** Whether operation succeeded */
+  success: boolean
+  /** Result data (if successful) */
+  data?: T
+  /** Error (if failed) */
+  error?: GitError
+  /** Execution time in milliseconds */
+  duration?: number
+}
