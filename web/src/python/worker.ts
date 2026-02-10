@@ -453,7 +453,10 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
       await injectFiles(files, pyodide)
     }
 
-    // Auto-load packages based on imports in the code
+    // Load matplotlib first (it's imported in the wrapper code)
+    await pyodide.loadPackage('matplotlib')
+
+    // Auto-load packages based on imports in the user code
     await pyodide.loadPackagesFromImports(code)
 
     // Execute code with timeout
@@ -798,51 +801,13 @@ figure_data
  * @returns {Promise<unknown>}
  */
 async function executeWithTimeout(pyodide, code, timeout) {
-  // Auto-configure matplotlib for browser environment
-  const matplotlibSetup = `
-import matplotlib
-matplotlib.use('Agg')
-`
-
-  const wrapperCode = `
-import sys
-import io
-
-# Configure matplotlib for browser
-${matplotlibSetup}
-
-# Capture output
-sys.stdout = io.StringIO()
-sys.stderr = io.StringIO()
-
-try:
-${code
-  .split('\n')
-  .map((line) => '    ' + line)
-  .join('\n')}
-except Exception as e:
-    import traceback
-    sys.__stdout__.write(traceback.format_exc())
-    raise
-
-# Get captured output
-stdout_value = sys.stdout.getvalue()
-stderr_value = sys.stderr.getvalue()
-
-# Restore stdout/stderr
-sys.stdout = sys.__stdout__
-sys.stderr = sys.__stderr__
-
-stdout_value
-`
-
   // Create timeout promise
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => reject(new Error(`Execution timeout after ${timeout}ms`)), timeout)
   })
 
-  // Execute code
-  const executePromise = pyodide.runPythonAsync(wrapperCode)
+  // Execute code directly (stdout/stderr is captured by pyodide.runPythonAsync)
+  const executePromise = pyodide.runPythonAsync(code)
 
   // Race between execution and timeout
   const result = await Promise.race([executePromise, timeoutPromise])

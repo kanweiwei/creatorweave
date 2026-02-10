@@ -33,6 +33,7 @@ export const pythonCodeDefinition: ToolDefinition = {
 IMPORTANT:
 1. Specify file paths in the files parameter that your code needs
 2. Pyodide auto-loads packages when you import them (pandas, numpy, matplotlib, etc.)
+3. For matplotlib: set matplotlib.use('Agg') BEFORE creating figures to run in headless mode
 
 Examples:
 - Simple computation:
@@ -41,8 +42,8 @@ Examples:
 - Data analysis with pandas:
   run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())", files: ["data.csv"])
 
-- Data visualization:
-  run_python_code(code="import matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')")`,
+- Data visualization (headless mode):
+  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')")`,
     parameters: {
       type: 'object',
       properties: {
