@@ -69,8 +69,6 @@ export const listFilesExecutor: ToolExecutor = async (args, context) => {
 
     // Build tree output
     const lines: string[] = []
-    const rootName = subPath || context.directoryHandle.name
-    lines.push(`${rootName}/`)
 
     for (const entry of entries) {
       const depth = entry.path.split('/').length

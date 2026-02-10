@@ -3,22 +3,21 @@
  *
  * Features:
  * - Execute arbitrary Python code with stdio capture
- * - Automatic file injection from user's active workspace
- * - Support for pandas, numpy, matplotlib, openpyxl packages
+ * - Access user's workspace files via mountNativeFS (LazyPyodideFS)
+ * - Automatic package loading from imports (pandas, numpy, matplotlib, openpyxl, etc.)
  * - Handle matplotlib image outputs
- * - Capture output files and bridge to OPFS
+ * - Optional auto-sync for file writes back to workspace
  * - Comprehensive error handling and timeout management
  *
- * Integration:
+ * Architecture:
  * - Uses pythonExecutor singleton from @/python
- * - Bridges active files from agent store to Pyodide
- * - Maps output files back to user's workspace
+ * - Mounts agentStore.directoryHandle at /mnt using mountNativeFS
+ * - LazyPyodideFS provides lazy-loading file access via File System Access API
+ * - No file pre-injection - files are read on-demand from native filesystem
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { pythonExecutor } from '@/python'
-import type { FileRef as CoreFileRef } from '@/python/types'
-import type { FileRef as WorkerFileRef } from '@/python/worker-types'
 
 //=============================================================================
 // Tool Definition
@@ -31,41 +30,40 @@ export const pythonCodeDefinition: ToolDefinition = {
     description: `Execute Python code in the browser using Pyodide (WebAssembly Python runtime).
 
 ENVIRONMENT: Runs in browser via WebAssembly, not a full Python environment.
-- Files are injected to /mnt directory
-- Built-in packages: pandas, numpy, matplotlib, openpyxl, pillow, etc.
+- Files are accessible at /mnt/ path (mounted from your workspace)
+- Built-in packages: pandas, numpy, matplotlib, openpyxl, pillow, scipy, sklearn, etc.
 - For other packages: use micropip.install('package-name')
 - For matplotlib: set matplotlib.use('Agg') BEFORE creating figures (headless mode)
+- File writes require sync=true to persist back to workspace
 
 IMPORTANT:
-1. Specify file paths in the files parameter that your code needs
-2. Files can be a string array or object array: ["file.xlsx"] or [{path: "file.xlsx"}]
+1. The workspace directory is automatically mounted at /mnt
+2. Set sync=true to persist file writes back to workspace
+3. Files are read on-demand - no need to specify which files you need
 
 Examples:
 - Simple computation:
   run_python_code(code="print(sum([1, 2, 3]))")
 
-- Data analysis with pandas (built-in):
-  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())", files: ["data.csv"])
-
-- Install extra package then use:
-  run_python_code(code="import micropip\\nawait micropip.install('openpyxl')\\nimport pandas as pd\\ndf = pd.read_excel('/mnt/file.xlsx')\\nprint(df.head())", files: ["file.xlsx"])
+- Data analysis with pandas:
+  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())")
 
 - Data visualization (headless mode):
-  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')", files: ["data.csv"])`,
+  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')", sync=true)
+
+- Write processed data back to workspace:
+  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/input.csv')\\ndf.to_csv('/mnt/output.csv', index=False)", sync=true)`,
     parameters: {
       type: 'object',
       properties: {
         code: {
           type: 'string',
-          description: 'Python code to execute. Access files via /mnt/{filename}.',
+          description: 'Python code to execute. Access workspace files via /mnt/{path}.',
         },
-        files: {
-          type: 'array',
-          items: {
-            type: 'string',
-          },
+        sync: {
+          type: 'boolean',
           description:
-            'List of file paths to inject into /mnt. Code accesses them via /mnt/{filename}.',
+            'If true, sync file writes back to workspace after execution. Use this when your code writes files.',
         },
         timeout: {
           type: 'number',
@@ -83,10 +81,10 @@ Examples:
 
 export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
   const code = args.code as string
-  // Support both string array ["file.xlsx"] and object array [{path: "file.xlsx"}]
-  const rawFiles = args.files as (string | { path: string })[] | undefined
+  const sync = args.sync as boolean | undefined
   const timeout = (args.timeout as number) || 30000
 
+  // Validation
   if (!code || typeof code !== 'string') {
     return JSON.stringify({ error: 'code is required and must be a string' })
   }
@@ -97,98 +95,40 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
     })
   }
 
-  // Check if code references /mnt/ files but no files parameter provided
-  const mentionsMnt =
-    code.includes('/mnt/') ||
-    code.includes('pd.read_excel') ||
-    code.includes('pd.read_csv') ||
-    code.includes('open(') ||
-    code.includes('pd.read_json')
-  if (mentionsMnt && (!rawFiles || rawFiles.length === 0)) {
+  // Validate timeout range
+  if (timeout < 1000) {
+    return JSON.stringify({ error: 'Timeout must be at least 1000ms (1 second)' })
+  }
+  if (timeout > 120000) {
+    return JSON.stringify({ error: 'Timeout cannot exceed 120000ms (120 seconds)' })
+  }
+
+  // Check for workspace directory
+  const { useAgentStore } = await import('@/store/agent.store')
+  const directoryHandle = useAgentStore.getState().directoryHandle
+
+  if (!directoryHandle) {
     return JSON.stringify({
-      error: 'Code references files in /mnt/ but no files parameter provided.',
-      hint: 'Pass file paths in the files array, e.g., files: ["data.csv"]',
+      error: 'No workspace directory selected. Please select a project folder first.',
+      hint: 'Use the folder selection button to choose your project directory.',
+    })
+  }
+
+  // Verify directory permissions
+  const permission = await directoryHandle.queryPermission({ mode: 'readwrite' })
+  if (permission !== 'granted') {
+    return JSON.stringify({
+      error: 'Workspace directory permission not granted.',
+      hint: 'Please re-select the folder to grant read/write permissions.',
     })
   }
 
   try {
-    // Get active files if not explicitly specified
-    const activeFiles: CoreFileRef[] = []
-    if (rawFiles && rawFiles.length > 0) {
-      const { useAgentStore } = await import('@/store/agent.store')
-      const directoryHandle = useAgentStore.getState().directoryHandle
-
-      if (!directoryHandle) {
-        return JSON.stringify({
-          error: 'No directory selected. Please select a project folder first.',
-        })
-      }
-
-      const { useOPFSStore } = await import('@/store/opfs.store')
-      const { readFile } = useOPFSStore.getState()
-
-      for (const file of rawFiles) {
-        // Support both string: "file.xlsx" and object: {path: "file.xlsx"} formats
-        const filePath = typeof file === 'string' ? file : file.path
-
-        try {
-          const { content } = await readFile(filePath, directoryHandle)
-
-          // Convert content to FileRef format
-          let fileContent: string
-          if (typeof content === 'string') {
-            fileContent = content
-          } else if (content instanceof ArrayBuffer) {
-            const decoder = new TextDecoder('utf-8')
-            fileContent = decoder.decode(content)
-          } else {
-            const blob = content as Blob
-            fileContent = await blob.text()
-          }
-
-          activeFiles.push({
-            path: filePath,
-            name: filePath.split('/').pop() || filePath,
-            content: fileContent,
-            contentType: 'text',
-            size: fileContent.length,
-            source: 'filesystem',
-          })
-        } catch (error) {
-          console.warn(`[Python Tool] Failed to read file ${filePath}:`, error)
-          return JSON.stringify({
-            error: `Failed to read file: ${filePath}`,
-            hint: 'Verify the file path matches the glob result exactly.',
-          })
-        }
-      }
-    }
-
-    // Convert CoreFileRef to WorkerFileRef format for executor
-    const workerFiles: WorkerFileRef[] = activeFiles.map((file) => {
-      let content: ArrayBuffer
-      if (typeof file.content === 'string') {
-        const encoder = new TextEncoder()
-        const uint8Array = encoder.encode(file.content)
-        content = new ArrayBuffer(uint8Array.length)
-        new Uint8Array(content).set(uint8Array)
-      } else if (file.content instanceof Uint8Array) {
-        content = new ArrayBuffer(file.content.length)
-        new Uint8Array(content).set(file.content)
-      } else {
-        content = file.content as ArrayBuffer
-      }
-
-      return {
-        name: file.name,
-        content,
-      }
-    })
-
-    // Execute Python code (Pyodide auto-loads packages)
+    // Execute Python code with mounted directory
     const result = await pythonExecutor.execute({
       code,
-      files: workerFiles,
+      mountDir: directoryHandle,
+      syncFs: sync === true,
       timeout,
     })
 
@@ -201,13 +141,14 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       })
     }
 
-    // Build response
+    // Build response (without outputFiles)
     const response: {
       stdout?: string
       stderr?: string
       result?: unknown
       images?: Array<{ filename: string; data: string }>
       executionTime: number
+      synced?: boolean
     } = {
       executionTime: result.executionTime,
     }
@@ -228,11 +169,17 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       response.images = result.images
     }
 
+    // Add sync status if sync was requested
+    if (sync === true) {
+      response.synced = true
+    }
+
     return JSON.stringify(response, null, 2)
   } catch (error) {
-    // Handle Pyodide loading errors
+    // Handle errors
     const errorMessage = error instanceof Error ? error.message : String(error)
 
+    // Pyodide loading errors
     if (errorMessage.includes('Pyodide') || errorMessage.includes('loading')) {
       return JSON.stringify({
         error: 'Python environment is loading. Please wait a moment and try again.',
@@ -240,6 +187,16 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       })
     }
 
+    // Permission errors
+    if (errorMessage.includes('permission') || errorMessage.includes('NotAllowedError')) {
+      return JSON.stringify({
+        error: 'Permission denied accessing workspace files.',
+        hint: 'Please re-select the folder to grant read/write permissions.',
+        details: errorMessage,
+      })
+    }
+
+    // Generic error
     return JSON.stringify({
       error: `Execution error: ${errorMessage}`,
     })

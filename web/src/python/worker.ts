@@ -4,14 +4,19 @@
  *
  * Features:
  * - Lazy loads Pyodide from local bundle on first use
- * - Creates /mnt directory for file operations
- * - Lazy mounts native directories (no full traversal on mount)
- * - Incremental sync (only sync modified files)
+ * - Mounts native directories using mountNativeFS
  * - Automatic package loading via loadPackagesFromImports
  * - Captures stdout/stderr for print output
  * - Handles matplotlib image output
  * - Supports file input/output from /mnt
  */
+
+//=============================================================================
+// Constants
+//=============================================================================
+
+/** Default execution timeout in milliseconds */
+const DEFAULT_TIMEOUT = 30000
 
 //=============================================================================
 // Type Definitions
@@ -24,28 +29,9 @@
  */
 
 /**
- * @typedef {Object} FileOutput
- * @property {string} name
- * @property {ArrayBuffer} content
- */
-
-/**
  * @typedef {Object} ImageOutput
  * @property {string} filename
  * @property {string} data - base64
- */
-
-/**
- * @typedef {Object} MountRequest
- * @property {string} id
- * @property {'mount'} type
- * @property {FileSystemDirectoryHandle} dirHandle
- */
-
-/**
- * @typedef {Object} SyncRequest
- * @property {string} id
- * @property {'sync'} type
  */
 
 /**
@@ -55,7 +41,6 @@
  * @property {string} [stdout]
  * @property {string} [stderr]
  * @property {ImageOutput[]} [images]
- * @property {FileOutput[]} [outputFiles]
  * @property {number} executionTime
  * @property {string} [error]
  */
@@ -73,314 +58,14 @@ let pyodideReadyPromise = null
 /** @type {any} NativeFS handle for syncing changes back */
 let nativefs = null
 
-/** @type {LazyPyodideFS | null} Lazy filesystem instance */
-let lazyFS = null
+/** @type {FileSystemDirectoryHandle | null} Current mounted directory handle */
+let currentDirHandle = null
 
 // Stdout/stderr capture
 /** @type {string[]} */
 let stdoutBuffer = []
 /** @type {string[]} */
 let stderrBuffer = []
-
-//=============================================================================
-// Lazy Loading Filesystem Implementation
-//=============================================================================
-
-/**
- * Lazy file entry with metadata
- * @typedef {Object} LazyFileEntry
- * @property {Uint8Array} data - File content
- * @property {Date} mtime - Last modified time
- * @property {boolean} dirty - Whether file has been modified
- */
-
-/**
- * Lazy loading filesystem - loads files on-demand instead of full traversal
- */
-class LazyPyodideFS {
-  constructor(pyodide) {
-    /** @type {any} */
-    this.pyodide = pyodide
-    /** @type {FileSystemDirectoryHandle | null} */
-    this.dirHandle = null
-    /** @type {Map<string, LazyFileEntry>} */
-    this.fileCache = new Map()
-    /** @type {Set<string>} */
-    this.dirtyPaths = new Set()
-    /** @type {Map<string, string[]>} */
-    this.dirCache = new Map()
-    /** @type {string} */
-    this.mountpoint = '/mnt'
-  }
-
-  /**
-   * Mount directory (lazy - no file traversal)
-   * @param {FileSystemDirectoryHandle} dirHandle
-   */
-  async mount(dirHandle) {
-    this.dirHandle = dirHandle
-    this.fileCache.clear()
-    this.dirtyPaths.clear()
-    this.dirCache.clear()
-
-    // Clean up existing mount
-    if (this.pyodide.FS.analyzePath(this.mountpoint).exists) {
-      try {
-        this.pyodide.FS.rmdir(this.mountpoint)
-      } catch {
-        // Ignore if directory has contents
-      }
-    }
-
-    // Create mountpoint directory
-    this.pyodide.FS.mkdir(this.mountpoint)
-
-    console.log(`[LazyFS] Mounted ${dirHandle.name} (lazy mode, no file traversal)`)
-  }
-
-  /**
-   * Check if a path exists in the mounted directory
-   * @param {string} relPath
-   * @returns {Promise<boolean>}
-   */
-  async exists(relPath) {
-    try {
-      await this.getFileHandle(relPath)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  /**
-   * Read file content (lazy load)
-   * @param {string} relPath - Relative path from mountpoint
-   * @returns {Promise<Uint8Array>}
-   */
-  async readFile(relPath) {
-    // Check cache first
-    const cached = this.fileCache.get(relPath)
-    if (cached) {
-      return cached.data
-    }
-
-    // Cache miss - load from browser directory
-    const handle = await this.getFileHandle(relPath)
-    const file = await handle.getFile()
-    const data = new Uint8Array(await file.arrayBuffer())
-
-    // Cache the file
-    this.fileCache.set(relPath, {
-      data,
-      mtime: new Date(file.lastModified),
-      dirty: false,
-    })
-
-    return data
-  }
-
-  /**
-   * Write file (marks as dirty for sync)
-   * @param {string} relPath - Relative path from mountpoint
-   * @param {Uint8Array} data
-   */
-  async writeFile(relPath, data) {
-    const absPath = this.mountpoint + '/' + relPath
-
-    // Write to MEMFS
-    this.pyodide.FS.writeFile(absPath, data)
-
-    // Update cache and mark dirty
-    this.fileCache.set(relPath, {
-      data,
-      mtime: new Date(),
-      dirty: true,
-    })
-    this.dirtyPaths.add(relPath)
-  }
-
-  /**
-   * Sync only modified files back to browser directory
-   * @returns {Promise<number>} Number of files synced
-   */
-  async sync() {
-    if (!this.dirHandle) {
-      throw new Error('No directory mounted')
-    }
-
-    if (this.dirtyPaths.size === 0) {
-      console.log('[LazyFS] No files to sync')
-      return 0
-    }
-
-    let synced = 0
-    for (const relPath of this.dirtyPaths) {
-      const entry = this.fileCache.get(relPath)
-      if (!entry) continue
-
-      try {
-        // Create parent directories if needed
-        await this.ensureParentDirs(relPath)
-
-        // Get or create file handle
-        const handle = await this.dirHandle.getFileHandle(relPath, { create: true })
-        const writable = await handle.createWritable()
-        await writable.write(entry.data)
-        await writable.close()
-
-        // Update mtime in cache
-        entry.mtime = new Date()
-        entry.dirty = false
-        this.dirtyPaths.delete(relPath)
-
-        synced++
-        console.log(`[LazyFS] Synced: ${relPath}`)
-      } catch (error) {
-        console.error(`[LazyFS] Failed to sync ${relPath}:`, error)
-      }
-    }
-
-    console.log(`[LazyFS] Synced ${synced} file(s)`)
-    return synced
-  }
-
-  /**
-   * List directory contents (lazy load)
-   * @param {string} relPath - Relative path from mountpoint
-   * @returns {Promise<string[]>}
-   */
-  async readdir(relPath) {
-    // Check cache first
-    const cached = this.dirCache.get(relPath)
-    if (cached) {
-      return cached
-    }
-
-    // Not in cache - load from browser directory
-    const handle = await this.getDirectoryHandle(relPath)
-    const entries: string[] = []
-
-    for await (const entry of handle.values()) {
-      entries.push(entry.name)
-    }
-
-    // Cache the result
-    this.dirCache.set(relPath, entries)
-    return entries
-  }
-
-  /**
-   * Get file handle from relative path
-   * @param {string} relPath
-   * @returns {Promise<FileSystemFileHandle>}
-   */
-  async getFileHandle(relPath) {
-    if (!this.dirHandle) {
-      throw new Error('No directory mounted')
-    }
-
-    const parts = relPath.split('/').filter(Boolean)
-    let handle = this.dirHandle
-
-    for (const part of parts) {
-      try {
-        if (handle.kind === 'directory') {
-          handle = await handle.getFileHandle(part)
-        } else {
-          throw new Error(`'${part}' is not a directory`)
-        }
-      } catch {
-        throw new Error(`File not found: ${relPath}`)
-      }
-    }
-
-    if (handle.kind !== 'file') {
-      throw new Error(`'${relPath}' is a directory, not a file`)
-    }
-
-    return handle
-  }
-
-  /**
-   * Get directory handle from relative path
-   * @param {string} relPath
-   * @returns {Promise<FileSystemDirectoryHandle>}
-   */
-  async getDirectoryHandle(relPath) {
-    if (!this.dirHandle) {
-      throw new Error('No directory mounted')
-    }
-
-    if (relPath === '.' || relPath === '') {
-      return this.dirHandle
-    }
-
-    const parts = relPath.split('/').filter(Boolean)
-    let handle = this.dirHandle
-
-    for (const part of parts) {
-      try {
-        if (handle.kind === 'directory') {
-          handle = await handle.getDirectoryHandle(part)
-        } else {
-          throw new Error(`'${part}' is not a directory`)
-        }
-      } catch {
-        throw new Error(`Directory not found: ${relPath}`)
-      }
-    }
-
-    return handle
-  }
-
-  /**
-   * Ensure parent directories exist for a file path
-   * @param {string} relPath
-   */
-  async ensureParentDirs(relPath) {
-    const parts = relPath.split('/').filter(Boolean)
-    if (parts.length <= 1) return
-
-    const parentParts = parts.slice(0, -1)
-    let handle = this.dirHandle!
-
-    for (const part of parentParts) {
-      try {
-        handle = await handle.getDirectoryHandle(part)
-      } catch {
-        handle = await handle.getDirectoryHandle(part)
-        handle = await handle.getDirectoryHandle(part)
-      }
-    }
-  }
-
-  /**
-   * Check if there are pending changes to sync
-   * @returns {boolean}
-   */
-  hasPendingChanges() {
-    return this.dirtyPaths.size > 0
-  }
-
-  /**
-   * Get count of pending files to sync
-   * @returns {number}
-   */
-  getPendingCount() {
-    return this.dirtyPaths.size
-  }
-
-  /**
-   * Unmount and cleanup
-   */
-  unmount() {
-    this.dirHandle = null
-    this.fileCache.clear()
-    this.dirtyPaths.clear()
-    this.dirCache.clear()
-    console.log('[LazyFS] Unmounted')
-  }
-}
 
 //=============================================================================
 // Message Handler
@@ -400,12 +85,217 @@ async function initPyodide() {
     const isDev = import.meta.env?.DEV ?? false
     const indexURL = isDev ? 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/' : '/assets/pyodide'
 
-    return loadPyodide({
+    const instance = await loadPyodide({
       indexURL,
     })
+
+    // Set up stdout/stderr capture
+    instance.setStdout({
+      batched: (text) => {
+        stdoutBuffer.push(text)
+      }
+    })
+    instance.setStderr({
+      batched: (text) => {
+        stderrBuffer.push(text)
+      }
+    })
+
+    return instance
   })()
 
   return pyodideReadyPromise
+}
+
+/**
+ * Convert ArrayBuffer to base64 efficiently (without spread operator)
+ * @param {ArrayBuffer} buffer
+ * @returns {string}
+ */
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
+/**
+ * Send response message to main thread
+ * @param {string} id
+ * @param {boolean} success
+ * @param {object} result
+ */
+function sendResponse(id, success, result) {
+  self.postMessage({ id, success, result })
+}
+
+/**
+ * Send error response to main thread
+ * @param {string} id
+ * @param {string} errorMessage
+ */
+function sendError(id, errorMessage) {
+  console.error('[Pyodide Worker] Operation failed:', errorMessage)
+  sendResponse(id, false, { success: false, error: errorMessage })
+}
+
+/**
+ * Check if two directory handles refer to the same directory
+ * @param {FileSystemDirectoryHandle} handle1
+ * @param {FileSystemDirectoryHandle} handle2
+ * @returns {boolean}
+ */
+function isSameHandle(handle1, handle2) {
+  if (!handle1 || !handle2) return false
+  // For same object reference
+  if (handle1 === handle2) return true
+  // For different references to same directory, compare by name
+  // Note: In browsers, the same directory requested multiple times may return
+  // different object references, so we need to compare by a stable identifier
+  return handle1.name === handle2.name
+}
+
+/**
+ * Mount directory handle to /mnt using mountNativeFS
+ * @param {FileSystemDirectoryHandle} dirHandle
+ */
+async function ensureMounted(dirHandle) {
+  // Validate pyodide is initialized
+  if (!pyodide) {
+    throw new Error('Pyodide not initialized. Call initPyodide() first.')
+  }
+
+  // Reuse existing mount if same directory (using stable comparison)
+  if (isSameHandle(currentDirHandle, dirHandle) && nativefs) {
+    console.log('[Pyodide Worker] Reusing existing mount for', dirHandle.name)
+    return
+  }
+
+  console.log('[Pyodide Worker] ensureMounted called for', dirHandle.name, 'current:', currentDirHandle?.name)
+
+  // Step 1: Sync and clean up existing nativefs handle
+  if (nativefs) {
+    try {
+      // Sync from memory to filesystem (writes changes back to browser storage)
+      await nativefs.syncfs()
+      console.log('[Pyodide Worker] Synced existing nativefs before unmount')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.warn('[Pyodide Worker] Sync failed during cleanup:', msg)
+    }
+    nativefs = null
+  }
+  currentDirHandle = null
+
+  // Step 2: Force unmount /mnt if it's a mount point
+  // IMPORTANT: We need to completely remove /mnt before calling mountNativeFS again
+  // because ensureMountPathExists checks isMountpoint() and throws if already mounted
+  try {
+    const mntPath = pyodide.FS.analyzePath('/mnt')
+    console.log('[Pyodide Worker] /mnt analyzePath before cleanup:', {
+      exists: mntPath.exists,
+      mountPoint: mntPath.mountPoint
+    })
+
+    // Keep trying to unmount until it's no longer a mount point
+    let attempts = 0
+    const maxAttempts = 3
+    while (mntPath.mountPoint && attempts < maxAttempts) {
+      attempts++
+      console.log(`[Pyodide Worker] /mnt is a mount point (attempt ${attempts}), unmounting...`)
+
+      pyodide.FS.unmount('/mnt')
+      console.log('[Pyodide Worker] Unmounted /mnt')
+
+      // Re-check after unmount
+      const recheck = pyodide.FS.analyzePath('/mnt')
+      if (!recheck.mountPoint) {
+        console.log('[Pyodide Worker] /mnt is no longer a mount point')
+        break
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.warn('[Pyodide Worker] Unmount failed:', msg)
+  }
+
+  // Step 3: Remove /mnt directory completely if it exists
+  // This is critical because mountNativeFS calls mkdirTree which will fail
+  // if the directory exists and is detected as a mount point
+  try {
+    const mntPath = pyodide.FS.analyzePath('/mnt')
+    if (mntPath.exists) {
+      if (mntPath.mountPoint) {
+        // Still a mount point - this shouldn't happen but let's handle it
+        console.warn('[Pyodide Worker] /mnt is still a mount point after unmount, forcing unmount again')
+        try {
+          pyodide.FS.unmount('/mnt')
+        } catch (e) {
+          console.warn('[Pyodide Worker] Force unmount failed:', e)
+        }
+      }
+
+      // Remove the directory if it still exists
+      const finalCheck = pyodide.FS.analyzePath('/mnt')
+      if (finalCheck.exists && !finalCheck.mountPoint) {
+        console.log('[Pyodide Worker] Removing /mnt directory...')
+        pyodide.FS.rmdir('/mnt')
+        console.log('[Pyodide Worker] Removed /mnt directory')
+      } else if (finalCheck.mountPoint) {
+        // Last resort: try to unmount one more time
+        console.warn('[Pyodide Worker] /mnt still reports as mount point, final unmount attempt')
+        try {
+          pyodide.FS.unmount('/mnt')
+          // Try to remove after final unmount
+          const afterFinal = pyodide.FS.analyzePath('/mnt')
+          if (afterFinal.exists && !afterFinal.mountPoint) {
+            pyodide.FS.rmdir('/mnt')
+            console.log('[Pyodide Worker] Final cleanup successful')
+          }
+        } catch (e) {
+          console.error('[Pyodide Worker] Final cleanup failed:', e)
+        }
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.warn('[Pyodide Worker] Directory removal failed:', msg)
+  }
+
+  // Step 4: Mount using mountNativeFS
+  console.log('[Pyodide Worker] Mounting new directory handle to /mnt...')
+  try {
+    nativefs = await pyodide.mountNativeFS('/mnt', dirHandle)
+    currentDirHandle = dirHandle
+    console.log(`[Pyodide Worker] Directory "${dirHandle.name}" mounted at /mnt`)
+  } catch (mountError) {
+    console.error('[Pyodide Worker] Mount failed:', mountError)
+    // If mount fails, check the state and provide better error info
+    const finalState = pyodide.FS.analyzePath('/mnt')
+    console.error('[Pyodide Worker] Final /mnt state:', {
+      exists: finalState.exists,
+      mountPoint: finalState.mountPoint
+    })
+    throw mountError
+  }
+}
+
+/**
+ * Capture and clear stdout/stderr buffers
+ * @returns {{ stdout?: string, stderr?: string }}
+ */
+function captureOutput() {
+  const stdout = stdoutBuffer.join('\n')
+  const stderr = stderrBuffer.join('\n')
+  stdoutBuffer = []
+  stderrBuffer = []
+  return {
+    stdout: stdout || undefined,
+    stderr: stderr || undefined,
+  }
 }
 
 self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
@@ -413,26 +303,53 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
 
   // Handle 'mount' type - mount a directory to /mnt
   if (type === 'mount') {
-    await handleMount(id, e.data.dirHandle)
+    try {
+      if (!pyodide) {
+        pyodide = await initPyodide()
+      }
+      await ensureMounted(e.data.dirHandle)
+      sendResponse(id, true, { success: true })
+    } catch (error) {
+      sendError(id, error instanceof Error ? error.message : String(error))
+    }
     return
   }
 
   // Handle 'sync' type - sync changes back to native filesystem
   if (type === 'sync') {
-    await handleSync(id)
+    try {
+      if (nativefs) {
+        await nativefs.syncfs()
+        console.log('[Pyodide Worker] Filesystem synced successfully')
+        sendResponse(id, true, { success: true })
+      } else {
+        sendError(id, 'No mounted filesystem to sync')
+      }
+    } catch (error) {
+      sendError(id, error instanceof Error ? error.message : String(error))
+    }
     return
   }
 
   // Handle 'unmount' type - cleanup filesystem
   if (type === 'unmount') {
-    await handleUnmount(id)
+    try {
+      nativefs = null
+      currentDirHandle = null
+      console.log('[Pyodide Worker] Filesystem unmounted')
+      sendResponse(id, true, { success: true })
+    } catch (error) {
+      sendError(id, error instanceof Error ? error.message : String(error))
+    }
     return
   }
 
   // Handle 'execute' type - run Python code
-  const { code, files = [], timeout = 30000, mountDir, syncFs } = e.data
+  const { code, files = [], timeout = DEFAULT_TIMEOUT, mountDir, syncFs } = e.data
 
   const startTime = performance.now()
+  /** @type {number | undefined} */
+  let timeoutId = undefined
 
   try {
     // Initialize Pyodide on first use
@@ -442,7 +359,7 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
 
     // Handle mountDir if provided (mountNativeFS)
     if (mountDir) {
-      await handleMountInternal(mountDir)
+      await ensureMounted(mountDir)
     } else {
       // Ensure /mnt directory exists for regular file injection
       if (!pyodide.FS.analyzePath('/mnt').exists) {
@@ -450,7 +367,13 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
       }
 
       // Inject files into /mnt
-      await injectFiles(files, pyodide)
+      if (files.length > 0) {
+        for (const file of files) {
+          const filePath = `/mnt/${file.name}`
+          const data = new Uint8Array(file.content)
+          pyodide.FS.writeFile(filePath, data)
+        }
+      }
     }
 
     // Load matplotlib first (it's imported in the wrapper code)
@@ -459,217 +382,63 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
     // Auto-load packages based on imports in the user code
     await pyodide.loadPackagesFromImports(code)
 
-    // Execute code with timeout
-    const result = await executeWithTimeout(pyodide, code, timeout)
+    // Execute code with timeout (properly cleanup timeout)
+    const executePromise = pyodide.runPythonAsync(code)
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Execution timeout after ${timeout}ms`)), timeout)
+    })
+    const result = await Promise.race([executePromise, timeoutPromise])
 
     const executionTime = performance.now() - startTime
 
+    // Check if result is an error
+    if (result && typeof result === 'object' && 'error' in result) {
+      throw new Error(`${result.error}\n\n${result.traceback}`)
+    }
+
     // Sync changes back to native filesystem if requested
-    if (syncFs) {
-      if (lazyFS && lazyFS.hasPendingChanges()) {
-        const synced = await lazyFS.sync()
-        console.log(`[Pyodide Worker] Synced ${synced} file(s) to native filesystem`)
-      } else if (nativefs) {
-        // Legacy nativefs sync
-        await nativefs.syncfs()
-        console.log('[Pyodide Worker] Synced changes back to native filesystem')
-      }
+    if (syncFs && nativefs) {
+      await nativefs.syncfs()
+      console.log('[Pyodide Worker] Synced changes back to native filesystem')
     }
 
     // Collect matplotlib images
     const images = await collectMatplotlibImages(pyodide)
 
-    // Get captured output
-    const stdout = stdoutBuffer.join('\n')
-    const stderr = stderrBuffer.join('\n')
+    // Get captured output and clear buffers
+    const output = captureOutput()
 
-    // Clear buffers
-    stdoutBuffer = []
-    stderrBuffer = []
-
-    sendResponse(id, {
+    sendResponse(id, true, {
       success: true,
-      result: {
-        success: true,
-        result,
-        stdout: stdout || undefined,
-        stderr: stderr || undefined,
-        images: images.length > 0 ? images : undefined,
-        executionTime,
-      },
+      result,
+      images: images.length > 0 ? images : undefined,
+      executionTime,
+      ...output,
     })
   } catch (error) {
     const executionTime = performance.now() - startTime
     const errorMessage = error instanceof Error ? error.message : String(error)
 
-    sendResponse(id, {
-      success: true,
-      result: {
-        success: false,
-        executionTime,
-        error: errorMessage,
-      },
-    })
-  }
-}
+    // Capture output before clearing (for error context)
+    const output = captureOutput()
 
-//=============================================================================
-// Native Directory Mounting (mountNativeFS)
-//=============================================================================
-
-/**
- * Handle mount request from main thread
- * @param {string} id - Request ID for response
- * @param {FileSystemDirectoryHandle} dirHandle - Directory handle to mount
- */
-async function handleMount(id, dirHandle) {
-  try {
-    await handleMountInternal(dirHandle)
-    self.postMessage({
-      id,
-      success: true,
-      result: { success: true },
-    })
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error('[Pyodide Worker] Mount failed:', errorMessage)
-    self.postMessage({
-      id,
+    sendResponse(id, true, {
       success: false,
-      result: { success: false, error: errorMessage },
+      executionTime,
+      error: errorMessage,
+      ...output,
     })
-  }
-}
-
-/**
- * Internal mount implementation - uses lazy loading
- * @param {FileSystemDirectoryHandle} dirHandle
- */
-async function handleMountInternal(dirHandle) {
-  // Initialize Pyodide if needed
-  if (!pyodide) {
-    pyodide = await initPyodide()
-  }
-
-  // Check if File System Access API is available
-  if (typeof window.showDirectoryPicker !== 'function') {
-    throw new Error('File System Access API is not supported')
-  }
-
-  // Initialize lazy filesystem
-  if (!lazyFS) {
-    lazyFS = new LazyPyodideFS(pyodide)
-  }
-
-  // Mount with lazy loading (no file traversal)
-  await lazyFS.mount(dirHandle)
-
-  // Clear nativefs since we're using lazyFS now
-  nativefs = null
-
-  console.log(`[Pyodide Worker] Directory mounted successfully (lazy mode)`)
-}
-
-/**
- * Handle sync request from main thread - sync only modified files
- * @param {string} id - Request ID for response
- */
-async function handleSync(id) {
-  try {
-    // Try lazyFS first, fallback to nativefs
-    if (lazyFS && lazyFS.hasPendingChanges()) {
-      const synced = await lazyFS.sync()
-      console.log(`[Pyodide Worker] Synced ${synced} file(s) to native filesystem`)
-      self.postMessage({
-        id,
-        success: true,
-        result: { success: true, synced },
-      })
-    } else if (nativefs) {
-      // Legacy nativefs sync
-      await nativefs.syncfs()
-      console.log('[Pyodide Worker] Filesystem synced successfully')
-      self.postMessage({
-        id,
-        success: true,
-        result: { success: true },
-      })
-    } else {
-      self.postMessage({
-        id,
-        success: false,
-        result: { success: false, error: 'No mounted filesystem to sync' },
-      })
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error('[Pyodide Worker] Sync failed:', errorMessage)
-    self.postMessage({
-      id,
-      success: false,
-      result: { success: false, error: errorMessage },
-    })
-  }
-}
-
-/**
- * Handle unmount request - cleanup lazy filesystem
- * @param {string} id - Request ID for response
- */
-async function handleUnmount(id) {
-  try {
-    if (lazyFS) {
-      lazyFS.unmount()
-      lazyFS = null
-    }
-    nativefs = null
-    console.log('[Pyodide Worker] Filesystem unmounted')
-    self.postMessage({
-      id,
-      success: true,
-      result: { success: true },
-    })
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error('[Pyodide Worker] Unmount failed:', errorMessage)
-    self.postMessage({
-      id,
-      success: false,
-      result: { success: false, error: errorMessage },
-    })
-  }
-}
-
-//=============================================================================
-// File Operations
-//=============================================================================
-
-/**
- * Inject files into Pyodide /mnt directory
- * @param {FileRef[]} files
- * @param {any} pyodide
- * @returns {Promise<void>}
- */
-async function injectFiles(files, pyodide) {
-  if (files.length === 0) return
-
-  console.log(
-    '[Pyodide Worker] Injecting files:',
-    files.map((f) => f.name)
-  )
-
-  for (const file of files) {
-    try {
-      const filePath = `/mnt/${file.name}`
-      const data = new Uint8Array(file.content)
-      pyodide.FS.writeFile(filePath, data)
-      console.log(`[Pyodide Worker] Injected file: ${file.name} (${data.length} bytes)`)
-    } catch (error) {
-      console.error(`[Pyodide Worker] Failed to inject file ${file.name}:`, error)
-      throw error
+  } finally {
+    // Always cleanup timeout
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
     }
   }
 }
+
+//=============================================================================
+// Image Collection
+//=============================================================================
 
 /**
  * Collect matplotlib images from /mnt and in-memory figures
@@ -701,7 +470,7 @@ image_paths
         const fileName = String(imagePath).split('/').pop()
         try {
           const data = pyodide.FS.readFile(imagePath)
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(data)))
+          const base64 = arrayBufferToBase64(data)
           images.push({
             filename: fileName,
             data: base64,
@@ -749,51 +518,4 @@ figure_data
     console.warn('[Pyodide Worker] Failed to collect matplotlib images:', error)
     return []
   }
-}
-
-//=============================================================================
-// Code Execution
-//=============================================================================
-
-/**
- * Execute Python code with timeout and stdout/stderr capture
- * @param {any} pyodide
- * @param {string} code
- * @param {number} timeout
- * @returns {Promise<unknown>}
- */
-async function executeWithTimeout(pyodide, code, timeout) {
-  // Create timeout promise
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(`Execution timeout after ${timeout}ms`)), timeout)
-  })
-
-  // Execute code directly (stdout/stderr is captured by pyodide.runPythonAsync)
-  const executePromise = pyodide.runPythonAsync(code)
-
-  // Race between execution and timeout
-  const result = await Promise.race([executePromise, timeoutPromise])
-
-  // Check if result is an error
-  if (result && typeof result === 'object' && 'error' in result) {
-    throw new Error(`${result.error}\n\n${result.traceback}`)
-  }
-
-  return result
-}
-
-//=============================================================================
-// Helper Functions
-//=============================================================================
-
-/**
- * Send response to main thread
- * @param {string} id
- * @param {Omit<{id: string}, 'id'>} response
- */
-function sendResponse(id, response) {
-  self.postMessage({
-    id,
-    ...response,
-  })
 }

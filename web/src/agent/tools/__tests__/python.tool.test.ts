@@ -16,26 +16,17 @@ vi.mock('@/python', () => ({
 }))
 
 // Mock the agent store
+const mockDirectoryHandle = {
+  queryPermission: vi.fn(() => Promise.resolve('granted')),
+  name: 'test-project',
+} as unknown as FileSystemDirectoryHandle
+
 vi.mock('@/store/agent.store', () => ({
   useAgentStore: {
     getState: vi.fn(() => ({
       directoryHandle: null,
     })),
   },
-}))
-
-// Mock OPFS store
-vi.mock('@/store/opfs.store', () => ({
-  useOPFSStore: {
-    getState: vi.fn(() => ({
-      readFile: vi.fn(),
-    })),
-  },
-}))
-
-// Mock Python bridge
-vi.mock('@/python/bridge', () => ({
-  getActiveFiles: vi.fn(() => Promise.resolve([])),
 }))
 
 describe('Python Tool Integration', () => {
@@ -61,17 +52,23 @@ describe('Python Tool Integration', () => {
 
     it('should have optional parameters', () => {
       const params = pythonCodeDefinition.function.parameters
-      expect(params.properties.packages).toBeDefined()
-      expect(params.properties.files).toBeDefined()
+      expect(params.properties.sync).toBeDefined()
       expect(params.properties.timeout).toBeDefined()
+    })
+
+    it('should NOT have deprecated parameters', () => {
+      const params = pythonCodeDefinition.function.parameters
+      // packages and files are removed - files are accessed via mounted directory
+      expect(params.properties.packages).toBeUndefined()
+      expect(params.properties.files).toBeUndefined()
     })
 
     it('should have comprehensive description', () => {
       const desc = pythonCodeDefinition.function.description
       expect(desc).toContain('Python')
       expect(desc).toContain('Pyodide')
-      expect(desc).toContain('pandas')
-      expect(desc).toContain('matplotlib')
+      expect(desc).toContain('/mnt')
+      expect(desc).toContain('sync')
     })
   })
 
@@ -95,27 +92,39 @@ describe('Python Tool Integration', () => {
       expect(parsed.error).toContain('too large')
     })
 
-    it('should handle missing directory handle', async () => {
-      const { pythonExecutor } = await import('@/python')
-      vi.mocked(pythonExecutor.execute).mockResolvedValue({
-        success: true,
-        executionTime: 100,
-      })
-
-      const result = await pythonCodeExecutor(
-        {
-          code: 'print("Hello")',
-          files: [{ path: 'test.txt' }],
-        },
-        mockContext
-      )
-
+    it('should validate minimum timeout', async () => {
+      const result = await pythonCodeExecutor({ code: 'print("test")', timeout: 500 }, mockContext)
       const parsed = JSON.parse(result)
-      // Should fail because no directory handle is set
-      expect(parsed.error).toContain('No directory selected')
+      expect(parsed.error).toContain('at least 1000ms')
     })
 
-    it('should execute simple Python code', async () => {
+    it('should validate maximum timeout', async () => {
+      const result = await pythonCodeExecutor(
+        { code: 'print("test")', timeout: 200000 },
+        mockContext
+      )
+      const parsed = JSON.parse(result)
+      expect(parsed.error).toContain('cannot exceed 120000ms')
+    })
+
+    it('should handle missing directory handle', async () => {
+      const result = await pythonCodeExecutor({ code: 'print("Hello")' }, mockContext)
+      const parsed = JSON.parse(result)
+      expect(parsed.error).toContain('No workspace directory selected')
+    })
+
+    it('should execute simple Python code with mounted directory', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
       const { pythonExecutor } = await import('@/python')
       vi.mocked(pythonExecutor.execute).mockResolvedValue({
         success: true,
@@ -128,9 +137,54 @@ describe('Python Tool Integration', () => {
 
       expect(parsed.stdout).toBe('Hello, World!')
       expect(parsed.executionTime).toBe(100)
+
+      // Verify mountDir was passed
+      expect(pythonExecutor.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mountDir: mockDirectoryHandle,
+        })
+      )
+    })
+
+    it('should pass sync parameter to executor', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
+      const { pythonExecutor } = await import('@/python')
+      vi.mocked(pythonExecutor.execute).mockResolvedValue({
+        success: true,
+        executionTime: 100,
+      })
+
+      await pythonCodeExecutor({ code: 'save()', sync: true }, mockContext)
+
+      expect(pythonExecutor.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          syncFs: true,
+        })
+      )
     })
 
     it('should handle execution errors', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
       const { pythonExecutor } = await import('@/python')
       vi.mocked(pythonExecutor.execute).mockResolvedValue({
         success: false,
@@ -144,29 +198,18 @@ describe('Python Tool Integration', () => {
       expect(parsed.error).toBe('Syntax error')
     })
 
-    it('should handle package specification', async () => {
-      const { pythonExecutor } = await import('@/python')
-      vi.mocked(pythonExecutor.execute).mockResolvedValue({
-        success: true,
-        executionTime: 200,
+    it('should handle timeout specification', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
       })
 
-      await pythonCodeExecutor(
-        {
-          code: 'import pandas as pd',
-          packages: ['pandas', 'numpy'],
-        },
-        mockContext
-      )
-
-      expect(pythonExecutor.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          packages: ['pandas', 'numpy'],
-        })
-      )
-    })
-
-    it('should handle timeout specification', async () => {
       const { pythonExecutor } = await import('@/python')
       vi.mocked(pythonExecutor.execute).mockResolvedValue({
         success: true,
@@ -189,6 +232,17 @@ describe('Python Tool Integration', () => {
     })
 
     it('should format results with images', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
       const { pythonExecutor } = await import('@/python')
       vi.mocked(pythonExecutor.execute).mockResolvedValue({
         success: true,
@@ -208,7 +262,42 @@ describe('Python Tool Integration', () => {
       expect(parsed.images[0].filename).toBe('plot.png')
     })
 
-    it('should format results with output files', async () => {
+    it('should include synced status when sync=true', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
+      const { pythonExecutor } = await import('@/python')
+      vi.mocked(pythonExecutor.execute).mockResolvedValue({
+        success: true,
+        executionTime: 100,
+      })
+
+      const result = await pythonCodeExecutor({ code: 'save()', sync: true }, mockContext)
+      const parsed = JSON.parse(result)
+
+      expect(parsed.synced).toBe(true)
+    })
+
+    it('should NOT include outputFiles in response', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
       const { pythonExecutor } = await import('@/python')
       vi.mocked(pythonExecutor.execute).mockResolvedValue({
         success: true,
@@ -224,80 +313,79 @@ describe('Python Tool Integration', () => {
       const result = await pythonCodeExecutor({ code: 'save' }, mockContext)
       const parsed = JSON.parse(result)
 
-      expect(parsed.outputFiles).toHaveLength(1)
-      expect(parsed.outputFiles[0].name).toBe('output.csv')
-      expect(parsed.outputFiles[0].size).toBe(1024)
+      // outputFiles should NOT be in the response
+      expect(parsed.outputFiles).toBeUndefined()
+    })
+
+    it('should handle permission denied error', async () => {
+      const deniedHandle = {
+        queryPermission: vi.fn(() => Promise.resolve('prompt')),
+        name: 'test-project',
+      } as unknown as FileSystemDirectoryHandle
+
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: deniedHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
+      const result = await pythonCodeExecutor({ code: 'print("test")' }, mockContext)
+      const parsed = JSON.parse(result)
+
+      expect(parsed.error).toContain('permission not granted')
     })
   })
 
-  describe('Package Detection', () => {
-    it('should detect pandas imports', () => {
-      const code = 'import pandas as pd\ndf = pd.read_csv("data.csv")'
-      const packages = detectPackages(code)
-      expect(packages).toContain('pandas')
+  describe('Error Handling', () => {
+    it('should handle Pyodide loading errors', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
+
+      const { pythonExecutor } = await import('@/python')
+      vi.mocked(pythonExecutor.execute).mockRejectedValue(
+        new Error('Pyodide is loading')
+      )
+
+      const result = await pythonCodeExecutor({ code: 'print("test")' }, mockContext)
+      const parsed = JSON.parse(result)
+
+      expect(parsed.error).toContain('loading')
     })
 
-    it('should detect numpy imports', () => {
-      const code = 'import numpy as np\narr = np.array([1, 2, 3])'
-      const packages = detectPackages(code)
-      expect(packages).toContain('numpy')
-    })
+    it('should handle NotAllowedError permission errors', async () => {
+      const { useAgentStore } = await import('@/store/agent.store')
+      vi.mocked(useAgentStore.getState).mockReturnValue({
+        directoryHandle: mockDirectoryHandle,
+        directoryName: 'test-project',
+        isRestoringHandle: false,
+        pendingHandle: null,
+        setDirectoryHandle: vi.fn(),
+        restoreDirectoryHandle: vi.fn(),
+        requestPendingHandlePermission: vi.fn(),
+      })
 
-    it('should detect matplotlib imports', () => {
-      const code = 'import matplotlib.pyplot as plt\nplt.plot([1,2,3])'
-      const packages = detectPackages(code)
-      expect(packages).toContain('matplotlib')
-    })
+      const { pythonExecutor } = await import('@/python')
+      vi.mocked(pythonExecutor.execute).mockRejectedValue(
+        new Error('NotAllowedError: Permission denied')
+      )
 
-    it('should detect openpyxl imports', () => {
-      const code = 'import openpyxl\nwb = openpyxl.load_workbook("data.xlsx")'
-      const packages = detectPackages(code)
-      expect(packages).toContain('openpyxl')
-    })
+      const result = await pythonCodeExecutor({ code: 'print("test")' }, mockContext)
+      const parsed = JSON.parse(result)
 
-    it('should detect multiple packages', () => {
-      const code = `
-        import pandas as pd
-        import numpy as np
-        import matplotlib.pyplot as plt
-      `
-      const packages = detectPackages(code)
-      expect(packages).toContain('pandas')
-      expect(packages).toContain('numpy')
-      expect(packages).toContain('matplotlib')
-    })
-
-    it('should return empty array for no imports', () => {
-      const code = 'print("Hello, World!")'
-      const packages = detectPackages(code)
-      expect(packages).toEqual([])
+      expect(parsed.error).toContain('Permission denied')
     })
   })
 })
-
-// Helper function for testing (should be exported from python.tool)
-function detectPackages(code: string): string[] {
-  const detected: string[] = []
-  const patterns: Record<string, RegExp[]> = {
-    pandas: [/\bimport\s+pandas\b/, /\bfrom\s+pandas\b/],
-    numpy: [/\bimport\s+numpy\b/, /\bfrom\s+numpy\b/, /\bimport\s+numpy\b/],
-    matplotlib: [
-      /\bimport\s+matplotlib\b/,
-      /\bfrom\s+matplotlib\b/,
-      /\bimport\s+matplotlib\.pyplot\b/,
-      /\bfrom\s+matplotlib\.pyplot\b/,
-    ],
-    openpyxl: [/\bimport\s+openpyxl\b/, /\bfrom\s+openpyxl\b/],
-  }
-
-  for (const [pkg, regexList] of Object.entries(patterns)) {
-    for (const regex of regexList) {
-      if (regex.test(code)) {
-        detected.push(pkg)
-        break
-      }
-    }
-  }
-
-  return detected
-}
