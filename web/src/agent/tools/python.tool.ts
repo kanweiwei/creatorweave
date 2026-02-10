@@ -32,8 +32,9 @@ export const pythonCodeDefinition: ToolDefinition = {
 
 IMPORTANT:
 1. Specify file paths in the files parameter that your code needs
-2. Pyodide auto-loads packages when you import them (pandas, numpy, matplotlib, etc.)
-3. For matplotlib: set matplotlib.use('Agg') BEFORE creating figures to run in headless mode
+2. Files can be a string array or object array: ["file.xlsx"] or [{path: "file.xlsx"}]
+3. Pyodide auto-loads packages when you import them (pandas, numpy, matplotlib, etc.)
+4. For matplotlib: set matplotlib.use('Agg') BEFORE creating figures to run in headless mode
 
 Examples:
 - Simple computation:
@@ -43,7 +44,7 @@ Examples:
   run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())", files: ["data.csv"])
 
 - Data visualization (headless mode):
-  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')")`,
+  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')", files: ["data.csv"])`,
     parameters: {
       type: 'object',
       properties: {
@@ -75,7 +76,8 @@ Examples:
 
 export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
   const code = args.code as string
-  const files = args.files as string[] | undefined
+  // Support both string array ["file.xlsx"] and object array [{path: "file.xlsx"}]
+  const rawFiles = args.files as (string | { path: string })[] | undefined
   const timeout = (args.timeout as number) || 30000
 
   if (!code || typeof code !== 'string') {
@@ -95,7 +97,7 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
     code.includes('pd.read_csv') ||
     code.includes('open(') ||
     code.includes('pd.read_json')
-  if (mentionsMnt && (!files || files.length === 0)) {
+  if (mentionsMnt && (!rawFiles || rawFiles.length === 0)) {
     return JSON.stringify({
       error: 'Code references files in /mnt/ but no files parameter provided.',
       hint: 'Pass file paths in the files array, e.g., files: ["data.csv"]',
@@ -105,7 +107,7 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
   try {
     // Get active files if not explicitly specified
     const activeFiles: CoreFileRef[] = []
-    if (files && files.length > 0) {
+    if (rawFiles && rawFiles.length > 0) {
       const { useAgentStore } = await import('@/store/agent.store')
       const directoryHandle = useAgentStore.getState().directoryHandle
 
@@ -118,7 +120,10 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       const { useOPFSStore } = await import('@/store/opfs.store')
       const { readFile } = useOPFSStore.getState()
 
-      for (const filePath of files) {
+      for (const file of rawFiles) {
+        // Support both string: "file.xlsx" and object: {path: "file.xlsx"} formats
+        const filePath = typeof file === 'string' ? file : file.path
+
         try {
           const { content } = await readFile(filePath, directoryHandle)
 
