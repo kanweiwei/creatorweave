@@ -8,14 +8,13 @@
 
 import { useState } from 'react'
 import { Copy, Check } from 'lucide-react'
+import { useT } from '@/i18n'
 
 interface CopyIconButtonProps {
   /** Content to copy to clipboard */
   content: string
   /** Optional CSS class name */
   className?: string
-  /** Button title/tooltip, defaults to "复制" */
-  title?: string
   /** Icon size class, defaults to "w-3 h-3" */
   iconSize?: string
 }
@@ -23,9 +22,9 @@ interface CopyIconButtonProps {
 export function CopyIconButton({
   content,
   className,
-  title = '复制',
   iconSize = 'w-3 h-3',
 }: CopyIconButtonProps) {
+  const t = useT()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -43,8 +42,8 @@ export function CopyIconButton({
       type="button"
       onClick={handleCopy}
       className={`inline-flex items-center justify-center p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors ${className || ''}`}
-      title={copied ? '已复制' : title}
-      aria-label={copied ? '已复制' : title}
+      title={copied ? t('common.copied') : t('common.copy')}
+      aria-label={copied ? t('common.copied') : t('common.copy')}
     >
       {copied ? (
         <Check className={iconSize} />

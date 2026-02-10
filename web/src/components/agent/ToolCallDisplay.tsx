@@ -73,7 +73,6 @@ export function ToolCallDisplay({
               <span className="text-xs font-medium text-neutral-500">参数</span>
               <CopyIconButton
                 content={Object.keys(parsedArgs).length > 0 ? JSON.stringify(parsedArgs, null, 2) : rawArgs}
-                title="复制参数"
               />
             </div>
             <pre className="max-h-40 overflow-auto rounded bg-white p-2 text-xs text-neutral-600">
@@ -89,7 +88,6 @@ export function ToolCallDisplay({
                 <span className="text-xs font-medium text-neutral-500">结果</span>
                 <CopyIconButton
                   content={result.length > 2000 ? result + '\n...(truncated)' : result}
-                  title="复制结果"
                 />
               </div>
               <pre className="max-h-60 overflow-auto rounded bg-white p-2 text-xs text-neutral-600">
