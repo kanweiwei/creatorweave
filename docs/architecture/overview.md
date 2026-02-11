@@ -2,40 +2,267 @@
 
 ## 📋 项目概述
 
-**Browser File System Analyzer** 是一个基于浏览器沙盒的本地文件系统分析器，完全在客户端运行，利用 WebAssembly (WASM) 的高性能计算能力来统计本地文件夹的文件大小和结构信息。
+**Browser File System Analyzer** 是一个基于浏览器沙盒的 AI 工作空间，支持自然语言与本地文件进行交互。完全在客户端运行，利用 WebAssembly (WASM) 的高性能计算能力、SQLite WASM 数据持久化、以及 Pyodide Python 运行时。
 
 ### 核心理念
 
 > **"浏览器即沙盒 (The Browser is the Sandbox)"**
 
-现代浏览器提供了多层级的本地文件系统访问能力，本项目充分利用这些能力，构建一个安全、高效的文件系统分析工具。
+现代浏览器提供了多层级的本地文件系统访问能力，本项目充分利用这些能力，构建一个安全、高效的 AI 驱动文件分析工具。
+
+> **"AI 辅助的本地开发"**
+
+通过集成的 AI Agent 系统，用户可以使用自然语言与代码库交互，执行复杂的代码分析、重构和生成任务。
 
 ---
 
-## 🎯 Phase 1: 基础功能
+## 🎯 核心功能
 
-### 核心任务
+### AI Agent 系统
+- **对话式交互**: 自然语言与代码库交互
+- **多 Agent 协作**: 支持多个 AI Agent 并行处理复杂任务
+- **30+ 工具**: 文件操作、代码分析、数据可视化、批量处理等
+- **上下文管理**: 智能上下文窗口管理和项目指纹
+- **流式响应**: 实时流式输出 AI 响应
 
-1. **用户交互** - 通过浏览器原生弹窗选择本地文件夹
-2. **目录遍历** - 递归遍历文件夹及其子文件夹
-3. **元数据收集** - 获取每个文件的大小、类型、修改时间等信息
-4. **WASM 计算** - 使用 Rust 编译的 WASM 模块进行累加计算
-5. **实时显示** - 在网页上显示文件数量和总大小
+### 文件系统操作
+- **本地文件访问**: File System Access API 直接访问本地文件
+- **目录遍历**: 递归遍历文件夹及其子文件夹
+- **文件读写**: 支持读取、编辑、创建文件
+- **批量操作**: 多文件批量处理能力
+
+### 数据持久化
+- **SQLite WASM**: 统一的 SQLite 数据库存储
+- **OPFS 支持**: Origin Private File System 高性能存储
+- **自动迁移**: IndexedDB 到 SQLite 的平滑迁移
+
+### Python 集成
+- **Pyodide 运行时**: 浏览器内 Python 执行环境
+- **数据科学包**: pandas、numpy、matplotlib、openpyxl 支持
+- **文件桥接**: 与本地文件系统的无缝集成
+
+### 远程控制
+- **移动端控制**: 通过移动设备远程控制桌面会话
+- **端到端加密**: ECDH + AES-GCM 加密通信
+- **WebSocket 中继**: Socket.IO 实时消息传递
 
 ### 技术栈
 
 | 层级 | 技术选型 | 说明 |
 |------|---------|------|
-| 前端框架 | React + TypeScript | 现代化 UI 框架，类型安全 |
-| 构建工具 | Vite | 快速开发服务器，优化的生产构建 |
-| UI 组件 | shadcn/ui + lucide-react | 基于 Radix UI 的组件库 + 图标库 |
-| 样式方案 | Tailwind CSS | 实用优先的 CSS 框架 |
+| 前端框架 | React 18 + TypeScript 5 | 现代化 UI 框架，类型安全 |
+| 构建工具 | Vite 6 | 快速开发服务器，优化的生产构建 |
+| UI 组件 | Radix UI + Tailwind CSS | 无障碍组件库 + 实用优先样式 |
+| 图标库 | Lucide React | 一致的图标系统 |
 | 状态管理 | Zustand | 轻量级状态管理库，支持持久化 |
 | 计算层 | Rust + WASM | 高性能计算，通过 wasm-bindgen 与 JS 交互 |
+| 数据库 | SQLite WASM (@sqlite.org/sqlite-wasm) | 结构化数据存储，支持 OPFS VFS |
+| Python 运行时 | Pyodide 0.29+ | 浏览器内 Python 环境 |
 | 浏览器 API | File System Access API | 原生文件系统访问能力 |
 | 包管理器 | pnpm | Monorepo 工作区管理 |
 | 实时通信 | Socket.IO | Remote Session 的 WebSocket 通信 |
 | 加密 | Web Crypto API | E2E 加密 (ECDH + AES-GCM) |
+| 代码高亮 | Shiki | 速度快、准确的语法高亮 |
+| 数据可视化 | Chart.js | 灵活的图表库 |
+| 测试 | Vitest + Playwright | 单元测试 + E2E 测试 |
+
+---
+
+## 🤖 AI Agent 系统
+
+### 架构概览
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   UI Layer                         │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  Conversation Panel │ Code Viewer │ Tools    │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│                 Agent Store                        │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  - agent.store.ts (Agent 状态)               │  │
+│  │  - conversation.store (会话管理)             │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│              Agent Loop Core                        │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  - agent-loop.ts (主循环)                    │  │
+│  │  - context-manager.ts (上下文管理)           │  │
+│  │  - intelligence-coordinator.ts (智能协调)    │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│            Tool Registry (30+ Tools)                │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  文件操作: read, write, edit, glob, grep     │  │
+│  │  代码分析: code-analysis, code-review        │  │
+│  │  数据处理: data-analysis, data-visualization │  │
+│  │  批量操作: batch-operations, file-batch      │  │
+│  │  测试生成: test-generation                    │  │
+│  │  Python: python-execution                    │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│              LLM Provider Layer                     │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  - glm-provider.ts (GLM API)                │  │
+│  │  - streaming support                        │  │
+│  │  - token counting                            │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Agent 工具列表
+
+| 类别 | 工具 | 功能 |
+|------|------|------|
+| **文件操作** | `file-read` | 读取文件内容 |
+| | `file-write` | 创建/覆盖文件 |
+| | `file-edit` | 编辑文件指定区域 |
+| | `glob` | 模式匹配文件搜索 |
+| | `grep` | 正则表达式内容搜索 |
+| **代码分析** | `code-analysis` | 代码结构分析 |
+| | `code-intelligence` | 代码智能分析 |
+| | `code-review` | 代码审查 |
+| **数据处理** | `data-analysis` | 统计分析 |
+| | `data-visualization` | 图表生成 |
+| | `excel-integration` | Excel 文件处理 |
+| **批量操作** | `batch-operations` | 批量文件处理 |
+| | `file-batch` | 批量文件操作 |
+| **测试** | `test-generation` | 自动生成测试 |
+| | `statistical-tests` | 统计检验 |
+| **执行** | `javascript-execution` | JS 代码执行 |
+| | `python-execution` | Python 代码执行 |
+| **文档** | `doc-generation` | 文档生成 |
+| **其他** | `wasm-bridge` | WASM 高性能计算 |
+| | `utility-tools` | 实用工具集 |
+
+---
+
+## 🐍 Python 集成 (Pyodide)
+
+### 架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│                Python Worker                        │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  Pyodide Runtime (v0.29+)                    │  │
+│  │  - MEMFS at /mnt                             │  │
+│  │  - Package Manager                           │  │
+│  │  - Output Capture                            │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↕
+┌─────────────────────────────────────────────────────┐
+│              File Bridge Layer                      │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  - 文件注入到 /mnt                           │  │
+│  │  - 输出文件收集                              │  │
+│  │  - 图像捕获 (matplotlib)                     │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                      ↕
+┌─────────────────────────────────────────────────────┐
+│              Agent Tool Integration                 │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  python-execution.tool.ts                   │  │
+│  │  - 代码执行                                  │  │
+│  │  - 结果解析                                  │  │
+│  │  - 错误处理                                  │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+### 支持的 Python 包
+
+- `pandas` - 数据分析和操作
+- `numpy` - 科学计算
+- `matplotlib` - 数据可视化
+- `openpyxl` - Excel 文件操作
+- `scipy` - 科学计算
+- `scikit-learn` - 机器学习
+
+---
+
+## 💾 SQLite 存储架构
+
+### 数据库 Schema
+
+```sql
+-- 对话存储
+CREATE TABLE conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  messages JSON,  -- 存储消息数组
+  created_at INTEGER,
+  updated_at INTEGER
+);
+
+-- 技能存储
+CREATE TABLE skills (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  content TEXT,  -- Markdown 技能定义
+  created_at INTEGER
+);
+
+-- API 密钥存储
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  key_value TEXT NOT NULL,  -- 加密存储
+  created_at INTEGER
+);
+
+-- 插件存储
+CREATE TABLE plugins (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  enabled INTEGER DEFAULT 1
+);
+
+-- 会话存储
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  metadata JSON
+);
+
+-- 文件元数据
+CREATE TABLE file_metadata (
+  session_id TEXT,
+  path TEXT PRIMARY KEY,
+  metadata JSON
+);
+
+-- 撤销记录
+CREATE TABLE undo_records (
+  id TEXT PRIMARY KEY,
+  session_id TEXT,
+  action TEXT,
+  before_state JSON,
+  after_state JSON,
+  created_at INTEGER
+);
+```
+
+### 存储对比
+
+| 存储方式 | 容量 | 性能 | 持久化 | 适用场景 |
+|---------|------|------|--------|----------|
+| **localStorage** | ~5MB | 同步 | ✅ | UI 偏好、配置 |
+| **IndexedDB** | ~50MB+ | 异步 | ✅ | 文件句柄、大型数据 |
+| **OPFS** | 动态配额 | 同步+异步 | ✅ | 高性能缓存、索引 |
+| **SQLite WASM** | 动态配额 | 高速 | ✅ | 结构化数据、复杂查询 |
 
 ---
 

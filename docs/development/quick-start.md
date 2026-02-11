@@ -6,8 +6,9 @@
 
 Ensure you have the following installed:
 
-- **Rust** (1.75+) - [Install](https://rustup.rs/)
 - **Node.js** (18+) - [Install](https://nodejs.org/)
+- **pnpm** (8+) - [Install](https://pnpm.io/installation)
+- **Rust** (1.75+) - [Install](https://rustup.rs/) - Optional, for WASM development
 - **Git** - [Install](https://git-scm.com/)
 
 ### Step 1: Clone and Setup
@@ -17,195 +18,233 @@ Ensure you have the following installed:
 git clone https://github.com/yourusername/browser-fs-analyzer.git
 cd browser-fs-analyzer
 
-# Run automatic setup (installs all dependencies)
-make setup
+# Install dependencies
+pnpm install
 ```
-
-This script will:
-- ✅ Check Rust and Node.js installation
-- ✅ Install wasm-pack
-- ✅ Add WASM target
-- ✅ Install pnpm dependencies
 
 ### Step 2: Start Development Server
 
 ```bash
-# Start the development server
-make dev
+# Start the main web application
+cd web && pnpm run dev
 ```
 
-Or run the script directly:
+The application will be available at **http://localhost:5173**
+
+**Note**: The development server requires COOP/COEP headers for SQLite WASM support, which are automatically configured in `vite.config.ts`.
+
+### Step 3: (Optional) Start Remote Session
+
+To enable mobile remote control:
 
 ```bash
-bash scripts/dev.sh
+# Terminal 1: Start relay server
+cd relay-server && pnpm run dev
+
+# Terminal 2: Start mobile web
+cd mobile-web && pnpm run dev --port 3002
 ```
 
-The application will be available at **http://localhost:3000**
+Then:
+1. Open **http://localhost:5173** (Desktop)
+2. Click "Remote Session" → "Create Session"
+3. Scan QR code with mobile device at **http://localhost:3002**
 
-### Step 3: Build for Production
-
-```bash
-# Build all projects (WASM + frontend)
-make build
-```
-
-Or run the script directly:
+### Step 4: Build for Production
 
 ```bash
-bash scripts/build.sh
+# Build WASM modules (if modified)
+cd web && pnpm run build:wasm
+
+# Build web application
+pnpm run build
 
 # Preview the build
-cd web && pnpm run preview
+pnpm run preview
 ```
 
 ## 📋 Available Commands
 
-### Quick Start Commands
-
-| Command | Description |
-|---------|-------------|
-| `make setup` | First-time setup (install all dependencies) |
-| `make dev` | Start development server |
-| `make build` | Build all projects (WASM + frontend) |
-| `make test` | Run all tests |
-| `make clean` | Clean build artifacts |
-
-### Script Files
-
-Located in `scripts/` directory:
-
-| Script | Description |
-|--------|-------------|
-| `setup.sh` | First-time environment setup |
-| `dev.sh` | Start development server |
-| `build.sh` | Build all projects |
-| `test.sh` | Run all tests |
-| `clean.sh` | Clean build artifacts |
-
-### Individual Component Commands
+### Main Application (web/)
 
 ```bash
-# Build WASM module only
-make build-wasm
+# Development
+pnpm run dev              # Start dev server (localhost:5173)
+pnpm run build            # Build for production
+pnpm run preview          # Preview production build
 
-# Build frontend only
-make build-web
+# Testing
+pnpm run test             # Run Vitest unit tests
+pnpm run test:ui          # Run tests with UI
+pnpm run test:coverage    # Run tests with coverage
+pnpm run test:e2e         # Run Playwright E2E tests
 
-# Run Rust tests
-make test-rust
+# Code Quality
+pnpm run lint             # Run ESLint
+pnpm run lint:fix         # Fix ESLint issues
+pnpm run format           # Format code with Prettier
+pnpm run typecheck        # Run TypeScript type checker
 
-# Run frontend tests
-make test-web
+# WASM
+pnpm run build:wasm       # Build WASM modules (Rust required)
 ```
 
-## 🔧 Manual Setup (Alternative)
-
-If you prefer manual setup:
+### Packages
 
 ```bash
-# 1. Install Rust tools
-cargo install wasm-pack
-rustup target add wasm32-unknown-unknown
+# UI Package
+cd packages/ui
+pnpm run build            # Build UI components
+pnpm run storybook        # Start Storybook (localhost:6006)
+pnpm run build-storybook  # Build Storybook static
 
-# 2. Install pnpm dependencies
-pnpm install
-# or: cd web && pnpm install
+# Other packages
+cd packages/[package-name]
+pnpm run typecheck        # Type check package
+```
 
-# 3. Build WASM
-cd ../wasm
-wasm-pack build --target web --out-dir ../web/public/wasm crates/wasm-bindings
+### Mobile Web (mobile-web/)
 
-# 4. Start dev server
-cd ../web
-pnpm run dev
+```bash
+cd mobile-web
+pnpm run dev              # Start dev server (default port 3001)
+pnpm run build            # Build for production
+pnpm run typecheck        # Run TypeScript type checker
+```
+
+### Relay Server (relay-server/)
+
+```bash
+cd relay-server
+pnpm run dev              # Start relay server (default port 3001)
+pnpm run build            # Build TypeScript
+pnpm run start            # Start production server
 ```
 
 ## 🏗️ Project Structure
 
 ```
 browser-fs-analyzer/
-├── wasm/                  # Rust + WASM module
-│   ├── crates/
-│   │   ├── core/          # Core computation logic
-│   │   ├── wasm-bindings/ # WASM bindings
-│   │   ├── plugin-api/    # Plugin API
-│   │   ├── plugin-sdk/    # Plugin SDK
-│   │   └── example-plugins/# Example plugins
-│   └── scripts/           # WASM build scripts
-│
 ├── web/                   # React frontend (Desktop)
 │   ├── src/
+│   │   ├── agent/         # AI agent system
+│   │   │   ├── agent-loop.ts
+│   │   │   ├── context-manager.ts
+│   │   │   ├── tools/      # 30+ agent tools
+│   │   │   └── llm/        # LLM providers
 │   │   ├── components/    # React components
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── python/        # Pyodide integration
+│   │   ├── sqlite/        # SQLite WASM database
 │   │   ├── store/         # Zustand stores
-│   │   ├── services/      # Business logic
-│   │   ├── remote/        # Remote session
-│   │   └── wasm/          # WASM integration
+│   │   ├── workers/       # Web Workers
+│   │   └── export/        # Data export
 │   └── package.json
 │
 ├── mobile-web/            # React frontend (Mobile Remote)
 │   └── src/
+│       ├── components/    # Mobile-optimized components
+│       ├── pages/         # Mobile pages
+│       └── contexts/      # React contexts
 │
 ├── relay-server/          # Socket.IO relay server
-│   └── src/
+│   └── src/index.ts
 │
 ├── packages/              # Monorepo shared packages
-│   ├── ui/                # Shared UI components
+│   ├── ui/                # Shared UI components (Radix UI)
+│   ├── conversation/      # Conversation components
 │   ├── encryption/        # E2E encryption
-│   └── conversation/      # Conversation management
+│   ├── i18n/              # Internationalization
+│   └── config/            # Shared configurations
 │
-├── plugins/               # Plugin development docs
-├── scripts/               # Development scripts
-└── docs/                  # Documentation
+├── wasm/                  # Rust + WASM modules
+│   └── crates/
+│
+├── docs/                  # Documentation
+│   ├── architecture/      # Architecture docs
+│   ├── development/       # Development guides
+│   └── api/               # API reference
+│
+└── scripts/               # Development scripts
 ```
 
 ## 🐛 Troubleshooting
 
-### Issue: wasm-pack not found
+### Issue: COOP/COEP Headers Missing
+
+SQLite WASM requires COOP/COEP headers. If you see errors:
 
 ```bash
-cargo install wasm-pack
+# Check vite.config.ts has the headers:
+server: {
+  headers: {
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
+  },
+}
 ```
 
-### Issue: WASM target not found
+### Issue: Port Already in Use
 
 ```bash
-rustup target add wasm32-unknown-unknown
-```
-
-### Issue: Port 3000 already in use
-
-```bash
-# Kill process on port 3000 (macOS/Linux)
-lsof -ti:3000 | xargs kill -9
+# Kill process on port 5173 (macOS/Linux)
+lsof -ti:5173 | xargs kill -9
 
 # Or use a different port
-cd web && pnpm run dev -- --port 3001
+pnpm run dev -- --port 3001
 ```
 
-### Issue: Dependencies not installing
+### Issue: Dependencies Not Installing
 
 ```bash
 # Clear pnpm cache and reinstall
-cd web
-rm -rf node_modules
+rm -rf node_modules pnpm-lock.yaml
 pnpm install
+```
+
+### Issue: SQLite WASM Not Loading
+
+```bash
+# Clear OPFS storage
+# In browser DevTools → Application → Origin Private File System
+# Delete all files
+
+# Or use the "Reset Storage" option in Settings
+```
+
+### Issue: Pyodide Loading Failed
+
+```bash
+# Check CDN connectivity
+curl -I https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js
+
+# If blocked, you may need to use a different CDN or mirror
 ```
 
 ## 📚 Next Steps
 
 - Read [Architecture Overview](../architecture/overview.md)
-- Read [Development Setup Guide](../development/setup.md)
+- Read [Agent System Documentation](../agent-system.md)
 - Explore the [API Documentation](../api/README.md)
+- Read [Python Integration Guide](../../web/src/python/README.md)
 
 ## 💡 Tips
 
-1. **Hot Reload**: Vite provides hot module replacement for faster development
-2. **WASM Changes**: When modifying Rust code, run `make build-wasm` to rebuild the WASM module
-3. **TypeScript**: The project uses strict TypeScript - ensure type safety
-4. **Code Style**: Run `make fmt` to format Rust code and `pnpm run format` for frontend code
+1. **Hot Reload**: Vite provides hot module replacement for fast development
+2. **WASM Changes**: When modifying Rust code, run `pnpm run build:wasm`
+3. **TypeScript**: The project uses strict TypeScript for type safety
+4. **Code Style**: Run `pnpm run format` to format code with Prettier
+5. **Testing**: Use `pnpm run test:ui` for interactive test UI
+
+## 🔑 First Run Setup
+
+1. **Configure API Key**: Go to Settings → API Configuration
+2. **Select Folder**: Click "Open Directory" to select a local folder
+3. **Start Chatting**: Type your question in the input box
+4. **Explore Tools**: Use the command palette (`Ctrl/Cmd + K`) to access features
 
 ## 🤝 Need Help?
 
-- Check [Issues](https://github.com/yourusername/browser-fs-analyzer/issues)
+- Check existing [Issues](https://github.com/yourusername/browser-fs-analyzer/issues)
 - Read [Documentation](../README.md)
 - Start a [Discussion](https://github.com/yourusername/browser-fs-analyzer/discussions)

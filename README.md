@@ -19,10 +19,12 @@ Browser FS Analyzer is a **browser-based AI workspace** that enables natural lan
 
 ### Key Product Description
 
-- **AI-Powered Conversations**: Chat naturally with your codebase using advanced AI agents
-- **Local File Access**: Direct interaction with files through modern browser APIs
-- **Code Intelligence**: Understand, analyze, and manipulate code with intelligent tools
+- **AI-Powered Conversations**: Chat naturally with your codebase using advanced AI agents with multi-agent collaboration
+- **Local File Access**: Direct interaction with files through modern browser APIs (File System Access API)
+- **Code Intelligence**: Understand, analyze, and manipulate code with 30+ intelligent tools
+- **Python Integration**: Execute Python code in the browser with Pyodide (pandas, numpy, matplotlib support)
 - **Privacy First**: All processing happens locally - your data never leaves your browser
+- **Remote Control**: Control your workspace from mobile devices via encrypted relay server
 
 ## Features
 
@@ -54,10 +56,11 @@ Browser FS Analyzer is a **browser-based AI workspace** that enables natural lan
 - **Onboarding Tour**: Guided tour for first-time users
 
 ### Development Tools
-- **Skills Manager**: Create and manage reusable AI skills
-- **Tools Panel**: Access development tools and utilities
-- **Python Integration**: Execute Python code in the browser (Pyodide)
-- **MCP Settings**: Configure Model Context Protocol providers
+- **Skills Manager**: Create and manage reusable AI skills with on-demand loading
+- **Tools Panel**: Access 30+ development tools including file operations, code analysis, and data visualization
+- **Python Integration**: Execute Python code in the browser (Pyodide) with pandas, numpy, matplotlib, openpyxl
+- **MCP Integration**: Configure Model Context Protocol providers for extended capabilities
+- **WASM Acceleration**: High-performance file operations using Rust-compiled WebAssembly modules
 
 ### User Scenarios
 - **Developers**: Code understanding, refactoring, debugging, and code review
@@ -118,19 +121,33 @@ pnpm run build
 
 ```
 browser-fs-analyzer/
-├── web/                    # React frontend application
+├── web/                    # React frontend application (Desktop)
 │   ├── src/
-│   │   ├── agent/         # AI agent logic and tools
-│   │   ├── components/    # React components
+│   │   ├── agent/         # AI agent logic, tools, multi-agent collaboration
+│   │   ├── components/    # React components (UI, conversation, code viewer)
 │   │   ├── hooks/         # Custom React hooks
-│   │   ├── store/         # State management (Zustand)
-│   │   ├── sqlite/        # SQLite database layer
-│   │   └── workers/       # Web Workers
+│   │   ├── store/         # State management (Zustand stores)
+│   │   ├── sqlite/        # SQLite WASM database layer
+│   │   ├── python/        # Pyodide Python integration
+│   │   ├── workers/       # Web Workers (file discovery, plugins)
+│   │   └── export/        # Data export functionality
 │   └── package.json
+├── mobile-web/             # React frontend (Mobile Remote Control)
+│   └── src/               # Mobile-optimized UI for remote sessions
+├── relay-server/           # Socket.IO relay server for remote sessions
 ├── wasm/                   # Rust + WebAssembly modules
-├── packages/               # Shared packages
-├── relay-server/           # Remote session server
-└── mobile-web/            # Mobile web interface
+│   └── crates/            # Core logic, WASM bindings, plugin API/SDK
+├── packages/               # Monorepo shared packages
+│   ├── ui/                # Shared UI components (Radix UI + Storybook)
+│   ├── conversation/      # Conversation components
+│   ├── encryption/        # E2E encryption (ECDH + AES-GCM)
+│   ├── i18n/              # Internationalization
+│   └── config/            # Shared configurations
+├── docs/                   # Project documentation
+│   ├── architecture/      # Architecture documentation
+│   ├── development/       # Development guides
+│   └── design/            # Design specifications
+└── scripts/                # Development and build scripts
 ```
 
 ### Available Scripts
@@ -156,9 +173,29 @@ pnpm run typecheck        # Run TypeScript type checker
 
 ## Documentation
 
+### User Documentation
 - [User Guide](./USER_GUIDE.md) - How to use all features
-- [Developer Guide](./DEVELOPER_GUIDE.md) - Architecture and development
 - [Changelog](./CHANGELOG.md) - Version history and changes
+
+### Developer Documentation
+- [Architecture Overview](./docs/architecture/overview.md) - System architecture and design
+- [Quick Start Guide](./docs/development/quick-start.md) - Get started in 5 minutes
+- [Development Setup](./docs/development/setup.md) - Environment setup and tools
+- [CI/CD Guide](./docs/development/ci-cd.md) - Continuous integration and deployment
+- [Pre-commit Hooks](./docs/development/pre-commit-hooks.md) - Git hooks configuration
+
+### Technical Documentation
+- [Agent System](./docs/agent-system.md) - AI agent architecture and tools
+- [Python Integration](./web/src/python/README.md) - Pyodide integration guide
+- [SQLite Storage](./web/src/sqlite/README.md) - SQLite WASM storage architecture
+- [Remote Session](./docs/remote-session-architecture.md) - Mobile remote control design
+- [Plugin System](./docs/plugin-system-architecture.md) - Dynamic plugin system
+- [MCP Integration](./docs/MCP_INTEGRATION_DESIGN.md) - Model Context Protocol
+
+### API Documentation
+- [Store API](./docs/api/stores.md) - Zustand store reference
+- [Agent Tools](./docs/api/agent-tools.md) - Available agent tools
+- [Repositories](./docs/api/repositories.md) - SQLite repository reference
 
 ## Browser Compatibility
 
@@ -186,11 +223,27 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## Acknowledgments
 
+### Core Technologies
 - [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) - Rust to WebAssembly bindings
-- [shadcn/ui](https://ui.shadcn.com/) - Beautiful UI components
+- [React](https://react.dev/) - UI framework
+- [TypeScript](https://www.typescriptlang.org/) - Type-safe JavaScript
+- [Vite](https://vitejs.dev/) - Fast build tool and dev server
+
+### Libraries & Tools
+- [shadcn/ui](https://ui.shadcn.com/) - Beautiful UI components built on Radix UI
 - [Zustand](https://github.com/pmndrs/zustand) - Lightweight state management
 - [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
 - [SQLite WASM](https://sqlite.org/wasm) - SQLite in WebAssembly
+- [Pyodide](https://pyodide.org/) - Python runtime for the browser
+- [Socket.IO](https://socket.io/) - Real-time bidirectional communication
+- [Chart.js](https://www.chartjs.org/) - Data visualization
+
+### Development Tools
+- [Vitest](https://vitest.dev/) - Fast unit testing
+- [Playwright](https://playwright.dev/) - End-to-end testing
+- [Storybook](https://storybook.js.org/) - Component development and documentation
+- [ESLint](https://eslint.org/) - Code linting
+- [Prettier](https://prettier.io/) - Code formatting
 
 ---
 
