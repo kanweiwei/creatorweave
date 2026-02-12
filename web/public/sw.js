@@ -13,23 +13,31 @@ const STATIC_RESOURCES = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.ico',
 ]
 
 // API endpoints to cache with network-first strategy
 const API_PATTERNS = [
-  /\api\//,
+  /\/api\//,
   /\/mcp\//,
 ]
 
 // Install event - cache static resources
-self.addEventListener('install', (event: ExtendableEvent) => {
+self.addEventListener('install', (event) => {
   console.log('[ServiceWorker] Installing...')
 
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
+    caches.open(STATIC_CACHE).then(async (cache) => {
       console.log('[ServiceWorker] Caching static resources')
-      return cache.addAll(STATIC_RESOURCES)
+      // Cache resources individually to handle failures gracefully
+      for (const url of STATIC_RESOURCES) {
+        try {
+          await cache.add(url)
+          console.log('[ServiceWorker] Cached:', url)
+        } catch (error) {
+          console.warn('[ServiceWorker] Failed to cache:', url, error)
+          // Continue with other resources even if one fails
+        }
+      }
     })
   )
 
@@ -38,7 +46,7 @@ self.addEventListener('install', (event: ExtendableEvent) => {
 })
 
 // Activate event - cleanup old caches
-self.addEventListener('activate', (event: ExtendableEvent) => {
+self.addEventListener('activate', (event) => {
   console.log('[ServiceWorker] Activating...')
 
   event.waitUntil(
@@ -59,7 +67,7 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
 })
 
 // Fetch event - serve from cache or network
-self.addEventListener('fetch', (event: FetchEvent) => {
+self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
@@ -105,7 +113,7 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 /**
  * Cache first - try cache, fall back to network
  */
-async function cacheFirstStrategy(request: Request): Promise<Response> {
+async function cacheFirstStrategy(request) {
   const cached = await caches.match(request)
   if (cached) {
     return cached
@@ -127,7 +135,7 @@ async function cacheFirstStrategy(request: Request): Promise<Response> {
 /**
  * Network first - try network, fall back to cache
  */
-async function networkFirstStrategy(request: Request): Promise<Response> {
+async function networkFirstStrategy(request) {
   try {
     const networkResponse = await fetch(request)
     if (networkResponse.ok) {
@@ -151,7 +159,7 @@ async function networkFirstStrategy(request: Request): Promise<Response> {
 /**
  * Network first with cache fallback for HTML
  */
-async function networkFirstWithCacheFallback(request: Request): Promise<Response> {
+async function networkFirstWithCacheFallback(request) {
   try {
     const networkResponse = await fetch(request)
     if (networkResponse.ok) {
@@ -180,7 +188,7 @@ async function networkFirstWithCacheFallback(request: Request): Promise<Response
 /**
  * Check if URL is a static resource
  */
-function isStaticResource(pathname: string): boolean {
+function isStaticResource(pathname) {
   const staticExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf']
   return staticExtensions.some((ext) => pathname.endsWith(ext))
 }
@@ -189,7 +197,7 @@ function isStaticResource(pathname: string): boolean {
 // Background Sync
 //=============================================================================
 
-self.addEventListener('sync', (event: SyncEvent) => {
+self.addEventListener('sync', (event) => {
   console.log('[ServiceWorker] Sync event:', event.tag)
 
   if (event.tag === 'sync-messages') {
@@ -197,11 +205,11 @@ self.addEventListener('sync', (event: SyncEvent) => {
   }
 })
 
-async function syncMessages(): Promise<void> {
+async function syncMessages() {
   console.log('[ServiceWorker] Syncing messages...')
 
   // Get pending messages from IndexedDB
-  // This would integrate with the main app's offline queue
+  // This would integrate with main app's offline queue
 
   // In a real implementation, this would:
   // 1. Open IndexedDB
@@ -216,7 +224,7 @@ async function syncMessages(): Promise<void> {
 // Push Notifications
 //=============================================================================
 
-self.addEventListener('push', (event: PushEvent) => {
+self.addEventListener('push', (event) => {
   console.log('[ServiceWorker] Push received:', event)
 
   let data = {
@@ -235,7 +243,7 @@ self.addEventListener('push', (event: PushEvent) => {
     }
   }
 
-  const options: NotificationOptions = {
+  const options = {
     body: data.body,
     icon: data.icon,
     badge: data.badge,
@@ -253,7 +261,7 @@ self.addEventListener('push', (event: PushEvent) => {
 })
 
 // Notification click handler
-self.addEventListener('notificationclick', (event: NotificationEvent) => {
+self.addEventListener('notificationclick', (event) => {
   console.log('[ServiceWorker] Notification clicked:', event.action)
 
   event.notification.close()
@@ -285,7 +293,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 // Message Handling
 //=============================================================================
 
-self.addEventListener('message', (event: ExtendableMessageEvent) => {
+self.addEventListener('message', (event) => {
   console.log('[ServiceWorker] Message received:', event.data)
 
   if (event.data.type === 'SKIP_WAITING') {
@@ -294,9 +302,19 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
   if (event.data.type === 'CACHE_URLS') {
     event.waitUntil(
-      caches.open(DYNAMIC_CACHE).then((cache) => {
-        return cache.addAll(event.data.urls)
-      })
+      (async () => {
+        const cache = await caches.open(DYNAMIC_CACHE)
+        const urls = event.data.urls || []
+        // Cache URLs individually to handle failures gracefully
+        for (const url of urls) {
+          try {
+            await cache.add(url)
+            console.log('[ServiceWorker] Cached URL:', url)
+          } catch (error) {
+            console.warn('[ServiceWorker] Failed to cache URL:', url, error)
+          }
+        }
+      })()
     )
   }
 
@@ -313,12 +331,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 // Error Handling
 //=============================================================================
 
-self.addEventListener('error', (error: ErrorEvent) => {
+self.addEventListener('error', (error) => {
   console.error('[ServiceWorker] Error:', error.message)
 })
 
-self.addEventListener('unhandledrejection', (reason: PromiseRejectionEvent) => {
+self.addEventListener('unhandledrejection', (reason) => {
   console.error('[ServiceWorker] Unhandled rejection:', reason.reason)
 })
-
-export {}

@@ -34,7 +34,9 @@
 ### 数据持久化
 - **SQLite WASM**: 统一的 SQLite 数据库存储
 - **OPFS 支持**: Origin Private File System 高性能存储
-- **自动迁移**: IndexedDB 到 SQLite 的平滑迁移
+- **双层存储**: Native FS + OPFS，支持 Git 式同步
+
+**详细设计**: [双层存储架构](dual-storage.md)
 
 ### Python 集成
 - **Pyodide 运行时**: 浏览器内 Python 执行环境

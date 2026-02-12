@@ -260,6 +260,23 @@ export class PythonExecutor {
   //=============================================================================
 
   /**
+   * Mount OPFS root directory to /mnt using navigator.storage.getDirectory()
+   * No user interaction required - uses origin private file system
+   *
+   * @returns Promise resolving to { handle: FileSystemDirectoryHandle }
+   */
+  async mountOPFS(): Promise<{ handle: FileSystemDirectoryHandle }> {
+    // Check if Storage API is available
+    if (typeof navigator.storage === 'undefined' || !navigator.storage.getDirectory) {
+      throw new Error('Storage API is not supported in this browser')
+    }
+
+    const handle = await navigator.storage.getDirectory()
+    await this.mountDir(handle)
+    return { handle }
+  }
+
+  /**
    * Mount a directory to /mnt using mountNativeFS
    * Uses File System Access API (showDirectoryPicker)
    *

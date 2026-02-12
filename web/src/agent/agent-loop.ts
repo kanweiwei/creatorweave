@@ -486,6 +486,22 @@ export class AgentLoop {
 
             callbacks?.onToolCallComplete?.(tc, result)
 
+            // Phase 2: Extract file changes from Python tool result
+            if (tc.function.name === 'run_python_code' && result) {
+              try {
+                const parsedResult = JSON.parse(result)
+                if (parsedResult.fileChanges) {
+                  // Import and use workspace store
+                  // Dynamic import to avoid circular dependency
+                  const { useWorkspaceStore } = await import('@/store/workspace.store')
+                  useWorkspaceStore.getState().addChanges(parsedResult.fileChanges)
+                  console.log('[AgentLoop] File changes detected:', parsedResult.fileChanges)
+                }
+              } catch {
+                // Not JSON or no fileChanges field - ignore
+              }
+            }
+
             const toolResult: ToolResult = {
               toolCallId: tc.id,
               name: tc.function.name,

@@ -1,0 +1,264 @@
+/**
+ * FileDiffViewer Component
+ *
+ * Displays side-by-side diff between OPFS and Native FS versions.
+ * Shows content changes with syntax highlighting.
+ *
+ * Part of Phase 3: Sync Preview UI
+ */
+
+import React, { useState, useEffect } from 'react'
+import { type FileChange, type ChangeType } from '@/opfs/types/opfs-types'
+import { getActiveWorkspace } from '@/store/workspace.store'
+
+interface FileDiffViewerProps {
+  /** Selected file change to display */
+  fileChange: FileChange | null
+}
+
+/**
+ * Simple syntax highlighting (placeholder for real implementation)
+ */
+function highlightCode(code: string): React.ReactNode {
+  const lines = code.split('\n')
+
+  return (
+    <div className="font-mono text-sm">
+      {lines.map((line, i) => (
+        <div key={i} className="flex">
+          <span className="w-8 text-right text-gray-400 select-none pr-3 border-r border-gray-200">
+            {i + 1}
+          </span>
+          <span className="flex-1 pl-3 whitespace-pre-wrap break-all">
+            {line || '\u00A0'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type FileContentState = {
+  opfs: string | null
+  native: string | null
+  loading: boolean
+  error: string | null
+}
+
+export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) => {
+  const [content, setContent] = useState<FileContentState>({
+    opfs: null,
+    native: null,
+    loading: false,
+    error: null,
+  })
+
+  // Load file contents when selection changes
+  useEffect(() => {
+    if (!fileChange) {
+      setContent({ opfs: null, native: null, loading: false, error: null })
+      return
+    }
+
+    const loadContents = async () => {
+      setContent((prev) => ({ ...prev, loading: true, error: null }))
+
+      try {
+        const activeWorkspace = await getActiveWorkspace()
+        if (!activeWorkspace) {
+          throw new Error('未激活的工作区')
+        }
+
+        // For Phase 3, we don't have access to real filesystem directory handle yet
+        // So we can only show placeholder content
+        let opfsContent: string | null = null
+
+        try {
+          if (fileChange.type !== 'add') {
+            opfsContent = '[OPFS 内容 - 需要实现实际读取]'
+          }
+        } catch {
+          opfsContent = null
+        }
+
+        setContent({
+          opfs: opfsContent,
+          native:
+            fileChange.type === 'delete'
+              ? null
+              : '[本机文件系统内容 - 需要实际访问权限]',
+          loading: false,
+          error: null,
+        })
+      } catch (err) {
+        setContent({
+          opfs: null,
+          native: null,
+          loading: false,
+          error: err instanceof Error ? err.message : '加载文件失败',
+        })
+      }
+    }
+
+    loadContents()
+  }, [fileChange])
+
+  if (!fileChange) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center py-12 px-4">
+        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <svg
+            className="w-8 h-8 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h2l3 3H7a2 2 0 01-2 2z"
+            />
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">选择文件查看详情</h3>
+        <p className="text-sm text-gray-500 max-w-sm">
+          从左侧列表选择一个文件，查看 OPFS 与本机文件系统的差异
+        </p>
+      </div>
+    )
+  }
+
+  if (content.loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500">加载文件内容...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (content.error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center max-w-md">
+          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-6 h-6 text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
+          <p className="text-sm text-gray-500">{content.error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const getChangeTypeLabel = (type: ChangeType) => {
+    switch (type) {
+      case 'add':
+        return '新增文件'
+      case 'modify':
+        return '修改文件'
+      case 'delete':
+        return '删除文件'
+    }
+  }
+
+  const getChangeTypeColor = (type: ChangeType) => {
+    switch (type) {
+      case 'add':
+        return 'green'
+      case 'modify':
+        return 'blue'
+      case 'delete':
+        return 'red'
+    }
+  }
+
+  const color = getChangeTypeColor(fileChange.type)
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-medium px-2 py-1 rounded-full bg-${color}-100 text-${color}-700`}
+              >
+                {getChangeTypeLabel(fileChange.type)}
+              </span>
+              <span className="text-sm font-medium text-gray-900" title={fileChange.path}>
+                {fileChange.path.length > 40
+                  ? `...${fileChange.path.slice(-37)}`
+                  : fileChange.path}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {fileChange.size ? `${(fileChange.size / 1024).toFixed(1)} KB` : '-'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Diff Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* OPFS Version */}
+        <div className="flex-1 flex flex-col border-r border-gray-200">
+          <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700">
+              OPFS 版本
+              {fileChange.type === 'delete' && (
+                <span className="ml-2 text-xs text-red-600">(将被删除)</span>
+              )}
+            </h4>
+          </div>
+          <div className="flex-1 overflow-auto bg-white p-4">
+            {content.opfs !== null ? (
+              highlightCode(content.opfs)
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                {fileChange.type === 'add' ? '新文件' : '无内容'}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Native FS Version */}
+        <div className="flex-1 flex flex-col">
+          <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700">
+              本机文件系统
+              {fileChange.type === 'add' && (
+                <span className="ml-2 text-xs text-green-600">(将创建)</span>
+              )}
+            </h4>
+          </div>
+          <div className="flex-1 overflow-auto bg-white p-4">
+            {content.native !== null ? (
+              highlightCode(content.native)
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                {fileChange.type === 'delete' ? '文件不存在' : '无内容'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -310,7 +310,7 @@ self.onmessage = async (/** @type {MessageEvent<any>} */ e) => {
   }
 
   // Handle 'execute' type - run Python code
-  const { code, files = [], timeout = DEFAULT_TIMEOUT, mountDir, syncFs } = e.data
+  const { code, files = [], timeout = DEFAULT_TIMEOUT, mountDir, syncFs = true } = e.data
 
   const startTime = performance.now()
   /** @type {number | undefined} */

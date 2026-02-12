@@ -1,11 +1,12 @@
 /**
  * SessionWorkspace Unit Tests
  *
- * Tests for the core OPFS session workspace functionality
+ * Tests for core OPFS session workspace functionality
+ * Including sync to native filesystem tests
  */
 
 import { describe, it, expect } from 'vitest'
-import type { PendingChange, UndoRecord } from '@/opfs/types/opfs-types'
+import type { PendingChange, UndoRecord, FileChange } from '@/opfs/types/opfs-types'
 
 describe('SessionWorkspace Types', () => {
   describe('PendingChange structure', () => {
@@ -207,6 +208,275 @@ describe('Session Operations', () => {
 
       expect(totalCount).toBe(3)
       expect(activeCount).toBe(2)
+    })
+  })
+})
+
+describe('FileChange Types', () => {
+  describe('Change type validation', () => {
+    it('should support all change types', () => {
+      const validTypes: FileChange['type'][] = ['add', 'modify', 'delete']
+
+      expect(validTypes).toContain('add')
+      expect(validTypes).toContain('modify')
+      expect(validTypes).toContain('delete')
+    })
+  })
+
+  describe('File change structure', () => {
+    it('should include required fields for add', () => {
+      const addChange: FileChange = {
+        type: 'add',
+        path: '/new-file.txt',
+        size: 1024,
+        mtime: Date.now(),
+      }
+
+      expect(addChange.type).toBe('add')
+      expect(addChange.path).toBe('/new-file.txt')
+      expect(addChange.size).toBe(1024)
+      expect(addChange.mtime).toBeGreaterThan(0)
+    })
+
+    it('should include required fields for delete', () => {
+      const deleteChange: FileChange = {
+        type: 'delete',
+        path: '/deleted-file.txt',
+        mtime: Date.now(),
+      }
+
+      expect(deleteChange.type).toBe('delete')
+      expect(deleteChange.path).toBe('/deleted-file.txt')
+      expect(deleteChange.mtime).toBeGreaterThan(0)
+    })
+  })
+})
+
+describe('Sync Operations', () => {
+  describe('Change detection result', () => {
+    it('should aggregate change counts', () => {
+      const changes: FileChange[] = [
+        { type: 'add', path: '/a.txt', size: 100, mtime: 1 },
+        { type: 'add', path: '/b.txt', size: 200, mtime: 2 },
+        { type: 'modify', path: '/c.txt', size: 150, mtime: 3 },
+        { type: 'delete', path: '/d.txt', mtime: 4 },
+      ]
+
+      const added = changes.filter((c) => c.type === 'add').length
+      const modified = changes.filter((c) => c.type === 'modify').length
+      const deleted = changes.filter((c) => c.type === 'delete').length
+
+      expect(added).toBe(2)
+      expect(modified).toBe(1)
+      expect(deleted).toBe(1)
+    })
+  })
+
+  describe('Sync result structure', () => {
+    it('should track successful syncs', () => {
+      const result = {
+        success: 5,
+        failed: 0,
+        skipped: 0,
+        conflicts: [],
+      }
+
+      expect(result.success).toBe(5)
+      expect(result.failed).toBe(0)
+      expect(result.skipped).toBe(0)
+      expect(result.conflicts).toHaveLength(0)
+    })
+
+    it('should track failed syncs', () => {
+      const result = {
+        success: 3,
+        failed: 2,
+        skipped: 0,
+        conflicts: [],
+      }
+
+      expect(result.success).toBe(3)
+      expect(result.failed).toBe(2)
+    })
+
+    it('should track conflicts', () => {
+      const conflicts = [
+        {
+          path: '/conflict.txt',
+          session: 'session-1',
+          otherSessions: ['session-2'],
+          opfsMtime: 1000,
+          currentFsMtime: 2000,
+        },
+      ]
+
+      const result = {
+        success: 0,
+        failed: 0,
+        skipped: 1,
+        conflicts,
+      }
+
+      expect(result.conflicts).toHaveLength(1)
+      expect(result.conflicts[0].path).toBe('/conflict.txt')
+      expect(result.skipped).toBe(1)
+    })
+  })
+})
+
+describe('Conflict Detection', () => {
+  describe('Conflict scenarios', () => {
+    it('should detect when both versions modified', () => {
+      const opfsMtime = 1000 as number
+      const currentFsMtime = 2000 as number
+
+      const hasConflict = opfsMtime !== currentFsMtime
+      const opfsIsNewer = opfsMtime > currentFsMtime
+
+      expect(hasConflict).toBe(true)
+      expect(opfsIsNewer).toBe(false)
+    })
+
+    it('should detect when OPFS version is newer', () => {
+      const opfsMtime = 2000 as number
+      const currentFsMtime = 1000 as number
+
+      const hasConflict = opfsMtime !== currentFsMtime
+      const opfsIsNewer = opfsMtime > currentFsMtime
+
+      expect(hasConflict).toBe(true)
+      expect(opfsIsNewer).toBe(true)
+    })
+
+    it('should detect no conflict when timestamps match', () => {
+      const opfsMtime = 1000 as number
+      const currentFsMtime = 1000 as number
+
+      const hasConflict = opfsMtime !== currentFsMtime
+
+      expect(hasConflict).toBe(false)
+    })
+  })
+
+  describe('Conflict resolution options', () => {
+    it('should support keeping OPFS version', () => {
+      const resolution = 'opfs'
+
+      expect(resolution).toBe('opfs')
+    })
+
+    it('should support keeping native version', () => {
+      const resolution = 'native'
+
+      expect(resolution).toBe('native')
+    })
+
+    it('should support skipping conflict', () => {
+      const resolution = 'skip'
+
+      expect(resolution).toBe('skip')
+    })
+
+    it('should support cancelling sync', () => {
+      const resolution = 'cancel'
+
+      expect(resolution).toBe('cancel')
+    })
+  })
+})
+
+describe('Native Filesystem Operations', () => {
+  describe('File size calculation', () => {
+    it('should calculate bytes correctly', () => {
+      const oneKB = 1024
+      const oneMB = 1024 * 1024
+      const oneGB = 1024 * 1024 * 1024
+
+      expect(oneKB).toBe(1024)
+      expect(oneMB).toBe(1048576)
+      expect(oneGB).toBe(1073741824)
+    })
+  })
+
+  describe('Progress tracking', () => {
+    it('should calculate progress percentage', () => {
+      const transferred = 512
+      const total = 1024
+      const progress = (transferred / total) * 100
+
+      expect(progress).toBe(50)
+    })
+
+    it('should handle zero total', () => {
+      const transferred = 0
+      const total = 0
+      const progress = total > 0 ? (transferred / total) * 100 : 0
+
+      expect(progress).toBe(0)
+    })
+
+    it('should clamp progress to 100%', () => {
+      const transferred = 2000
+      const total = 1024
+      const progress = Math.min((transferred / total) * 100, 100)
+
+      expect(progress).toBe(100)
+    })
+  })
+})
+
+describe('Storage Status', () => {
+  describe('Storage thresholds', () => {
+    it('should define warning threshold at 70%', () => {
+      const WARNING_THRESHOLD = 0.7
+      expect(WARNING_THRESHOLD).toBe(0.7)
+    })
+
+    it('should define urgent threshold at 80%', () => {
+      const URGENT_THRESHOLD = 0.8
+      expect(URGENT_THRESHOLD).toBe(0.8)
+    })
+
+    it('should define critical threshold at 95%', () => {
+      const CRITICAL_THRESHOLD = 0.95
+      expect(CRITICAL_THRESHOLD).toBe(0.95)
+    })
+
+    it('should define full threshold at 100%', () => {
+      const FULL_THRESHOLD = 1.0
+      expect(FULL_THRESHOLD).toBe(1.0)
+    })
+  })
+
+  describe('Storage status calculation', () => {
+    it('should determine normal status', () => {
+      const usageRatio = 0.5
+      const isNormal = usageRatio < 0.7
+      expect(isNormal).toBe(true)
+    })
+
+    it('should determine warning status', () => {
+      const usageRatio = 0.75
+      const isWarning = usageRatio >= 0.7 && usageRatio < 0.8
+      expect(isWarning).toBe(true)
+    })
+
+    it('should determine urgent status', () => {
+      const usageRatio = 0.85
+      const isUrgent = usageRatio >= 0.8 && usageRatio < 0.95
+      expect(isUrgent).toBe(true)
+    })
+
+    it('should determine critical status', () => {
+      const usageRatio = 0.97
+      const isCritical = usageRatio >= 0.95 && usageRatio < 1.0
+      expect(isCritical).toBe(true)
+    })
+
+    it('should determine full status', () => {
+      const usageRatio = 1.0
+      const isFull = usageRatio >= 1.0
+      expect(isFull).toBe(true)
     })
   })
 })

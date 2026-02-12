@@ -3,21 +3,23 @@
  *
  * Features:
  * - Execute arbitrary Python code with stdio capture
- * - Access user's workspace files via mountNativeFS (LazyPyodideFS)
+ * - Access files in OPFS workspace at /mnt path
  * - Automatic package loading from imports (pandas, numpy, matplotlib, openpyxl, etc.)
  * - Handle matplotlib image outputs
- * - Optional auto-sync for file writes back to workspace
+ * - Change detection after execution (scan files before/after)
  * - Comprehensive error handling and timeout management
  *
  * Architecture:
  * - Uses pythonExecutor singleton from @/python
- * - Mounts agentStore.directoryHandle at /mnt using mountNativeFS
- * - LazyPyodideFS provides lazy-loading file access via File System Access API
- * - No file pre-injection - files are read on-demand from native filesystem
+ * - Mounts OPFS files/ subdirectory at /mnt using mountNativeFS
+ * - Dual-layer storage: OPFS (workspace) + Native FS (user's project)
+ * - Lazy loading: files copied from Native FS to OPFS on first read
+ * - Change detection: compare file snapshots before/after execution
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { pythonExecutor } from '@/python'
+import { getActiveWorkspace } from '@/store/workspace.store'
 
 //=============================================================================
 // Tool Definition
@@ -30,29 +32,27 @@ export const pythonCodeDefinition: ToolDefinition = {
     description: `Execute Python code in the browser using Pyodide (WebAssembly Python runtime).
 
 ENVIRONMENT: Runs in browser via WebAssembly, not a full Python environment.
-- Files are accessible at /mnt/ path (mounted from your workspace)
+- Automatic change detection: all file changes are detected after execution
+- Files are accessible at /mnt/ path (OPFS workspace subdirectory)
 - Built-in packages: pandas, numpy, matplotlib, openpyxl, pillow, scipy, sklearn, etc.
 - For other packages: use micropip.install('package-name')
 - For matplotlib: set matplotlib.use('Agg') BEFORE creating figures (headless mode)
-- File writes require sync=true to persist back to workspace
+- Automatic change detection: all file changes are detected after execution
 
 IMPORTANT:
-1. The workspace directory is automatically mounted at /mnt
-2. Set sync=true to persist file writes back to workspace
-3. Files are read on-demand - no need to specify which files you need
+1. Uses Origin Private File System (OPFS) at /mnt - no folder selection needed
+2. All file changes are detected after execution by scanning workspace directory
+3. Use files parameter to pre-load files from native filesystem (optional optimization)
 
 Examples:
 - Simple computation:
   run_python_code(code="print(sum([1, 2, 3]))")
 
 - Data analysis with pandas:
-  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())")
+  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/data.csv')\\nprint(df.describe())", files=["data.csv"])
 
-- Data visualization (headless mode):
-  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')", sync=true)
-
-- Write processed data back to workspace:
-  run_python_code(code="import pandas as pd\\ndf = pd.read_csv('/mnt/input.csv')\\ndf.to_csv('/mnt/output.csv', index=False)", sync=true)`,
+- Data visualization (matplotlib outputs automatically detected):
+  run_python_code(code="import matplotlib\\nmatplotlib.use('Agg')\\nimport matplotlib.pyplot as plt\\nplt.plot([1, 2, 3])\\nplt.savefig('/mnt/chart.png')")`,
     parameters: {
       type: 'object',
       properties: {
@@ -60,10 +60,11 @@ Examples:
           type: 'string',
           description: 'Python code to execute. Access workspace files via /mnt/{path}.',
         },
-        sync: {
-          type: 'boolean',
+        files: {
+          type: 'array',
+          items: { type: 'string' },
           description:
-            'If true, sync file writes back to workspace after execution. Use this when your code writes files.',
+            'Optional: List of files to copy from native filesystem to OPFS before execution (e.g., ["data.csv", "src/utils.py"]).',
         },
         timeout: {
           type: 'number',
@@ -81,7 +82,7 @@ Examples:
 
 export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
   const code = args.code as string
-  const sync = args.sync as boolean | undefined
+  const requiredFiles = (args.files as string[]) || []
   const timeout = (args.timeout as number) || 30000
 
   // Validation
@@ -103,34 +104,49 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
     return JSON.stringify({ error: 'Timeout cannot exceed 120000ms (120 seconds)' })
   }
 
-  // Check for workspace directory
-  const { useAgentStore } = await import('@/store/agent.store')
-  const directoryHandle = useAgentStore.getState().directoryHandle
-
-  if (!directoryHandle) {
+  // Get active workspace
+  const activeWorkspace = await getActiveWorkspace()
+  if (!activeWorkspace) {
     return JSON.stringify({
-      error: 'No workspace directory selected. Please select a project folder first.',
-      hint: 'Use the folder selection button to choose your project directory.',
+      error: 'No active workspace. Please open a conversation first.',
     })
   }
 
-  // Verify directory permissions
-  const permission = await directoryHandle.queryPermission({ mode: 'readwrite' })
-  if (permission !== 'granted') {
-    return JSON.stringify({
-      error: 'Workspace directory permission not granted.',
-      hint: 'Please re-select the folder to grant read/write permissions.',
-    })
-  }
+  const { workspace } = activeWorkspace
 
   try {
-    // Execute Python code with mounted directory
+    // Get OPFS root and get files/ subdirectory
+    if (typeof navigator.storage === 'undefined' || !navigator.storage.getDirectory) {
+      return JSON.stringify({
+        error: 'Storage API is not supported in this browser',
+      })
+    }
+
+    // Prepare files from Native FS to OPFS (if specified)
+    if (requiredFiles.length > 0) {
+      try {
+        await workspace.prepareFiles(requiredFiles)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return JSON.stringify({
+          error: `File preparation failed: ${message}`,
+        })
+      }
+    }
+
+    // Scan files before execution for change detection
+    const beforeScan = await workspace.scanFiles()
+
+    // Execute Python code with OPFS mounted at /mnt
     const result = await pythonExecutor.execute({
       code,
-      mountDir: directoryHandle,
-      syncFs: sync === true,
+      mountDir: await workspace.getFilesDir(),
       timeout,
     })
+
+    // Scan files after execution (updates cache) and detect changes
+    await workspace.scanFilesWithCache()
+    const changes = workspace.detectChanges(beforeScan)
 
     // Format result for Agent
     if (!result.success) {
@@ -141,37 +157,20 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       })
     }
 
-    // Build response (without outputFiles)
-    const response: {
-      stdout?: string
-      stderr?: string
-      result?: unknown
-      images?: Array<{ filename: string; data: string }>
-      executionTime: number
-      synced?: boolean
-    } = {
+    const response = {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      result: result.result,
+      images: result.images,
       executionTime: result.executionTime,
-    }
-
-    if (result.stdout) {
-      response.stdout = result.stdout
-    }
-
-    if (result.stderr) {
-      response.stderr = result.stderr
-    }
-
-    if (result.result !== undefined && result.result !== null) {
-      response.result = result.result
-    }
-
-    if (result.images && result.images.length > 0) {
-      response.images = result.images
-    }
-
-    // Add sync status if sync was requested
-    if (sync === true) {
-      response.synced = true
+      // Include file changes detected during execution
+      fileChanges: {
+        changes: changes.changes,
+        added: changes.added,
+        modified: changes.modified,
+        deleted: changes.deleted,
+        totalChanges: changes.changes.length,
+      },
     }
 
     return JSON.stringify(response, null, 2)
@@ -183,15 +182,6 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
     if (errorMessage.includes('Pyodide') || errorMessage.includes('loading')) {
       return JSON.stringify({
         error: 'Python environment is loading. Please wait a moment and try again.',
-        details: errorMessage,
-      })
-    }
-
-    // Permission errors
-    if (errorMessage.includes('permission') || errorMessage.includes('NotAllowedError')) {
-      return JSON.stringify({
-        error: 'Permission denied accessing workspace files.',
-        hint: 'Please re-select the folder to grant read/write permissions.',
         details: errorMessage,
       })
     }

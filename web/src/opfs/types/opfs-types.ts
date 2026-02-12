@@ -191,3 +191,178 @@ export interface DetailedUsage {
   /** Total */
   total: number
 }
+
+// ============ Dual Storage Types ============
+
+/**
+ * Change type for file modifications
+ */
+export type ChangeType = 'add' | 'modify' | 'delete'
+
+/**
+ * Native filesystem directory handle type
+ * Browser File System Access API handle
+ */
+export type NativeFSDirectoryHandle = FileSystemDirectoryHandle
+
+/**
+ * Directory picker options
+ */
+export interface DirectoryPickerOptions {
+  /** Suggested start directory path */
+  startIn?: string
+  /** Access mode */
+  mode?: 'read' | 'readwrite' | 'readwrite-experimental'
+  /** Allow multiple selection */
+  multiple?: boolean
+}
+
+/**
+ * Directory handle storage entry
+ */
+export interface StoredDirectoryHandle {
+  /** Workspace ID */
+  workspaceId: string
+  /** Serialized handle reference */
+  handleRef: string
+  /** Storage timestamp */
+  timestamp: number
+  /** Handle status */
+  status: 'active' | 'expired' | 'revoked'
+}
+
+/**
+ * File scan result item for change detection
+ */
+export interface FileScanItem {
+  /** Relative path from files/ root */
+  path: string
+  /** Modification time */
+  mtime: number
+  /** File size in bytes */
+  size: number
+}
+
+/**
+ * Detected file change
+ */
+export interface FileChange {
+  /** Change type */
+  type: ChangeType
+  /** Relative path from files/ root */
+  path: string
+  /** File size (for add/modify) */
+  size?: number
+  /** Modification time */
+  mtime?: number
+}
+
+/**
+ * Change detection result
+ */
+export interface ChangeDetectionResult {
+  /** List of changes */
+  changes: FileChange[]
+  /** Count of added files */
+  added: number
+  /** Count of modified files */
+  modified: number
+  /** Count of deleted files */
+  deleted: number
+}
+
+/**
+ * File read result with source tracking
+ */
+export interface FileReadResult {
+  /** File content */
+  content: string | Uint8Array
+  /** Source of the file */
+  source: 'native-fs' | 'opfs'
+  /** Cache timestamp (if from OPFS) */
+  cachedAt?: number
+}
+
+// ============ Error Handling Types ============
+
+/**
+ * Error codes for dual storage system
+ */
+export enum ErrorCode {
+  // File operation errors (1xxx)
+  FILE_NOT_FOUND = 1001,
+  FILE_READ_FAILED = 1002,
+  FILE_WRITE_FAILED = 1003,
+  FILE_TOO_LARGE = 1004,
+  INVALID_PATH_FORMAT = 1005,
+  PATH_TRAVERSAL_DETECTED = 1006,
+
+  // Directory operation errors (2xxx)
+  DIRECTORY_NOT_FOUND = 2001,
+  DIRECTORY_CREATE_FAILED = 2002,
+
+  // Sync operation errors (3xxx)
+  SYNC_CONFLICT_DETECTED = 3001,
+  SYNC_OPERATION_FAILED = 3002,
+  SYNC_PARTIAL_SUCCESS = 3003,
+
+  // Permission and authorization errors (4xxx)
+  PERMISSION_DENIED = 4001,
+  AUTHORIZATION_REQUIRED = 4002,
+  HANDLE_INVALID = 4003,
+
+  // System-level errors (5xxx)
+  OPFS_NOT_AVAILABLE = 5001,
+  STORAGE_QUOTA_EXCEEDED = 5002,
+  BROWSER_NOT_SUPPORTED = 5003,
+}
+
+/**
+ * Error detail interface for user-facing errors
+ */
+export interface ErrorDetail {
+  code: ErrorCode
+  message: string
+  context?: Record<string, unknown>  // Additional context information
+  recoverable: boolean            // Whether error is recoverable
+  suggestion?: string            // Suggestion for user
+}
+
+/**
+ * System log entry (not shown to user directly)
+ */
+export interface SystemLog {
+  timestamp: number
+  level: 'debug' | 'info' | 'warn' | 'error'
+  code: ErrorCode
+  message: string
+  context?: Record<string, unknown>
+  stack?: string
+}
+
+/**
+ * Validation result with error info
+ */
+export interface ValidationResult {
+  valid: boolean
+  error?: {
+    code: ErrorCode
+    message: string
+  }
+}
+
+/**
+ * Conflict detail for sync operations
+ */
+export interface ConflictDetail {
+  path: string
+  opfsVersion: {
+    session: string
+    mtime: number
+  }
+  nativeVersion: {
+    exists: boolean
+    mtime?: number
+  }
+  resolution?: 'opfs' | 'native' | 'skip' | 'cancel'
+}
