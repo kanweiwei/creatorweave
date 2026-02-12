@@ -144,6 +144,28 @@ export const pythonCodeExecutor: ToolExecutor = async (args, _context) => {
       timeout,
     })
 
+    // Save collected matplotlib images to OPFS for sync tracking
+    if (result.images && result.images.length > 0) {
+      const filesDir = await workspace.getFilesDir()
+      for (const image of result.images) {
+        try {
+          // Decode base64 and write to OPFS files/ directory
+          const binaryString = atob(image.data)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const imageHandle = await filesDir.getFileHandle(image.filename, { create: true })
+          const writable = await imageHandle.createWritable()
+          await writable.write(bytes)
+          await writable.close()
+          console.log(`[Python Tool] Saved image to OPFS: ${image.filename}`)
+        } catch (error) {
+          console.warn(`[Python Tool] Failed to save image ${image.filename} to OPFS:`, error)
+        }
+      }
+    }
+
     // Scan files after execution (updates cache) and detect changes
     await workspace.scanFilesWithCache()
     const changes = workspace.detectChanges(beforeScan)

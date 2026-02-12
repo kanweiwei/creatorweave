@@ -353,11 +353,61 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             // Check if workspace exists in SQLite first
             const sessionRecord = await repo.findWorkspaceById(id)
 
-            // If workspace doesn't exist in SQLite, it might be a new conversation
-            // that hasn't had its workspace created yet - just return silently
-            // The workspace will be created when agent loop starts
+            // If workspace doesn't exist in SQLite, it's a new conversation
+            // We need to create the workspace OPFS structure immediately
             if (!sessionRecord) {
-              set({ isLoading: false })
+              console.log(`[WorkspaceStore] Creating new workspace for conversation: ${id}`)
+
+              // Create OPFS workspace using conversation ID as root directory
+              // Each conversation gets its own isolated workspace directory
+              const rootDirectory = `workspaces/${id}`
+
+              // Create the workspace (this creates OPFS structure and adds to SQLite)
+              const workspace = await manager.createSession(rootDirectory, id)
+
+              // Get conversation title for workspace name
+              const { useConversationStore } = await import('./conversation.store')
+              const conversations = useConversationStore.getState().conversations
+              const convTitle = conversations.find((c) => c.id === id)?.title
+
+              // Create workspace in SQLite
+              await repo.createWorkspace({
+                id,
+                rootDirectory,
+                name: convTitle || id,
+                status: 'active',
+                cacheSize: 0,
+                pendingCount: workspace.pendingCount,
+                undoCount: workspace.undoCount,
+                modifiedFiles: 0,
+              })
+
+              const newWorkspace: WorkspaceWithStats = {
+                id,
+                name: convTitle || id,
+                createdAt: Date.now(),
+                lastActiveAt: Date.now(),
+                cacheSize: 0,
+                pendingCount: workspace.pendingCount,
+                undoCount: workspace.undoCount,
+                modifiedFiles: 0,
+                status: 'active',
+              }
+
+              set({
+                workspaces: [newWorkspace, ...get().workspaces],
+                activeWorkspaceId: id,
+                currentPendingCount: workspace.pendingCount,
+                currentUndoCount: workspace.undoCount,
+                isLoading: false,
+              })
+
+              // Also switch active conversation
+              const convStore = useConversationStore.getState()
+              if (convStore.activeConversationId !== id) {
+                await convStore.setActive(id)
+              }
+
               return
             }
 
@@ -366,18 +416,64 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
             if (!workspace) {
               // Workspace exists in SQLite but not in OPFS - data inconsistency
-              // Clean up orphaned SQLite record and clear from state
+              // This can happen if OPFS was cleared or corrupted
+              // Recreate the workspace to fix the inconsistency
               console.warn(
-                `[WorkspaceStore] Workspace ${id} exists in database but OPFS workspace missing. Cleaning up orphaned record.`
+                `[WorkspaceStore] Workspace ${id} exists in database but OPFS workspace missing. Recreating...`
               )
-              await repo.deleteWorkspace(id)
 
-              // Remove from state if present
+              // Get the session record to retrieve root directory
+              const sessionRecord = await repo.findWorkspaceById(id)
+              if (!sessionRecord) {
+                console.error(`[WorkspaceStore] Cannot recreate workspace ${id}: no record in database`)
+                await repo.deleteWorkspace(id)
+                set({
+                  workspaces: get().workspaces.filter((w) => w.id !== id),
+                  activeWorkspaceId: get().activeWorkspaceId === id ? null : get().activeWorkspaceId,
+                  isLoading: false,
+                })
+                return
+              }
+
+              // Recreate the workspace
+              const newWorkspace = await manager.createSession(sessionRecord.rootDirectory, id)
+
+              // Update the workspace in SQLite with fresh stats
+              await repo.updateWorkspaceStats(id, {
+                pendingCount: newWorkspace.pendingCount,
+                undoCount: newWorkspace.undoCount,
+                modifiedFiles: 0,
+              })
+
               set({
-                workspaces: get().workspaces.filter((w) => w.id !== id),
-                activeWorkspaceId: get().activeWorkspaceId === id ? null : get().activeWorkspaceId,
+                workspaces: get().workspaces.map((w) =>
+                  w.id === id
+                    ? {
+                        id,
+                        name: sessionRecord.name,
+                        createdAt: sessionRecord.createdAt,
+                        lastActiveAt: Date.now(),
+                        cacheSize: 0,
+                        pendingCount: newWorkspace.pendingCount,
+                        undoCount: newWorkspace.undoCount,
+                        modifiedFiles: 0,
+                        status: 'active',
+                      }
+                    : w
+                ),
+                activeWorkspaceId: id,
+                currentPendingCount: newWorkspace.pendingCount,
+                currentUndoCount: newWorkspace.undoCount,
                 isLoading: false,
               })
+
+              // Also switch active conversation
+              const { useConversationStore } = await import('./conversation.store')
+              const convStore = useConversationStore.getState()
+              if (convStore.activeConversationId !== id) {
+                await convStore.setActive(id)
+              }
+
               return
             }
 

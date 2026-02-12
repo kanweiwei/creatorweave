@@ -1,10 +1,10 @@
 /**
  * WorkspaceLayout - main layout for the AI workbench.
  *
- * Composes: TopBar + Sidebar + Main content (ConversationView | WelcomeScreen) + FilePreview
+ * Composes: TopBar + Sidebar + Main content (ConversationView | WelcomeScreen) + SyncPreviewPanel
  *
- * File preview uses a "push-squeeze" pattern:
- * - When a file is selected in the sidebar tree, the preview panel opens in the main area
+ * SyncPreviewPanel uses a "push-squeeze" pattern:
+ * - When file changes are detected, preview panel opens in main area
  * - Conversation is squeezed to ~40%, preview takes ~60%
  * - A draggable divider allows resizing
  * - ESC or close button dismisses the preview
@@ -21,14 +21,15 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
 import { useSettingsStore } from '@/store/settings.store'
-import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
+import { useWorkspaceStore } from '@/store/workspace.store'
 import { useWorkspacePreferencesStore } from '@/store/workspace-preferences.store'
+import { useRemoteStore, registerRemoteCallbacks } from '@/store/remote.store'
 import { useMobile } from '@/components/mobile/useMobile'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { ConversationView } from '@/components/agent/ConversationView'
 import { WelcomeScreenV2 } from '@/components/WelcomeScreenV2'
-import { FilePreview } from '@/components/file-viewer/FilePreview'
+import { SyncPreviewPanel } from '@/components/sync'
 import { SkillsManager } from '@/components/skills/SkillsManager'
 import { ProjectSkillsDialog } from '@/components/skills/ProjectSkillsDialog'
 import { ToolsPanel, QuickActionsPanel } from '@/components/tools'
@@ -61,6 +62,7 @@ export function WorkspaceLayout() {
   const { directoryHandle } = useAgentStore()
   const { providerType, modelName, maxTokens, hasApiKey } = useSettingsStore()
   const { role } = useRemoteStore()
+  const pendingChanges = useWorkspaceStore((state) => state.pendingChanges)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   // Skills management state
@@ -76,7 +78,6 @@ export function WorkspaceLayout() {
   const {
     panelSizes,
     panelState,
-    addRecentFile,
     setPreviewRatio,
     setSidebarCollapsed,
     setActiveResourceTab,
@@ -100,10 +101,6 @@ export function WorkspaceLayout() {
   const isMobile = useMobile()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  // File preview state (push-squeeze panel)
-  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
-  const [previewFileHandle, setPreviewFileHandle] = useState<FileSystemFileHandle | null>(null)
-
   // Use panel sizes from preferences store
   const previewRatio = panelSizes.previewRatio
 
@@ -124,11 +121,6 @@ export function WorkspaceLayout() {
     setPendingMessage(null)
   }, [])
 
-  const handleClosePreview = useCallback(() => {
-    setPreviewFilePath(null)
-    setPreviewFileHandle(null)
-  }, [])
-
   // Skills management handlers
   const handleSkillsManagerOpen = useCallback(() => {
     setSkillsManagerOpen(true)
@@ -137,7 +129,7 @@ export function WorkspaceLayout() {
   const handleProjectSkillsConfirm = useCallback(
     async (selectedIds: string[]) => {
       console.log('[WorkspaceLayout] Loading skills:', selectedIds)
-      // Load selected skills into the skills store
+      // Load selected skills into skills store
       for (const id of selectedIds) {
         const skill = projectSkills.find((s) => s.id === id)
         if (skill) {
@@ -181,7 +173,6 @@ export function WorkspaceLayout() {
       // TODO: Implement continue last conversation
       console.log('[WorkspaceLayout] Continue last conversation')
     },
-
     // Files
     onOpenFile: () => {
       // TODO: Implement file picker
@@ -195,7 +186,6 @@ export function WorkspaceLayout() {
       // TODO: Toggle theme
       console.log('[WorkspaceLayout] Toggle theme')
     },
-
     // Tools
     onOpenSkills: handleSkillsManagerOpen,
     onOpenTools: () => setToolsPanelOpen(true),
@@ -203,11 +193,9 @@ export function WorkspaceLayout() {
       // TODO: Open MCP settings
       console.log('[WorkspaceLayout] Open MCP')
     },
-
     // Settings & Help
     onOpenSettings: () => setShowWorkspaceSettings(true),
     onShowShortcuts: () => setShowShortcutsHelp(true),
-
     // Messages
     onSendMessage: (text: string) => {
       const conv = createNew(text.slice(0, 30))
@@ -215,23 +203,6 @@ export function WorkspaceLayout() {
       setPendingMessage(text)
     },
   })
-
-  // Phase 4: Track recent files
-  const handleFileSelectWithTracking = useCallback(
-    (path: string, handle: FileSystemFileHandle) => {
-      setPreviewFilePath(path)
-      setPreviewFileHandle(handle)
-
-      // Add to recent files
-      const { directoryName } = useAgentStore.getState()
-      addRecentFile({
-        path,
-        timestamp: Date.now(),
-        directoryHandleName: directoryName || undefined,
-      })
-    },
-    [addRecentFile]
-  )
 
   // Initialize skills on mount
   useEffect(() => {
@@ -251,7 +222,6 @@ export function WorkspaceLayout() {
         console.log('[WorkspaceLayout] Scanning project skills...')
         const result = await scanProjectSkills(directoryHandle)
         console.log('[WorkspaceLayout] Scan result:', result.skills.length, 'skills found')
-
         if (result.errors.length > 0) {
           console.warn('[WorkspaceLayout] Scan errors:', result.errors)
         }
@@ -287,18 +257,6 @@ export function WorkspaceLayout() {
 
     scanForSkills()
   }, [directoryHandle, skillsLoaded])
-
-  // ESC key to close preview
-  useEffect(() => {
-    if (!previewFilePath) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClosePreview()
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [previewFilePath, handleClosePreview])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -358,12 +316,9 @@ export function WorkspaceLayout() {
           setToolsPanelOpen(false)
         } else if (skillsManagerOpen) {
           setSkillsManagerOpen(false)
-        } else if (previewFilePath) {
-          handleClosePreview()
         }
       }
     }
-
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [
@@ -374,11 +329,9 @@ export function WorkspaceLayout() {
     quickActionsOpen,
     toolsPanelOpen,
     skillsManagerOpen,
-    previewFilePath,
     panelState.sidebarCollapsed,
     setSidebarCollapsed,
     setActiveResourceTab,
-    handleClosePreview,
   ])
 
   // Register callbacks for remote messages (Host mode)
@@ -394,7 +347,6 @@ export function WorkspaceLayout() {
 
       // Use existing conversation or create new one
       let targetConvId = activeConversationId
-
       if (!targetConvId) {
         const newConv = createNew(content.slice(0, 30))
         setActive(newConv.id)
@@ -461,9 +413,7 @@ export function WorkspaceLayout() {
       e.preventDefault()
       if (!mainRef.current) return
       dividerRef.current = { startX: e.clientX, startRatio: panelSizes.previewRatio }
-
       const mainWidth = mainRef.current.clientWidth
-
       const handleMove = (me: MouseEvent) => {
         if (!dividerRef.current) return
         const delta = me.clientX - dividerRef.current.startX
@@ -472,13 +422,11 @@ export function WorkspaceLayout() {
         const newRatio = Math.max(30, Math.min(80, dividerRef.current.startRatio - deltaPercent))
         setPreviewRatio(newRatio)
       }
-
       const handleUp = () => {
         dividerRef.current = null
         document.removeEventListener('mousemove', handleMove)
         document.removeEventListener('mouseup', handleUp)
       }
-
       document.addEventListener('mousemove', handleMove)
       document.addEventListener('mouseup', handleUp)
     },
@@ -486,10 +434,11 @@ export function WorkspaceLayout() {
   )
 
   const hasActiveConversation = !!activeConversationId
-  const showPreview = !!previewFilePath
+  const showPreview = pendingChanges !== null && pendingChanges.changes.length > 0
 
   return (
     <div className="flex h-screen flex-col bg-white">
+      {/* Header */}
       <TopBar
         onSkillsManagerOpen={handleSkillsManagerOpen}
         onToolsPanelOpen={() => setToolsPanelOpen(true)}
@@ -505,11 +454,9 @@ export function WorkspaceLayout() {
         )}
 
         {/* Sidebar - hidden on mobile when closed */}
-        {(!isMobile || isSidebarOpen) && (
-          <Sidebar onFileSelect={handleFileSelectWithTracking} selectedFilePath={previewFilePath} />
-        )}
+        {(!isMobile || isSidebarOpen) && <Sidebar />}
 
-        {/* Main area: conversation + optional file preview */}
+        {/* Main area: conversation + optional sync preview panel */}
         <div ref={mainRef} className="flex flex-1 overflow-hidden">
           {/* Conversation / Welcome */}
           <main
@@ -526,7 +473,7 @@ export function WorkspaceLayout() {
             )}
           </main>
 
-          {/* Drag divider + File preview panel */}
+          {/* Drag divider + Sync preview panel */}
           {showPreview && (
             <>
               <div
@@ -537,11 +484,7 @@ export function WorkspaceLayout() {
                 className="overflow-hidden border-l border-neutral-200"
                 style={{ width: `${previewRatio}%` }}
               >
-                <FilePreview
-                  filePath={previewFilePath}
-                  fileHandle={previewFileHandle}
-                  onClose={handleClosePreview}
-                />
+                <SyncPreviewPanel />
               </div>
             </>
           )}
@@ -598,7 +541,7 @@ export function WorkspaceLayout() {
             <RecentFilesPanel
               onFileSelect={(path) => {
                 setShowRecentFiles(false)
-                // Find and select the file
+                // Find and select file
                 const file = document.querySelector(`[data-file-path="${path}"]`) as HTMLElement
                 file?.click()
               }}
@@ -637,3 +580,5 @@ export function WorkspaceLayout() {
     </div>
   )
 }
+
+export default WorkspaceLayout
