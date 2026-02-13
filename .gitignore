@@ -64,13 +64,16 @@ playwright/.cache/
 # Husky
 .husky/
 
+# OpenClaw Agents
+.openclaw-agents/
+
 # Other
 .turbo/
 .playwright-mcp/
 *.tsbuildinfo
 
 # Docs
-docs/
+# docs/ - allow docs directory
 
 # Node version
 .nvmrc
