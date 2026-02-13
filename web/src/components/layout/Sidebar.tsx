@@ -15,15 +15,15 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Plus, Trash2, PanelLeftClose, PanelLeft, FolderTree, Puzzle, History } from 'lucide-react'
+import { Plus, Trash2, PanelLeftClose, PanelLeft, FolderTree, Puzzle, Clock } from 'lucide-react'
 import { BrandButton } from '@browser-fs-analyzer/ui'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
+import { useWorkspaceStore } from '@/store/workspace.store'
 import { FileTreePanel } from '@/components/file-viewer/FileTreePanel'
-import { UndoPanel } from '@/components/file-viewer/UndoPanel'
-import { getUndoManager } from '@/undo/undo-manager'
+import { PendingSyncPanel } from '@/components/sync/PendingSyncPanel'
 
-type ResourceTab = 'files' | 'plugins' | 'changes'
+type ResourceTab = 'files' | 'plugins' | 'pending'
 
 const STORAGE_KEY_RATIO = 'sidebar-conversation-ratio'
 
@@ -82,15 +82,10 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
     if (!loaded) loadFromDB()
   }, [loaded, loadFromDB])
 
-  // Sync undo manager with directory handle
-  useEffect(() => {
-    getUndoManager().setDirectoryHandle(directoryHandle)
-  }, [directoryHandle])
-
   // Sidebar state
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(260)
-  const [resourceTab, setResourceTab] = useState<ResourceTab>('files')
+  const [resourceTab, setResourceTab] = useState<ResourceTab>('pending')
   const [conversationRatio, _setConversationRatio] = useState(loadConversationRatio)
 
   // Drag sidebar width (horizontal)
@@ -109,10 +104,22 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
     saveConversationRatio(conversationRatio)
   }, [conversationRatio])
 
+  // Refresh pending changes when switching to pending tab
+  const refreshPending = useCallback(async () => {
+    const { refreshPendingChanges } = useWorkspaceStore.getState()
+    await refreshPendingChanges()
+  }, [])
+
   const handleFileSelect = useCallback(
     (path: string, handle: FileSystemFileHandle) => {
       onFileSelect?.(path, handle)
-      setResourceTab('files')
+      // 如果有待同步文件，自动切换到 pending 标签
+      const state = useWorkspaceStore.getState()
+      if (state.pendingChanges && state.pendingChanges.changes.length > 0) {
+        setResourceTab('pending')
+      } else {
+        setResourceTab('files')
+      }
     },
     [onFileSelect]
   )
@@ -307,12 +314,15 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
                 插件
               </BrandButton>
               <BrandButton
-                variant={resourceTab === 'changes' ? 'secondary' : 'ghost'}
+                variant={resourceTab === 'pending' ? 'secondary' : 'ghost'}
                 className="h-7 gap-1 px-2 py-1 text-xs"
-                onClick={() => setResourceTab('changes')}
+                onClick={async () => {
+                  setResourceTab('pending')
+                  await refreshPending()
+                }}
               >
-                <History className="h-3 w-3" />
-                变更
+                <Clock className="h-3 w-3" />
+                待同步
               </BrandButton>
             </div>
 
@@ -335,9 +345,9 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
                 </div>
               )}
 
-              {resourceTab === 'changes' && (
+              {resourceTab === 'pending' && (
                 <div className="h-full overflow-hidden">
-                  <UndoPanel />
+                  <PendingSyncPanel />
                 </div>
               )}
             </div>

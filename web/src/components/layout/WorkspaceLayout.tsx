@@ -62,7 +62,8 @@ export function WorkspaceLayout() {
   const { directoryHandle } = useAgentStore()
   const { providerType, modelName, maxTokens, hasApiKey } = useSettingsStore()
   const { role } = useRemoteStore()
-  const pendingChanges = useWorkspaceStore((state) => state.pendingChanges)
+  const showPreview = useWorkspaceStore((state) => state.showPreview)
+  const hidePreviewPanel = useWorkspaceStore((state) => state.hidePreviewPanel)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   // Skills management state
@@ -434,7 +435,10 @@ export function WorkspaceLayout() {
   )
 
   const hasActiveConversation = !!activeConversationId
-  const showPreview = pendingChanges !== null && pendingChanges.changes.length > 0
+  // Close preview panel (hide without clearing changes)
+  const handleClosePreview = useCallback(() => {
+    hidePreviewPanel()
+  }, [hidePreviewPanel])
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -484,7 +488,7 @@ export function WorkspaceLayout() {
                 className="overflow-hidden border-l border-neutral-200"
                 style={{ width: `${previewRatio}%` }}
               >
-                <SyncPreviewPanel />
+                <SyncPreviewPanel onCancel={handleClosePreview} />
               </div>
             </>
           )}

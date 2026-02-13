@@ -649,6 +649,87 @@ export class SessionWorkspace {
   }
 
   /**
+   * Refresh pending changes - independent of Python tool execution
+   *
+   * This method scans OPFS files/ directory and compares with pending.json
+   * to detect any changes made outside of Python tool workflow.
+   * Updates pending.json with new changes found.
+   *
+   * Use cases:
+   * - User opens "Pending Sync" panel to see latest changes
+   * - Files uploaded/created through non-python tools
+   * - Manual file operations in OPFS
+   *
+   * @returns Change detection result
+   */
+  async refreshPendingChanges(): Promise<ChangeDetectionResult> {
+    // 1. Get current pending changes (from previous operations)
+    const existingPending = await this.pendingManager.getAll()
+    const existingPaths = new Map(existingPending.map(p => [p.path, p]))
+
+    // 2. Scan current OPFS state (fresh scan, bypass cache)
+    const currentFiles = await this.scanFiles()
+
+    // 3. Detect changes by comparing existing pending with current OPFS state
+    const changes: FileChange[] = []
+    let added = 0
+    let modified = 0
+    let deleted = 0
+
+    // Check for new or modified files (in OPFS but not in pending, or different mtime)
+    for (const [path, item] of currentFiles.entries()) {
+      const pendingItem = existingPaths.get(path)
+
+      if (!pendingItem) {
+        // New file in OPFS (not in pending.json) - add as created
+        await this.pendingManager.markAsCreated(path)
+        changes.push({ type: 'add', path, size: item.size, mtime: item.mtime })
+        added++
+      } else if (pendingItem.type !== 'delete' && pendingItem.fsMtime !== item.mtime) {
+        // File was modified after being added to pending - update mtime
+        // Note: fsMtime will be set during sync, just update timestamp here
+        await this.pendingManager.add(path) // This updates timestamp
+        changes.push({ type: 'modify', path, size: item.size, mtime: item.mtime })
+        modified++
+      }
+      // If pending item is 'delete', file was restored - remove from pending
+      else if (pendingItem.type === 'delete') {
+        // File restored, remove delete record
+        const deleteRecordId = existingPending.find(p => p.path === path && p.type === 'delete')?.id
+        if (deleteRecordId) {
+          await this.pendingManager.remove(deleteRecordId)
+        }
+        // Now add as created/modified
+        await this.pendingManager.markAsCreated(path)
+        changes.push({ type: 'add', path, size: item.size, mtime: item.mtime })
+        added++
+      }
+    }
+
+    // Check for deleted files (in pending but not in current OPFS scan)
+    for (const pending of existingPending) {
+      if (pending.type !== 'delete' && !currentFiles.has(pending.path)) {
+        // File was deleted, add delete record
+        await this.pendingManager.markForDeletion(pending.path)
+        changes.push({ type: 'delete', path: pending.path })
+        deleted++
+      }
+    }
+
+    // Update cache with fresh scan
+    this.scanFilesCache = currentFiles
+
+    console.log('[SessionWorkspace] Pending changes refreshed:', {
+      changes: changes.length,
+      added,
+      modified,
+      deleted,
+    })
+
+    return { changes, added, modified, deleted }
+  }
+
+  /**
    * Sync selected changes to Native FS
    * @param directoryHandle Native FS directory handle
    * @param changes Changes to sync

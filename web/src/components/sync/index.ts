@@ -6,10 +6,12 @@
  *
  * Components:
  * - SyncPreviewPanel: Main control panel
+ * - PendingFileList: Compact pending file list (方案 A)
  * - FileChangeList: List of file changes
  * - FileDiffViewer: Side-by-side diff view
  */
 
 export { SyncPreviewPanel } from './SyncPreviewPanel'
+export { PendingFileList } from './PendingFileList'
 export { FileChangeList } from './FileChangeList'
 export { FileDiffViewer } from './FileDiffViewer'

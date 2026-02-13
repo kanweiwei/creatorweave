@@ -103,6 +103,9 @@ interface WorkspaceState {
   /** Pending file changes from Python execution (for sync preview UI) */
   pendingChanges: ChangeDetectionResult | null
 
+  /** Whether sync preview panel is currently shown */
+  showPreview: boolean
+
   /** Whether workspace has valid native FS directory handle */
   hasDirectoryHandle: boolean
 
@@ -141,6 +144,18 @@ interface WorkspaceState {
   /** Clear pending changes (after sync) */
   clearChanges: () => void
 
+  /** Show the sync preview panel */
+  showPreviewPanel: () => void
+
+  /** Hide the sync preview panel (without clearing changes) */
+  hidePreviewPanel: () => void
+
+  /**
+   * Refresh pending changes - independent of Python tool execution
+   * Scans OPFS and updates pendingChanges with any new/modified/deleted files
+   */
+  refreshPendingChanges: () => Promise<void>
+
   /** Get current pending changes */
   getPendingChanges: () => ChangeDetectionResult | null
 
@@ -167,6 +182,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         error: null,
         initialized: false,
         pendingChanges: null,
+        showPreview: false,
         hasDirectoryHandle: false,
         isSyncPreviewEnabled: true,
 
@@ -621,11 +637,29 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         },
 
         addChanges: (changes: ChangeDetectionResult) => {
-          set({ pendingChanges: changes })
+          set({ pendingChanges: changes, showPreview: true })
         },
 
         clearChanges: () => {
-          set({ pendingChanges: null })
+          set({ pendingChanges: null, showPreview: false })
+        },
+
+        showPreviewPanel: () => {
+          set({ showPreview: true })
+        },
+
+        hidePreviewPanel: () => {
+          set({ showPreview: false })
+        },
+
+        refreshPendingChanges: async () => {
+          const activeWorkspace = await getActiveWorkspace()
+          if (!activeWorkspace) return
+
+          const changes = await activeWorkspace.workspace.refreshPendingChanges()
+          // Show preview panel when changes are detected
+          const hasChanges = changes && changes.changes.length > 0
+          set({ pendingChanges: changes, showPreview: hasChanges })
         },
 
         getPendingChanges: () => {

@@ -518,6 +518,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           contextManager,
           toolContext: { directoryHandle },
           maxIterations: 20,
+          onLoopComplete: async () => {
+            // Refresh pending changes after each agent loop completes
+            const { useWorkspaceStore } = await import('@/store/workspace.store')
+            await useWorkspaceStore.getState().refreshPendingChanges()
+          },
         })
 
         set((state) => {

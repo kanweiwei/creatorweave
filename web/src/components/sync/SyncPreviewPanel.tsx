@@ -11,8 +11,11 @@
 import React, { useState, useCallback } from 'react'
 import { type FileChange } from '@/opfs/types/opfs-types'
 import { useWorkspaceStore, getActiveWorkspace } from '@/store/workspace.store'
-import { FileChangeList } from './FileChangeList'
+import { BrandButton } from '@browser-fs-analyzer/ui'
+import { Badge } from '@/components/ui/badge'
+import { PendingFileList } from './PendingFileList'
 import { FileDiffViewer } from './FileDiffViewer'
+import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react'
 
 /**
  * Empty state when no changes detected
@@ -156,14 +159,45 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
   }, [pendingChanges, isSyncing, clearChanges, onSync])
 
   /**
-   * Handle cancel
+   * Handle close (just close the panel, don't clear pending changes)
    */
-  const handleCancel = useCallback(() => {
-    clearChanges()
+  const handleClose = useCallback(() => {
     setSelectedFile(null)
     setSyncError(null)
     onCancel?.()
-  }, [clearChanges, onCancel])
+  }, [onCancel])
+
+  /**
+   * Handle clear all pending changes (user decides not to sync)
+   */
+  const handleClear = useCallback(() => {
+    clearChanges()
+    setSelectedFile(null)
+    setSyncError(null)
+  }, [clearChanges])
+
+  /**
+   * Handle removing a single file from pending list
+   */
+  const handleRemoveFile = useCallback(
+    (path: string) => {
+      if (!pendingChanges) return
+
+      // Remove the file from changes
+      const updatedChanges = {
+        ...pendingChanges,
+        changes: pendingChanges.changes.filter((c) => c.path !== path),
+      }
+
+      // Update counts based on removed file type
+      const removedFile = pendingChanges.changes.find((c) => c.path === path)
+      if (!removedFile) return
+
+      // Update store with filtered changes
+      useWorkspaceStore.getState().addChanges(updatedChanges)
+    },
+    [pendingChanges]
+  )
 
   // Show empty state when no changes
   if (!pendingChanges || pendingChanges.changes.length === 0) {
@@ -171,140 +205,96 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
   }
 
   const totalFiles = pendingChanges.changes.length
-  const hasChanges = pendingChanges.added > 0 || pendingChanges.modified > 0 || pendingChanges.deleted > 0
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white">
+      <div className="border-b px-6 py-4 bg-card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold text-gray-900">同步预览</h2>
+          <h2 className="text-lg font-semibold">同步预览</h2>
           <div className="flex items-center gap-2">
             {syncError && (
-              <span className="text-xs text-red-600 flex items-center gap-1">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-8-8 0 8 8 0 00016 0 8-8a8 8 0 000-8 8zm3.707-9.293a1 1 0 00-1.414 1.414L9 10.586 7 7H4a1 1 0 000-2 0v4a1 1 0 002 2h5L7.293 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+              <span className="text-xs text-destructive flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
                 {syncError}
               </span>
             )}
-            <button
-              onClick={handleCancel}
-              disabled={isSyncing}
-              className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              取消
-            </button>
+            <BrandButton variant="ghost" onClick={handleClose} disabled={isSyncing}>
+              关闭
+            </BrandButton>
           </div>
         </div>
 
         {/* Summary */}
         <div className="flex items-center gap-6 text-sm">
-          <span className="text-gray-600">
+          <span className="text-muted-foreground">
             检测到{' '}
-            <span className="font-semibold text-gray-900">{totalFiles}</span>{' '}
+            <span className="font-semibold text-foreground">{totalFiles}</span>{' '}
             个文件变更
           </span>
           <div className="flex items-center gap-3 text-xs">
             {pendingChanges.added > 0 && (
-              <span className="flex items-center gap-1 text-green-700">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
+              <Badge variant="success" className="gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                 {pendingChanges.added} 新增
-              </span>
+              </Badge>
             )}
             {pendingChanges.modified > 0 && (
-              <span className="flex items-center gap-1 text-blue-700">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <Badge variant="outline" className="gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 {pendingChanges.modified} 修改
-              </span>
+              </Badge>
             )}
             {pendingChanges.deleted > 0 && (
-              <span className="flex items-center gap-1 text-red-700">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
+              <Badge variant="error" className="gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                 {pendingChanges.deleted} 删除
-              </span>
+              </Badge>
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* File List Panel */}
-        <div className="w-80 flex-shrink-0 border-r border-gray-200">
-          <FileChangeList
+      {/* Main Content - Split View */}
+      {!selectedFile ? (
+        // 显示紧凑列表（未选择文件时）
+        <div className="flex-1 overflow-hidden">
+          <PendingFileList
             changes={pendingChanges}
             onSelectFile={handleSelectFile}
-            selectedPath={selectedFile?.path}
+            selectedPath={undefined}
+            onSync={handleSync}
+            onClear={handleClear}
+            onRemoveFile={handleRemoveFile}
+            isSyncing={isSyncing}
           />
         </div>
-
-        {/* Diff Viewer Panel */}
-        <div className="flex-1">
-          <FileDiffViewer fileChange={selectedFile} />
-        </div>
-      </div>
-
-      {/* Footer Actions */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {selectedFile ? (
-              <span>
-                已选择:{' '}
-                <span className="font-medium text-gray-900">
-                  {selectedFile.path.length > 40
-                    ? `...${selectedFile.path.slice(-37)}`
-                    : selectedFile.path}
-                </span>
-              </span>
-            ) : (
-              <span>请选择文件查看详情</span>
-            )}
+      ) : (
+        // 显示差分对比（选择文件后）
+        <div className="flex-1 flex overflow-hidden">
+          {/* Back to List Button */}
+          <div className="w-12 flex-shrink-0 border-r flex items-center justify-center bg-muted/50">
+            <BrandButton variant="ghost" onClick={() => setSelectedFile(null)} title="返回列表">
+              <ArrowLeft className="w-5 h-5" />
+            </BrandButton>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleCancel}
-              disabled={isSyncing}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:text-gray-400 disabled:border-gray-200 disabled:bg-gray-50 disabled:cursor-not-allowed transition-all"
-            >
-              放弃所有变更
-            </button>
-            <button
-              onClick={handleSync}
-              disabled={!hasChanges || isSyncing}
-              className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-sm"
-            >
-              {isSyncing ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  同步中...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 4h.01M5 8h14a1 1 0 110-1 0"
-                    />
-                  </svg>
-                  确认同步到本机
-                </>
-              )}
-            </button>
+          {/* Diff Viewer */}
+          <div className="flex-1">
+            <FileDiffViewer fileChange={selectedFile} />
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Footer Actions - Only show when in list view */}
+      {!selectedFile && (
+        <div className="px-6 py-4 border-t bg-muted/50">
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
+            <RefreshCw className="w-4 h-4" />
+            点击文件查看变更详情，或使用上方按钮进行批量操作
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
-// Export all components from this module
-export { FileChangeList, FileDiffViewer }

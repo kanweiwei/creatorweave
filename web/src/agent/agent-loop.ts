@@ -86,6 +86,8 @@ export interface AgentLoopConfig {
   maxIterations?: number
   /** Optional session ID for memory tracking */
   sessionId?: string
+  /** Callback when loop completes (before onComplete) - for side effects like refresh */
+  onLoopComplete?: () => Promise<void>
 }
 
 export class AgentLoop {
@@ -97,6 +99,7 @@ export class AgentLoop {
   private baseSystemPrompt: string
   private abortController: AbortController | null = null
   private sessionId?: string
+  private onLoopComplete?: () => Promise<void>
 
   constructor(config: AgentLoopConfig) {
     this.provider = config.provider
@@ -106,6 +109,7 @@ export class AgentLoop {
     this.maxIterations = config.maxIterations || MAX_ITERATIONS
     this.baseSystemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT
     this.sessionId = config.sessionId
+    this.onLoopComplete = config.onLoopComplete
     this.contextManager.setSystemPrompt(this.baseSystemPrompt)
   }
 
@@ -524,6 +528,15 @@ export class AgentLoop {
             })
             callbacks?.onMessagesUpdated?.(allMessages)
           }
+        }
+      }
+
+      // Call loop complete callback for side effects (e.g., refresh pending changes)
+      if (this.onLoopComplete) {
+        try {
+          await this.onLoopComplete()
+        } catch (error) {
+          console.warn('[AgentLoop] onLoopComplete callback failed:', error)
         }
       }
 
