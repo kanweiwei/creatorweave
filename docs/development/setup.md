@@ -113,7 +113,7 @@ wasm-pack build --target web --out-dir ../web/public/wasm crates/wasm-bindings
 
 ```bash
 cd web
-npm run dev
+pnpm run dev
 ```
 
 #### 运行测试
@@ -220,11 +220,11 @@ cd wasm && wasm-pack build --target web --out-dir ../web/public/wasm crates/wasm
 
 ### Q: TypeScript 类型错误？
 
-**A**: 运行 `npm run typecheck` 检查类型，确保 WASM 模块的 `.d.ts` 文件已生成。
+**A**: 运行 `pnpm run typecheck` 检查类型，确保 WASM 模块的 `.d.ts` 文件已生成。
 
-### Q: 浏览器不支持 File System Access API？
+### Q: 浏览器兼容性问题（File System Access / OPFS）？
 
-**A**: 使用 Chrome 86+、Edge 86+ 或 Opera 72+。Firefox 和 Safari 不支持。
+**A**: 建议优先使用 Chrome/Edge 最新版本。其他浏览器能力差异较大，可能触发功能降级（例如回退到 IndexedDB）。
 
 ## 性能调优
 

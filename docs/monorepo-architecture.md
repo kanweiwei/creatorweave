@@ -1,117 +1,102 @@
-# Browser-FS-Analyzer Monorepo 架构设计文档
+# Monorepo 架构与边界
 
-## 1. Workspace 包概览
+本文聚焦 workspace 拆分、包依赖关系、以及“哪里应该放什么代码”。  
+系统级运行链路请配合阅读：[架构总览](./architecture/overview.md)。
 
-### 1.1 所有 Workspace 包列表
+## 1. Workspace 结构
 
-```
-browser-fs-analyzer/
-├── packages/
-│   ├── config          # 共享配置 (tailwind, tsconfig, eslint, tokens)
-│   ├── conversation    # 对话组件
-│   ├── encryption      # 加密模块
-│   ├── i18n            # 国际化
-│   └── ui              # UI 组件库
-├── web                 # 主 Web 应用
-├── mobile-web          # 移动端 Web
-└── relay-server        # 中继服务器
-```
+当前 workspace 由以下目录组成：
 
-### 1.2 包配置状态
+1. `web`：桌面主应用。
+2. `mobile-web`：移动端遥控应用。
+3. `relay-server`：会话中继服务。
+4. `packages/*`：共享包。
 
-| 包 | main | types | exports | 说明 |
-|---|---|---|---|---|
-| **packages/config** | - | - | `./src/*` | 纯配置，无需构建 |
-| **packages/conversation** | `./src/index.ts` | `./src/index.ts` | `"."` + `./types` | 源码工具包 |
-| **packages/encryption** | `./src/index.ts` | `./src/index.ts` | `"."` | 源码工具包 |
-| **packages/i18n** | `./src/index.ts` | `./src/index.ts` | `"."` + `./locales` + `./types` | 源码工具包 |
-| **packages/ui** | `./src/index.ts` | `./src/index.ts` | `"."` | 源码工具包 |
-| **web** | - | - | - | 主 Web 应用 |
-| **mobile-web** | - | - | - | 移动端 Web |
-| **relay-server** | - | - | - | 中继服务器 |
+`pnpm-workspace.yaml` 与根 `package.json` 保持一致，全部通过 workspace 协同开发，不要求独立发布流程。
 
----
+## 2. 共享包职责
 
-## 2. 简化方案（项目内部使用）
+### 2.1 `packages/config`
 
-> **重要**: 本项目为**内部使用**，不需要 build 发布。所有 workspace 包统一指向源码。
+1. 提供 Tailwind、TypeScript、ESLint、Design Token 配置导出。
+2. 仅配置导出，不承载业务逻辑。
 
-### 2.1 核心原则
+### 2.2 `packages/ui`
 
-1. **所有 packages/* 包**: 统一指向 `src/index.ts`
-2. **应用 (web/mobile-web)**: 直接使用 `@browser-fs-analyzer/*` 包名导入
-3. **无需构建**: 不需要 `pnpm -r build` 步骤
+1. 通用 UI 组件（基于 Radix）。
+2. 面向多应用复用，避免放入业务耦合状态。
 
-### 2.2 统一配置
+### 2.3 `packages/conversation`
 
-#### 2.2.1 导入规范 (web & mobile-web)
+1. 对话展示组件与类型。
+2. 保持“展示优先”，尽量不引入业务侧 store 依赖。
 
-- 仅允许：`@browser-fs-analyzer/ui`、`@browser-fs-analyzer/i18n`、`@browser-fs-analyzer/encryption`、`@browser-fs-analyzer/conversation`
-- 禁止短别名：`@ui`、`@i18n`、`@encryption`、`@conversation`
+### 2.4 `packages/encryption`
 
-#### 2.2.2 tsconfig.json (web & mobile-web)
+1. 远程会话加密协议能力（密钥交换、加解密封装）。
+2. 被 `web` 与 `mobile-web` 共同依赖，协议改动需保持双端兼容。
 
-```json
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
+### 2.5 `packages/i18n`
 
----
+1. 多语言资源与 hooks。
+2. 作为 UI 层的跨应用基础能力。
 
-## 3. 改动清单
+## 3. 应用与服务边界
 
-### 3.1 web/mobile-web 导入规范
+### 3.1 `web`
 
-- 统一使用完整包名 `@browser-fs-analyzer/*`
-- 移除 `@ui/@i18n/@encryption/@conversation` 短别名
+1. 业务核心：Agent、MCP、插件系统、SQLite/OPFS、文件与会话管理。
+2. 原则：业务状态统一进入 `store/`，重计算优先下沉到 `services/` 或 `workers/`。
 
-### 3.2 mobile-web/tsconfig.json
+### 3.2 `mobile-web`
 
-保留本地路径别名:
+1. 只处理遥控端交互，不复制桌面端业务逻辑。
+2. 与桌面端通过 remote protocol + encryption 对齐。
 
-```json
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
+### 3.3 `relay-server`
 
----
+1. 负责会话路由、消息中继、会话同步 API。
+2. 不承载业务解密逻辑，不与前端 store 发生直接耦合。
 
-## 4. 开发流程
+## 4. 依赖方向约束
+
+允许方向：
+
+1. `web/mobile-web/relay-server` -> `packages/*`
+2. `web` 内部：`components` -> `store` -> `services`/`agent`/`mcp` -> `sqlite`/`opfs`
+
+避免方向：
+
+1. `packages/*` 反向依赖应用层代码。
+2. UI 组件直接调用底层 repository 或协议层。
+3. `mobile-web` 复制 `web` 业务实现而不是复用协议/共享包。
+
+## 5. 开发命令约定
+
+推荐使用 `pnpm -C <workspace>` 明确作用域：
 
 ```bash
-# 安装依赖
-pnpm install
+# Desktop
+pnpm -C web dev
+pnpm -C web lint
+pnpm -C web typecheck
 
-# 启动应用 (workspace 包通过 @browser-fs-analyzer/* 导入)
-cd web && pnpm dev
-# 或
-cd mobile-web && pnpm dev
+# Mobile
+pnpm -C mobile-web dev -- --port 3002
+
+# Relay
+pnpm -C relay-server dev
 ```
 
----
+跨工程统一命令可使用根 `Makefile`（如 `make lint`、`make test`）。
 
-## 5. 总结
+## 6. 文档索引
 
-| 项目 | 状态 |
-|---|---|
-| workspace 包 main/types | 统一指向 `./src/index.ts` |
-| 导入规范 | 统一使用 `@browser-fs-analyzer/*` |
-| tsconfig paths | 仅保留应用本地别名（如 `@/*`） |
-| 需要 build | ❌ 否（内部使用） |
+1. 系统链路：[`docs/architecture/overview.md`](./architecture/overview.md)
+2. Agent：[`docs/agent-system.md`](./agent-system.md)
+3. 插件系统：[`docs/plugin-system/plugin-system-architecture.md`](./plugin-system/plugin-system-architecture.md)
+4. 远程会话：[`docs/relay-server/remote-session-architecture.md`](./relay-server/remote-session-architecture.md)
 
 ---
 
-*文档版本: v2.0 (简化版)*
-*最后更新: 2026-02-13*
+最后更新：2026-02-28

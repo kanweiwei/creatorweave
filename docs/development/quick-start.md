@@ -107,7 +107,7 @@ pnpm run typecheck        # Type check package
 
 ```bash
 cd mobile-web
-pnpm run dev              # Start dev server (default port 3001)
+pnpm run dev -- --port 3002  # Start dev server on 3002 (recommended for remote flow)
 pnpm run build            # Build for production
 pnpm run typecheck        # Run TypeScript type checker
 ```
@@ -246,5 +246,5 @@ curl -I https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js
 ## 🤝 Need Help?
 
 - Check existing [Issues](https://github.com/yourusername/browser-fs-analyzer/issues)
-- Read [Documentation](../README.md)
+- Read [Documentation](../../README.md)
 - Start a [Discussion](https://github.com/yourusername/browser-fs-analyzer/discussions)

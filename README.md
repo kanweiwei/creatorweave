@@ -97,20 +97,20 @@ cd browser-fs-analyzer
 # Install dependencies
 pnpm install
 
-# Start development server
-pnpm run dev
+# Start desktop web app
+pnpm -C web run dev
 
-# Open http://localhost:3000
+# Open http://localhost:5173
 ```
 
 ### Building for Production
 
 ```bash
 # Build WASM modules
-pnpm run build:wasm
+pnpm -C web run build:wasm
 
 # Build web application
-pnpm run build
+pnpm -C web run build
 
 # Output in web/dist/
 ```
@@ -153,22 +153,24 @@ browser-fs-analyzer/
 ### Available Scripts
 
 ```bash
-# Development
-pnpm run dev              # Start development server
-pnpm run build            # Build for production
-pnpm run preview          # Preview production build
+# Desktop Web (web/)
+pnpm -C web run dev
+pnpm -C web run build
+pnpm -C web run preview
 
-# Testing
-pnpm run test             # Run unit tests
-pnpm run test:ui          # Run tests with UI
-pnpm run test:coverage    # Run tests with coverage
-pnpm run test:e2e         # Run E2E tests
+# Mobile Web (mobile-web/)
+pnpm -C mobile-web run dev -- --port 3002
+pnpm -C mobile-web run typecheck
 
-# Code Quality
-pnpm run lint             # Run ESLint
-pnpm run lint:fix         # Fix ESLint issues
-pnpm run format           # Format code with Prettier
-pnpm run typecheck        # Run TypeScript type checker
+# Relay Server (relay-server/)
+pnpm -C relay-server run dev
+pnpm -C relay-server run build
+
+# Quality (web/)
+pnpm -C web run lint
+pnpm -C web run typecheck
+pnpm -C web run test
+pnpm -C web run test:e2e
 ```
 
 ## Documentation
@@ -188,14 +190,12 @@ pnpm run typecheck        # Run TypeScript type checker
 - [Agent System](./docs/agent-system.md) - AI agent architecture and tools
 - [Python Integration](./web/src/python/README.md) - Pyodide integration guide
 - [SQLite Storage](./web/src/sqlite/README.md) - SQLite WASM storage architecture
-- [Remote Session](./docs/remote-session-architecture.md) - Mobile remote control design
-- [Plugin System](./docs/plugin-system-architecture.md) - Dynamic plugin system
+- [Remote Session](./docs/relay-server/remote-session-architecture.md) - Mobile remote control design
+- [Plugin System](./docs/plugin-system/plugin-system-architecture.md) - Dynamic plugin system
 - [MCP Integration](./docs/MCP_INTEGRATION_DESIGN.md) - Model Context Protocol
 
 ### API Documentation
-- [Store API](./docs/api/stores.md) - Zustand store reference
-- [Agent Tools](./docs/api/agent-tools.md) - Available agent tools
-- [Repositories](./docs/api/repositories.md) - SQLite repository reference
+- [API Index](./docs/api/README.md) - Stores and services API notes
 
 ## Browser Compatibility
 
