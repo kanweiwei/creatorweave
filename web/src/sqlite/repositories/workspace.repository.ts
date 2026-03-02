@@ -15,6 +15,7 @@ import {
 
 export interface Workspace {
   id: string
+  projectId?: string
   rootDirectory: string
   name: string
   status: 'active' | 'archived'
@@ -88,6 +89,27 @@ export class WorkspaceRepository {
   }
 
   /**
+   * Count all workspaces across projects
+   */
+  async countAllWorkspaces(): Promise<number> {
+    const db = getSQLiteDB()
+    const row = await db.queryFirst<{ count: number }>('SELECT COUNT(*) as count FROM workspaces')
+    return Number(row?.count || 0)
+  }
+
+  /**
+   * Get all workspaces for a project
+   */
+  async findWorkspacesByProject(projectId: string): Promise<Workspace[]> {
+    const db = getSQLiteDB()
+    const rows = await db.queryAll<WorkspaceRow>(
+      'SELECT * FROM workspaces WHERE project_id = ? ORDER BY last_accessed_at DESC',
+      [projectId]
+    )
+    return rows.map((row) => this.rowToWorkspace(row))
+  }
+
+  /**
    * Find workspace by ID
    */
   async findWorkspaceById(id: string): Promise<Workspace | null> {
@@ -124,7 +146,9 @@ export class WorkspaceRepository {
   /**
    * Create a new workspace
    */
-  async createWorkspace(workspace: Omit<Workspace, 'createdAt' | 'lastAccessedAt'>): Promise<void> {
+  async createWorkspace(
+    workspace: Omit<Workspace, 'createdAt' | 'lastAccessedAt'>
+  ): Promise<void> {
     const db = getSQLiteDB()
     const now = Date.now()
     const newWorkspace: Workspace = {
@@ -134,10 +158,11 @@ export class WorkspaceRepository {
     }
 
     await db.execute(
-      `INSERT INTO workspaces (id, root_directory, name, status, cache_size, pending_count, undo_count, modified_files, created_at, last_accessed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO workspaces (id, project_id, root_directory, name, status, cache_size, pending_count, undo_count, modified_files, created_at, last_accessed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         newWorkspace.id,
+        newWorkspace.projectId,
         newWorkspace.rootDirectory,
         newWorkspace.name,
         newWorkspace.status,
@@ -158,10 +183,11 @@ export class WorkspaceRepository {
     const db = getSQLiteDB()
     await db.execute(
       `UPDATE workspaces
-       SET root_directory = ?, name = ?, status = ?, cache_size = ?, pending_count = ?,
+       SET project_id = ?, root_directory = ?, name = ?, status = ?, cache_size = ?, pending_count = ?,
            undo_count = ?, modified_files = ?, last_accessed_at = ?
        WHERE id = ?`,
       [
+        workspace.projectId,
         workspace.rootDirectory,
         workspace.name,
         workspace.status,
@@ -606,6 +632,7 @@ export class WorkspaceRepository {
   private rowToWorkspace(row: WorkspaceRow): Workspace {
     return {
       id: row.id,
+      projectId: row.project_id,
       rootDirectory: row.root_directory,
       name: row.name,
       status: row.status,

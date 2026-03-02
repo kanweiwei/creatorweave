@@ -12,9 +12,15 @@ import { toast } from 'sonner'
 
 const DIR_HANDLE_DB = 'bfosa-dir-handle'
 const DIR_HANDLE_STORE = 'handles'
-const DIR_HANDLE_KEY = 'directory'
+const LEGACY_DIR_HANDLE_KEY = 'directory'
+
+function getProjectHandleKey(projectId: string): string {
+  return `directory:${projectId}`
+}
 
 interface AgentState {
+  /** Active project ID for directory handle scoping */
+  activeProjectId: string
   /** Directory handle for file operations */
   directoryHandle: FileSystemDirectoryHandle | null
   /** Directory name for display */
@@ -25,6 +31,7 @@ interface AgentState {
   pendingHandle: FileSystemDirectoryHandle | null
 
   // Actions
+  setActiveProject: (projectId: string) => Promise<void>
   setDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => void
   restoreDirectoryHandle: () => Promise<void>
   /** Request permission for pending handle (must be called from user activation) */
@@ -57,15 +64,19 @@ async function withHandleDB<T>(callback: (db: IDBDatabase) => T | Promise<T>): P
 }
 
 /** Persist a directory handle to IndexedDB */
-async function persistHandle(handle: FileSystemDirectoryHandle | null): Promise<void> {
+async function persistHandle(
+  projectId: string,
+  handle: FileSystemDirectoryHandle | null
+): Promise<void> {
   return withHandleDB((db) => {
     return new Promise<void>((resolve, reject) => {
       const tx = db.transaction(DIR_HANDLE_STORE, 'readwrite')
       const store = tx.objectStore(DIR_HANDLE_STORE)
+      const key = getProjectHandleKey(projectId)
       if (handle) {
-        store.put(handle, DIR_HANDLE_KEY)
+        store.put(handle, key)
       } else {
-        store.delete(DIR_HANDLE_KEY)
+        store.delete(key)
       }
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
@@ -74,13 +85,29 @@ async function persistHandle(handle: FileSystemDirectoryHandle | null): Promise<
 }
 
 /** Load a directory handle from IndexedDB */
-async function loadHandle(): Promise<FileSystemDirectoryHandle | null> {
+async function loadHandle(projectId: string): Promise<FileSystemDirectoryHandle | null> {
   return withHandleDB((db) => {
     return new Promise<FileSystemDirectoryHandle | null>((resolve, reject) => {
       const tx = db.transaction(DIR_HANDLE_STORE, 'readonly')
       const store = tx.objectStore(DIR_HANDLE_STORE)
-      const req = store.get(DIR_HANDLE_KEY)
-      req.onsuccess = () => resolve(req.result || null)
+      const req = store.get(getProjectHandleKey(projectId))
+      req.onsuccess = () => {
+        const scopedHandle = req.result as FileSystemDirectoryHandle | null
+        if (scopedHandle) {
+          resolve(scopedHandle)
+          return
+        }
+
+        // Backward compatibility: fall back to legacy global key.
+        if (!projectId) {
+          const legacyReq = store.get(LEGACY_DIR_HANDLE_KEY)
+          legacyReq.onsuccess = () => resolve((legacyReq.result as FileSystemDirectoryHandle) || null)
+          legacyReq.onerror = () => reject(legacyReq.error)
+          return
+        }
+
+        resolve(null)
+      }
       req.onerror = () => reject(req.error)
     })
   })
@@ -95,20 +122,39 @@ async function verifyPermission(handle: FileSystemDirectoryHandle): Promise<bool
 }
 
 export const useAgentStore = create<AgentState>()(
-  immer((set) => ({
+  immer((set, get) => ({
+    activeProjectId: '',
     directoryHandle: null,
     directoryName: null,
     isRestoringHandle: false,
     pendingHandle: null,
 
+    setActiveProject: async (projectId) => {
+      set((state) => {
+        state.activeProjectId = projectId
+        state.directoryHandle = null
+        state.directoryName = null
+        state.pendingHandle = null
+      })
+      if (!projectId) {
+        return
+      }
+      await get().restoreDirectoryHandle()
+    },
+
     setDirectoryHandle: (handle) => {
+      const { activeProjectId } = get()
+      if (!activeProjectId) {
+        toast.error('请先进入一个项目，再绑定文件夹')
+        return
+      }
       set((state) => {
         state.directoryHandle = handle
         state.pendingHandle = null // Clear pending handle when setting new handle
         // Treat empty string as null (some browsers return empty name)
         state.directoryName = handle?.name && handle.name.trim() ? handle.name : null
       })
-      persistHandle(handle).catch((error) => {
+      persistHandle(activeProjectId, handle).catch((error) => {
         console.error('[AgentStore] Failed to persist directory handle:', error)
         toast.error('文件夹选择保存失败，刷新后可能需要重新选择')
       })
@@ -134,10 +180,17 @@ export const useAgentStore = create<AgentState>()(
 
       try {
         console.log('[AgentStore] Starting directory handle restoration...')
-        const handle = await loadHandle()
+        const { activeProjectId } = get()
+        if (!activeProjectId) {
+          return
+        }
+        const handle = await loadHandle(activeProjectId)
 
         if (!handle) {
-          console.log('[AgentStore] No saved directory handle found in IndexedDB')
+          console.log(
+            '[AgentStore] No saved directory handle found in IndexedDB for project:',
+            activeProjectId
+          )
           return
         }
 
@@ -196,7 +249,7 @@ export const useAgentStore = create<AgentState>()(
           // Permission denied
           console.warn('[AgentStore] Permission denied for handle:', handle.name)
           toast.info('文件夹权限已过期，请重新选择文件夹')
-          await persistHandle(null)
+          await persistHandle(activeProjectId, null)
         }
       } catch (error) {
         // Handle missing or permission denied — log for debugging
@@ -224,6 +277,7 @@ export const useAgentStore = create<AgentState>()(
     requestPendingHandlePermission: async () => {
       const state = useAgentStore.getState()
       const handle = state.pendingHandle
+      const projectId = state.activeProjectId
 
       if (!handle) {
         console.warn('[AgentStore] No pending handle to request permission for')
@@ -250,7 +304,7 @@ export const useAgentStore = create<AgentState>()(
           set((state) => {
             state.pendingHandle = null
           })
-          await persistHandle(null)
+          await persistHandle(projectId, null)
           return false
         }
       } catch (error) {
@@ -374,17 +428,30 @@ window.__deleteIndexedDB = async (name: string) => {
  */
 window.__checkHandleInIndexedDB = async () => {
   try {
+    const projectId = useAgentStore.getState().activeProjectId
     return await withHandleDB((db) => {
       return new Promise<{ exists: boolean; handleName: string | null }>((resolve, reject) => {
         const tx = db.transaction(DIR_HANDLE_STORE, 'readonly')
         const store = tx.objectStore(DIR_HANDLE_STORE)
-        const req = store.get(DIR_HANDLE_KEY)
+        const req = store.get(getProjectHandleKey(projectId))
         req.onsuccess = () => {
           const handle = req.result as FileSystemDirectoryHandle | null
-          resolve({
-            exists: handle !== null && handle !== undefined,
-            handleName: handle?.name || null,
-          })
+          if (handle) {
+            resolve({
+              exists: true,
+              handleName: handle.name || null,
+            })
+            return
+          }
+          const legacyReq = store.get(LEGACY_DIR_HANDLE_KEY)
+          legacyReq.onsuccess = () => {
+            const legacy = legacyReq.result as FileSystemDirectoryHandle | null
+            resolve({
+              exists: legacy !== null && legacy !== undefined,
+              handleName: legacy?.name || null,
+            })
+          }
+          legacyReq.onerror = () => reject(legacyReq.error)
         }
         req.onerror = () => reject(req.error)
       })
@@ -405,7 +472,8 @@ window.__checkHandleInIndexedDB = async () => {
  */
 window.__clearHandleFromIndexedDB = async () => {
   try {
-    await persistHandle(null)
+    const { activeProjectId } = useAgentStore.getState()
+    await persistHandle(activeProjectId, null)
     return { success: true }
   } catch (error) {
     return {

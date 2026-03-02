@@ -11,7 +11,39 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
+
+-- ============================================================================
+-- Projects Table (top-level container for workspaces)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    root_directory_hint TEXT,              -- Display hint for the authorized native root directory
+    status TEXT NOT NULL DEFAULT 'active', -- 'active' | 'archived'
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC);
+
+
+-- Active project tracking
+CREATE TABLE IF NOT EXISTS active_project (
+    singleton_id INTEGER PRIMARY KEY DEFAULT 0,
+    project_id TEXT NOT NULL,
+    last_modified INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER IF NOT EXISTS active_project_singleton
+    BEFORE INSERT ON active_project
+    WHEN NEW.singleton_id != 0
+    BEGIN
+        SELECT RAISE(ABORT, 'Only one active project allowed with singleton_id=0');
+    END;
+
 
 -- ============================================================================
 -- Conversations Table
@@ -119,6 +151,7 @@ CREATE TABLE IF NOT EXISTS encryption_metadata (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,            -- Workspace ID (matches conversation.id)
+    project_id TEXT NOT NULL,
     root_directory TEXT NOT NULL UNIQUE,  -- OPFS path like /conversations/{id}
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
@@ -127,12 +160,14 @@ CREATE TABLE IF NOT EXISTS workspaces (
     undo_count INTEGER NOT NULL DEFAULT 0,
     modified_files INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
-    last_accessed_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000)
+    last_accessed_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspaces_root_directory ON workspaces(root_directory);
 CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);
 CREATE INDEX IF NOT EXISTS idx_workspaces_last_accessed ON workspaces(last_accessed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workspaces_project_access ON workspaces(project_id, last_accessed_at DESC);
 
 -- Active workspace tracking
 CREATE TABLE IF NOT EXISTS active_workspace (

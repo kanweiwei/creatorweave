@@ -17,6 +17,7 @@ import { immer } from 'zustand/middleware/immer'
 import type { SessionMetadata, ChangeDetectionResult } from '@/opfs/types/opfs-types'
 import { getSessionManager, SessionWorkspace } from '@/opfs/session'
 import { getWorkspaceRepository, type Workspace } from '@/sqlite/repositories/workspace.repository'
+import { getProjectRepository } from '@/sqlite/repositories/project.repository'
 import { requestDirectoryAccess, releaseDirectoryHandle } from '@/native-fs'
 import { toast } from 'sonner'
 
@@ -74,6 +75,12 @@ function sqliteSessionToWorkspaceStats(session: Workspace): WorkspaceWithStats {
     modifiedFiles: session.modifiedFiles,
     status: session.status,
   }
+}
+
+async function resolveActiveProjectId(): Promise<string | null> {
+  const projectRepo = getProjectRepository()
+  const activeProject = await projectRepo.findActiveProject()
+  return activeProject?.id || null
 }
 
 /**
@@ -192,89 +199,35 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         //=============================================================================
 
         initialize: async () => {
+          const started = performance.now()
+          console.log('[WorkspaceStore] initialize start')
           set({ isLoading: true, error: null })
 
           try {
             const repo = getWorkspaceRepository()
-            const manager = await getSessionManager()
+            const activeProjectId = await resolveActiveProjectId()
 
-            // Try to load from SQLite first
-            let workspaces: WorkspaceWithStats[] = []
-            let loadedFromSQLite = false
-
-            try {
-              const sqliteSessions = await repo.findAllWorkspaces()
-              if (sqliteSessions.length > 0) {
-                workspaces = sqliteSessions.map(sqliteSessionToWorkspaceStats)
-                loadedFromSQLite = true
-              }
-            } catch (sqliteError) {
-              console.warn(
-                '[WorkspaceStore] Failed to load from SQLite, falling back to OPFS:',
-                sqliteError
+            if (!activeProjectId) {
+              set({
+                workspaces: [],
+                activeWorkspaceId: null,
+                currentPendingCount: 0,
+                currentUndoCount: 0,
+                isLoading: false,
+                initialized: true,
+              })
+              console.log(
+                `[WorkspaceStore] initialize done (${Math.round(performance.now() - started)}ms)`,
+                { activeProjectId: null, workspaceCount: 0 }
               )
+              return
             }
 
-            // Fallback: migrate from OPFS if SQLite is empty
-            if (!loadedFromSQLite) {
-              console.log('[WorkspaceStore] No workspaces in SQLite, migrating from OPFS...')
-              // Get conversation titles for better workspace names
-              const { useConversationStore } = await import('./conversation.store')
-              const conversations = useConversationStore.getState().conversations
-              const convTitles = new Map(conversations.map((c) => [c.id, c.title]))
-
-              // Get all workspace metadata from OPFS
-              const internalSessions = manager.getAllSessions()
-
-              for (const meta of internalSessions) {
-                const workspace = await manager.getSession(meta.sessionId)
-                if (!workspace) continue
-
-                // Use fallback strategy for workspace name
-                const workspaceName = getWorkspaceDisplayName(
-                  { workspaceId: meta.sessionId, ...meta },
-                  convTitles
-                )
-
-                // Update metadata if name was missing and we found a conversation title
-                if (!meta.name) {
-                  const convTitle = convTitles.get(meta.sessionId)
-                  if (convTitle) {
-                    await manager.updateSessionName(meta.sessionId, convTitle)
-                  }
-                }
-
-                // Create workspace in SQLite
-                try {
-                  await repo.createWorkspace({
-                    id: meta.sessionId,
-                    rootDirectory: meta.rootDirectory,
-                    name: workspaceName,
-                    status: 'active',
-                    cacheSize: 0,
-                    pendingCount: workspace.pendingCount,
-                    undoCount: workspace.undoCount,
-                    modifiedFiles: 0,
-                  })
-                } catch (createError) {
-                  console.warn(
-                    `[WorkspaceStore] Failed to create workspace ${meta.sessionId} in SQLite:`,
-                    createError
-                  )
-                }
-
-                workspaces.push({
-                  id: meta.sessionId,
-                  name: workspaceName,
-                  createdAt: meta.createdAt,
-                  lastActiveAt: meta.lastAccessedAt,
-                  cacheSize: 0,
-                  pendingCount: workspace.pendingCount,
-                  undoCount: workspace.undoCount,
-                  modifiedFiles: 0,
-                  status: 'active',
-                })
-              }
+            // Load from SQLite only (no OPFS auto-migration in current dev phase)
+            let workspaces: WorkspaceWithStats[] = []
+            const sqliteSessions = await repo.findWorkspacesByProject(activeProjectId)
+            if (sqliteSessions.length > 0) {
+              workspaces = sqliteSessions.map(sqliteSessionToWorkspaceStats)
             }
 
             // Set first workspace as active if none active
@@ -288,6 +241,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               isLoading: false,
               initialized: true,
             })
+            console.log(
+              `[WorkspaceStore] initialize done (${Math.round(performance.now() - started)}ms)`,
+              { activeProjectId, workspaceCount: workspaces.length }
+            )
           } catch (e: unknown) {
             const message = e instanceof Error ? e.message : 'Failed to initialize workspaces'
             set({
@@ -295,6 +252,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               isLoading: false,
               initialized: true,
             })
+            console.error(
+              `[WorkspaceStore] initialize failed (${Math.round(performance.now() - started)}ms):`,
+              message
+            )
           }
         },
 
@@ -303,6 +264,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           try {
             const repo = getWorkspaceRepository()
+            const activeProjectId = await resolveActiveProjectId()
+            if (!activeProjectId) {
+              throw new Error('No active project selected')
+            }
             const manager = await getSessionManager()
 
             // Create OPFS workspace
@@ -311,6 +276,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             // Create SQLite record
             await repo.createWorkspace({
               id,
+              projectId: activeProjectId,
               rootDirectory,
               name: name || rootDirectory.split('/').pop() || id,
               status: 'active',
@@ -365,6 +331,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           try {
             const repo = getWorkspaceRepository()
+            const activeProjectId = await resolveActiveProjectId()
+            if (!activeProjectId) {
+              throw new Error('No active project selected')
+            }
             const manager = await getSessionManager()
 
             // Check if workspace exists in SQLite first
@@ -390,6 +360,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               // Create workspace in SQLite
               await repo.createWorkspace({
                 id,
+                projectId: activeProjectId,
                 rootDirectory,
                 name: convTitle || id,
                 status: 'active',
@@ -694,14 +665,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         },
 
         requestDirectoryAccess: async () => {
-          const activeWorkspaceId = get().activeWorkspaceId
-          if (!activeWorkspaceId) return
+          const activeProjectId = await resolveActiveProjectId()
+          if (!activeProjectId) return
 
           set({ isLoading: true, error: null })
 
           try {
             // Request directory access from user
-            const handle = await requestDirectoryAccess(activeWorkspaceId, {
+            const handle = await requestDirectoryAccess(activeProjectId, {
               mode: 'readwrite',
               startIn: '/',
             })
@@ -726,11 +697,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         },
 
         releaseDirectoryHandle: async () => {
-          const activeWorkspaceId = get().activeWorkspaceId
-          if (!activeWorkspaceId) return
+          const activeProjectId = await resolveActiveProjectId()
+          if (!activeProjectId) return
 
           try {
-            await releaseDirectoryHandle(activeWorkspaceId)
+            await releaseDirectoryHandle(activeProjectId)
             set({ hasDirectoryHandle: false })
           } catch (e) {
             console.error('Failed to release directory handle:', e)

@@ -76,6 +76,9 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   } = useConversationStore()
 
   const { directoryHandle, directoryName } = useAgentStore()
+  const workspaceIds = useWorkspaceStore((state) => state.workspaces.map((w) => w.id))
+  const scopedWorkspaceIdSet = new Set(workspaceIds)
+  const scopedConversations = conversations.filter((conv) => scopedWorkspaceIdSet.has(conv.id))
 
   // Load conversations on mount
   useEffect(() => {
@@ -241,7 +244,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
           </div>
 
           <div className="custom-scrollbar flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
-            {conversations.map((conv) => {
+            {scopedConversations.map((conv) => {
               const isRunning = isConversationRunning(conv.id)
               const isActive = conv.id === activeConversationId
               return (

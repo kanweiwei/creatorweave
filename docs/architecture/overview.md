@@ -141,6 +141,17 @@ make test
 4. 对话运行态不入库，防止流式中间态污染历史记录。
 5. Worker 边界优先用于高频 CPU 密集任务（diff、遍历、插件执行）。
 
+## 10. 结构演进（已确认方向）
+
+当前建议的下一阶段结构是：
+
+1. `Project`：目录句柄、索引、权限恢复边界。
+2. `Workspace`：任务/会话/视图边界（属于某个 Project）。
+
+迁移执行细节见：
+
+- [`docs/design/project-workspace-migration-plan.md`](../design/project-workspace-migration-plan.md)
+
 ---
 
 最后更新：2026-02-28

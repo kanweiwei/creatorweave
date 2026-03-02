@@ -48,6 +48,9 @@ export type {
   WorkspaceStats,
 } from './repositories/workspace.repository'
 
+export { ProjectRepository, getProjectRepository } from './repositories/project.repository'
+export type { Project } from './repositories/project.repository'
+
 export { ApiKeyRepository, getApiKeyRepository } from './repositories/api-key.repository'
 
 export { PluginRepository, getPluginRepository } from './repositories/plugin.repository'

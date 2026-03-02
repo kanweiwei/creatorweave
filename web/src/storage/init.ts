@@ -345,22 +345,27 @@ export async function importStorage(data: {
     if (data.workspaces) {
       for (const row of data.workspaces) {
         const workspace = row as any
+        const projectId = workspace.project_id || workspace.projectId
+        if (!projectId) {
+          throw new Error(`Workspace ${workspace.id || '(unknown)'} missing required project_id`)
+        }
         await db.execute(
           `INSERT OR REPLACE INTO workspaces
-           (id, root_directory, name, status, cache_size, pending_count, undo_count,
+           (id, project_id, root_directory, name, status, cache_size, pending_count, undo_count,
             modified_files, created_at, last_accessed_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
           [
             workspace.id,
-            workspace.root_directory,
+            projectId,
+            workspace.root_directory || workspace.rootDirectory,
             workspace.name,
             workspace.status,
-            workspace.cache_size,
-            workspace.pending_count,
-            workspace.undo_count,
-            workspace.modified_files,
-            workspace.created_at,
-            workspace.last_accessed_at,
+            workspace.cache_size || workspace.cacheSize || 0,
+            workspace.pending_count || workspace.pendingCount || 0,
+            workspace.undo_count || workspace.undoCount || 0,
+            workspace.modified_files || workspace.modifiedFiles || 0,
+            workspace.created_at || workspace.createdAt || Date.now(),
+            workspace.last_accessed_at || workspace.lastAccessedAt || Date.now(),
           ]
         )
       }

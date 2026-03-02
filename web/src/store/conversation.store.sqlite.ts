@@ -255,7 +255,6 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         await initSQLiteDB()
 
         const conversations = await loadConversations()
-        const activeId = conversations.length > 0 ? conversations[0].id : null
 
         // Ensure OPFS sessions exist for all loaded conversations
         const { getSessionManager } = await import('@/opfs/session')
@@ -293,9 +292,12 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           )
         }
 
-        // Refresh the session store
+        // Refresh the workspace store for active project scope
         const workspaceStore = useWorkspaceStore.getState()
         await workspaceStore.refreshWorkspaces()
+
+        const workspaceIds = new Set(workspaceStore.workspaces.map((w) => w.id))
+        const activeId = conversations.find((conv) => workspaceIds.has(conv.id))?.id || null
 
         // Switch to active session if exists
         if (activeId) {

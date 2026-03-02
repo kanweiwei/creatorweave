@@ -10,11 +10,13 @@ import { DatabaseRefreshDialog } from '@/components/DatabaseRefreshDialog'
 import { useAgentStore } from '@/store/agent.store'
 import { attemptReconnect } from '@/store/remote.store'
 import { useWorkspaceStore } from '@/store/workspace.store'
+import { useProjectStore } from '@/store/project.store'
 import { initStorage, setupAutoSave } from '@/storage'
 import { requestPersistentStorage } from '@/opfs'
 import { useT } from '@/i18n'
 import { PWAUpdateBanner } from '@/pwa/PWAUpdateBanner'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
+import { ProjectHome } from '@/components/project/ProjectHome'
 
 function App() {
   const [isSupportedBrowser, setIsSupportedBrowser] = useState(true)
@@ -23,8 +25,44 @@ function App() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
-  const initializeWorkspaces = useWorkspaceStore((s) => s.initialize)
+  const [showProjectHome, setShowProjectHome] = useState(true)
+  const setActiveProject = useProjectStore((s) => s.setActiveProject)
+  const createProject = useProjectStore((s) => s.createProject)
+  const renameProject = useProjectStore((s) => s.renameProject)
+  const setProjectArchived = useProjectStore((s) => s.setProjectArchived)
+  const deleteProject = useProjectStore((s) => s.deleteProject)
+  const projects = useProjectStore((s) => s.projects)
+  const projectStats = useProjectStore((s) => s.projectStats)
+  const projectLoading = useProjectStore((s) => s.isLoading)
+  const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const t = useT() // i18n hook
+  const tRef = useRef(t)
+  tRef.current = t
+
+  const runInitStep = async <T,>(
+    label: string,
+    fn: () => Promise<T>,
+    timeoutMs = 15000
+  ): Promise<T> => {
+    const started = performance.now()
+    console.log(`[App Init] ▶ ${label} start`)
+    const timeoutId = window.setTimeout(() => {
+      const elapsed = Math.round(performance.now() - started)
+      console.warn(`[App Init] ⏳ ${label} still running after ${elapsed}ms`)
+    }, timeoutMs)
+    try {
+      const result = await fn()
+      const elapsed = Math.round(performance.now() - started)
+      console.log(`[App Init] ✅ ${label} done (${elapsed}ms)`)
+      return result
+    } catch (error) {
+      const elapsed = Math.round(performance.now() - started)
+      console.error(`[App Init] ❌ ${label} failed (${elapsed}ms):`, error)
+      throw error
+    } finally {
+      window.clearTimeout(timeoutId)
+    }
+  }
 
   // StrictMode guard - track if async init has already completed
   const initCompleteRef = useRef(false)
@@ -61,7 +99,7 @@ function App() {
       if (!supported) return
 
       // Initialize SQLite storage
-      toastId = toast.loading(t('app.initializing'), { id: 'storage-init' })
+      toastId = toast.loading(tRef.current('app.initializing'), { id: 'storage-init' })
 
       try {
         const result = await initStorage({
@@ -78,9 +116,9 @@ function App() {
                 if (progress.total > 0) {
                   setLoadingProgress(Math.round((progress.current / progress.total) * 100))
                 }
-                toast.loading(`${t('app.migrationInProgress')}: ${progress.details}`, {
-                  id: 'storage-init',
-                })
+                  toast.loading(`${tRef.current('app.migrationInProgress')}: ${progress.details}`, {
+                    id: 'storage-init',
+                  })
                 break
               case 'complete':
                 setLoadingProgress(100)
@@ -118,15 +156,21 @@ function App() {
         if (result.success) {
           // Show warnings for degraded storage modes
           if (result.mode === 'sqlite-memory') {
-            toast.warning(t('app.sessionStorageOnly'), { id: 'storage-init', duration: 8000 })
+            toast.warning(tRef.current('app.sessionStorageOnly'), {
+              id: 'storage-init',
+              duration: 8000,
+            })
           } else if (result.mode === 'indexeddb-fallback') {
-            toast.warning(t('app.localStorageMode'), { id: 'storage-init', duration: 8000 })
+            toast.warning(tRef.current('app.localStorageMode'), {
+              id: 'storage-init',
+              duration: 8000,
+            })
           } else {
-            toast.success(t('app.initComplete'), { id: 'storage-init' })
+            toast.success(tRef.current('app.initComplete'), { id: 'storage-init' })
           }
         } else {
           // Storage initialization failed completely
-          const errorMsg = result.error || t('app.initFailed')
+          const errorMsg = result.error || tRef.current('app.initFailed')
 
           // Check if this is a DATABASE_INACCESSIBLE error (OPFS handle staleness)
           if (errorMsg.toLowerCase().includes('database_inaccessible')) {
@@ -193,11 +237,12 @@ function App() {
       // Don't restore directory handle on load - it requires user activation
       // User will click to restore permission when needed
 
-      // Initialize workspaces
+      // Initialize projects first, then workspaces
       try {
-        await initializeWorkspaces()
+        await runInitStep('initializeProjects', () => useProjectStore.getState().initialize())
+        await runInitStep('initializeWorkspaces', () => useWorkspaceStore.getState().initialize())
       } catch (err) {
-        console.error('[App] Failed to initialize workspaces:', err)
+        console.error('[App] Failed to initialize projects/workspaces:', err)
       }
 
       // Attempt to reconnect to previous remote session
@@ -207,12 +252,13 @@ function App() {
       // Use the store's checkHasApiKey method for proper caching
       try {
         const { useSettingsStore } = await import('@/store/settings.store')
-        await useSettingsStore.getState().checkHasApiKey()
+        await runInitStep('checkHasApiKey', () => useSettingsStore.getState().checkHasApiKey())
       } catch (err) {
         console.error('[App] Failed to check API key:', err)
       }
 
       if (mounted) {
+        console.log('[App Init] ✅ setting isStorageReady=true')
         initCompleteRef.current = true
         setIsStorageReady(true)
       }
@@ -226,7 +272,7 @@ function App() {
         toast.dismiss(toastId)
       }
     }
-  }, [initializeWorkspaces, t]) // Guarded by initializingRef; dependencies kept explicit
+  }, []) // Guarded by initCompleteRef/initInProgressRef
 
   // Global error handler for DATABASE_INACCESSIBLE errors that occur after initialization
   useEffect(() => {
@@ -289,8 +335,72 @@ function App() {
     })
   }, [])
 
+  // Force entry to project cards on each app mount (helps with dev Fast Refresh state retention).
+  useEffect(() => {
+    setShowProjectHome(true)
+  }, [])
+
+  // Ensure app entry always starts from project cards after bootstrap completes.
+  useEffect(() => {
+    if (isStorageReady) {
+      setShowProjectHome(true)
+    }
+  }, [isStorageReady])
+
   // Responsive layout detection - must be called before any conditional returns
   const isMobile = useMobile()
+  const activeProject = projects.find((project) => project.id === activeProjectId)
+
+  const handleOpenProject = async (projectId: string) => {
+    const ok = await setActiveProject(projectId)
+    if (ok) {
+      setShowProjectHome(false)
+    } else {
+      toast.error('切换项目失败，请稍后重试')
+    }
+  }
+
+  const handleCreateProject = async (name: string) => {
+    const project = await createProject(name)
+    if (project) {
+      const switched = await setActiveProject(project.id)
+      if (switched) {
+        setShowProjectHome(false)
+        toast.success(`项目「${project.name}」已创建`)
+      } else {
+        toast.error('项目已创建，但切换失败，请手动重试')
+      }
+    } else {
+      toast.error('创建项目失败，请稍后重试')
+    }
+  }
+
+  const handleRenameProject = async (projectId: string, name: string) => {
+    const ok = await renameProject(projectId, name)
+    if (ok) {
+      toast.success('项目已重命名')
+    } else {
+      toast.error('重命名失败，请稍后重试')
+    }
+  }
+
+  const handleArchiveProject = async (projectId: string, archived: boolean) => {
+    const ok = await setProjectArchived(projectId, archived)
+    if (ok) {
+      toast.success(archived ? '项目已归档' : '项目已取消归档')
+    } else {
+      toast.error(archived ? '归档失败，请稍后重试' : '取消归档失败，请稍后重试')
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    const ok = await deleteProject(projectId)
+    if (ok) {
+      toast.success('项目已删除')
+    } else {
+      toast.error('删除失败，请稍后重试')
+    }
+  }
 
   if (!isSupportedBrowser) {
     return <UnsupportedBrowser />
@@ -318,9 +428,34 @@ function App() {
     )
   }
 
+  const workspaceView = (
+    <WorkspaceLayout
+      onBackToProjects={() => setShowProjectHome(true)}
+      projectName={activeProject?.name}
+    />
+  )
+
+  const rootView = showProjectHome ? (
+    <ProjectHome
+      projects={projects}
+      projectStats={projectStats}
+      activeProjectId={activeProjectId}
+      isLoading={projectLoading}
+      onOpenProject={handleOpenProject}
+      onCreateProject={handleCreateProject}
+      onRenameProject={handleRenameProject}
+      onArchiveProject={handleArchiveProject}
+      onDeleteProject={handleDeleteProject}
+    />
+  ) : isMobile ? (
+    <MobileLayout>{workspaceView}</MobileLayout>
+  ) : (
+    workspaceView
+  )
+
   return (
     <>
-      {isMobile ? <MobileLayout>{<WorkspaceLayout />}</MobileLayout> : <WorkspaceLayout />}
+      {rootView}
       <InstallPrompt />
       <PWAUpdateBanner />
       <DatabaseRefreshDialog isOpen={false} />

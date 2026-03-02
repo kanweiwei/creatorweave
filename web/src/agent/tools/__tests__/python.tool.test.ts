@@ -123,6 +123,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -156,6 +158,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -183,6 +187,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -208,6 +214,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -241,6 +249,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -272,6 +282,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -296,6 +308,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -332,6 +346,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const result = await pythonCodeExecutor({ code: 'print("test")' }, mockContext)
@@ -352,6 +368,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')
@@ -375,6 +393,8 @@ describe('Python Tool Integration', () => {
         setDirectoryHandle: vi.fn(),
         restoreDirectoryHandle: vi.fn(),
         requestPendingHandlePermission: vi.fn(),
+        activeProjectId: "default-project",
+        setActiveProject: vi.fn(),
       })
 
       const { pythonExecutor } = await import('@/python')

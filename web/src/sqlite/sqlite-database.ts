@@ -76,6 +76,7 @@ export interface ApiKeyRow {
 
 export interface WorkspaceRow {
   id: string
+  project_id: string
   root_directory: string
   name: string
   status: 'active' | 'archived'
@@ -336,8 +337,18 @@ class SQLiteWorkerClient {
     })
   }
 
+  private nextRequestId(prefix: string): string {
+    this.requestId += 1
+    return `${prefix}-${this.requestId}`
+  }
+
   queryAll<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
-    return this.sendRequest<T[]>({ type: 'queryAll', sql, params, id: `queryAll-${Date.now()}` })
+    return this.sendRequest<T[]>({
+      type: 'queryAll',
+      sql,
+      params,
+      id: this.nextRequestId('queryAll'),
+    })
   }
 
   queryFirst<T = unknown>(sql: string, params: unknown[] = []): Promise<T | null> {
@@ -345,41 +356,46 @@ class SQLiteWorkerClient {
       type: 'queryFirst',
       sql,
       params,
-      id: `queryFirst-${Date.now()}`,
+      id: this.nextRequestId('queryFirst'),
     })
   }
 
   execute(sql: string, params: unknown[] = []): Promise<void> {
-    return this.sendRequest<void>({ type: 'execute', sql, params, id: `execute-${Date.now()}` })
+    return this.sendRequest<void>({
+      type: 'execute',
+      sql,
+      params,
+      id: this.nextRequestId('execute'),
+    })
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
-    await this.sendRequest<void>({ type: 'beginTransaction', id: `txn-begin-${Date.now()}` })
+    await this.sendRequest<void>({ type: 'beginTransaction', id: this.nextRequestId('txn-begin') })
     try {
       const result = await callback()
-      await this.sendRequest<void>({ type: 'commit', id: `txn-commit-${Date.now()}` })
+      await this.sendRequest<void>({ type: 'commit', id: this.nextRequestId('txn-commit') })
       return result
     } catch (error) {
-      await this.sendRequest<void>({ type: 'rollback', id: `txn-rollback-${Date.now()}` })
+      await this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('txn-rollback') })
       throw error
     }
   }
 
   beginTransaction(): Promise<void> {
-    return this.sendRequest<void>({ type: 'beginTransaction', id: `begin-${Date.now()}` })
+    return this.sendRequest<void>({ type: 'beginTransaction', id: this.nextRequestId('begin') })
   }
 
   commit(): Promise<void> {
-    return this.sendRequest<void>({ type: 'commit', id: `commit-${Date.now()}` })
+    return this.sendRequest<void>({ type: 'commit', id: this.nextRequestId('commit') })
   }
 
   rollback(): Promise<void> {
-    return this.sendRequest<void>({ type: 'rollback', id: `rollback-${Date.now()}` })
+    return this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('rollback') })
   }
 
   async close(): Promise<void> {
     if (this.worker) {
-      await this.sendRequest<void>({ type: 'close', id: `close-${Date.now()}` })
+      await this.sendRequest<void>({ type: 'close', id: this.nextRequestId('close') })
       this.worker.terminate()
       this.worker = null
       this.initialized = false
@@ -442,7 +458,7 @@ class SQLiteWorkerClient {
       // The migration system handles schema initialization
       await this.sendRequest<void>({
         type: 'recover',
-        id: `recover-${Date.now()}`,
+        id: this.nextRequestId('recover'),
       })
       console.log('[SQLite] Database recovery completed')
     } catch (error) {

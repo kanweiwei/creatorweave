@@ -29,6 +29,7 @@ export interface Migration {
   up: string
 }
 
+
 // Base schema version
 export const BASE_SCHEMA_VERSION = 1
 
@@ -42,12 +43,8 @@ export const BASE_SCHEMA_VERSION = 1
 // ============================================================================
 
 export const migrations: Migration[] = [
-  // Add migrations here as the schema evolves:
-  // {
-  //   version: 2,
-  //   name: 'add_widget_support',
-  //   up: await import('./002_add_widget_support.sql?raw').then(m => m.default),
-  // },
+  // No incremental migrations in current phase.
+  // Schema changes are applied directly via sqlite-schema.sql.
 ]
 
 // ============================================================================

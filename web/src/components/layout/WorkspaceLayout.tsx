@@ -50,8 +50,14 @@ import {
 } from '@/components/workspace'
 import { ExportPanel, useExport } from '@/components/export'
 import { initializeTheme } from '@/store/theme.store'
+import { BrandButton } from '@browser-fs-analyzer/ui'
 
-export function WorkspaceLayout() {
+interface WorkspaceLayoutProps {
+  onBackToProjects?: () => void
+  projectName?: string
+}
+
+export function WorkspaceLayout({ onBackToProjects, projectName }: WorkspaceLayoutProps) {
   const {
     activeConversationId,
     createNew,
@@ -64,6 +70,8 @@ export function WorkspaceLayout() {
   const { providerType, modelName, maxTokens, hasApiKey } = useSettingsStore()
   const { role } = useRemoteStore()
   const showPreview = useWorkspaceStore((state) => state.showPreview)
+  const projectWorkspaceIds = useWorkspaceStore((state) => state.workspaces.map((w) => w.id))
+  const workspaceCount = projectWorkspaceIds.length
   const hidePreviewPanel = useWorkspaceStore((state) => state.hidePreviewPanel)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
@@ -122,6 +130,11 @@ export function WorkspaceLayout() {
   const handleInitialMessageConsumed = useCallback(() => {
     setPendingMessage(null)
   }, [])
+
+  const handleCreateFirstWorkspace = useCallback(() => {
+    const conv = createNew('New conversation')
+    setActive(conv.id)
+  }, [createNew, setActive])
 
   // Skills management handlers
   const handleSkillsManagerOpen = useCallback(() => {
@@ -435,7 +448,8 @@ export function WorkspaceLayout() {
     [panelSizes.previewRatio, setPreviewRatio]
   )
 
-  const hasActiveConversation = !!activeConversationId
+  const hasActiveConversation =
+    !!activeConversationId && projectWorkspaceIds.includes(activeConversationId)
   // Close preview panel (hide without clearing changes)
   const handleClosePreview = useCallback(() => {
     hidePreviewPanel()
@@ -449,6 +463,8 @@ export function WorkspaceLayout() {
         onToolsPanelOpen={() => setToolsPanelOpen(true)}
         onCommandPaletteOpen={() => setShowCommandPalette(true)}
         onWorkspaceSettingsOpen={() => setShowWorkspaceSettings(true)}
+        onBackToProjects={onBackToProjects}
+        activeProjectName={projectName}
         onMenuOpen={() => setIsSidebarOpen(true)}
         isMobile={isMobile}
       />
@@ -474,7 +490,15 @@ export function WorkspaceLayout() {
                 onInitialMessageConsumed={handleInitialMessageConsumed}
               />
             ) : (
-              <WelcomeScreenV2 onStartConversation={handleStartConversation} />
+              <div className="relative h-full">
+                {workspaceCount === 0 && (
+                  <div className="absolute left-4 top-4 z-10 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-800">
+                    <p className="mb-2">当前项目还没有工作区，创建首个会话后会自动生成工作区。</p>
+                    <BrandButton onClick={handleCreateFirstWorkspace}>创建第一个工作区</BrandButton>
+                  </div>
+                )}
+                <WelcomeScreenV2 onStartConversation={handleStartConversation} />
+              </div>
             )}
           </main>
 
