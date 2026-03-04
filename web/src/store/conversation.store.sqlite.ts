@@ -39,6 +39,7 @@ import { getApiKeyRepository } from '@/sqlite'
 import { LLM_PROVIDER_CONFIGS, type LLMProviderType } from '@/agent/providers/types'
 import { generateFollowUp } from '@/agent/follow-up-generator'
 import { getConversationRepository, initSQLiteDB } from '@/sqlite'
+import { useSettingsStore } from './settings.store'
 import {
   createThread as createThreadUtil,
   mergeThreads as mergeThreadsUtil,
@@ -497,7 +498,29 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
       try {
         const apiKeyRepo = getApiKeyRepository()
-        const apiKey = await apiKeyRepo.load(providerType)
+        const settingsState = useSettingsStore.getState()
+        const effectiveConfig = settingsState.getEffectiveProviderConfig()
+        const providerConfig =
+          providerType === 'custom'
+            ? effectiveConfig
+            : {
+                apiKeyProviderKey: providerType,
+                baseUrl: LLM_PROVIDER_CONFIGS[providerType].baseURL,
+                modelName: modelName || LLM_PROVIDER_CONFIGS[providerType].modelName,
+              }
+
+        if (!providerConfig?.baseUrl || !providerConfig.modelName) {
+          set((state) => {
+            const c = state.conversations.find((c) => c.id === conversationId)
+            if (c) {
+              c.status = 'error'
+              c.error = '请先配置自定义服务商和模型'
+            }
+          })
+          return
+        }
+
+        const apiKey = await apiKeyRepo.load(providerConfig.apiKeyProviderKey)
         if (!apiKey) {
           set((state) => {
             const c = state.conversations.find((c) => c.id === conversationId)
@@ -509,11 +532,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           return
         }
 
-        const config = LLM_PROVIDER_CONFIGS[providerType]
         const provider = new GLMProvider({
           apiKey,
-          baseUrl: config.baseURL,
-          model: modelName,
+          baseUrl: providerConfig.baseUrl,
+          model: providerConfig.modelName,
         })
 
         const contextManager = new ContextManager({
@@ -853,7 +875,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               })
 
             try {
-              const apiKey = await apiKeyRepo.load(providerType)
+              const apiKey = await apiKeyRepo.load(providerConfig.apiKeyProviderKey)
               if (apiKey) {
                 const suggestion = await generateFollowUp(msgs, providerType, apiKey)
                 if (suggestion) {

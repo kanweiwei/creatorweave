@@ -25,6 +25,9 @@ import {
   BookOpen,
   Info,
   ChevronDown,
+  Plus,
+  Trash2,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '@/store/settings.store'
@@ -35,7 +38,12 @@ import {
   getProvidersByCategory,
   getModelsForProvider,
 } from '@/agent/providers/types'
-import type { LLMProviderType, ModelCapability, ProviderCategory } from '@/agent/providers/types'
+import type {
+  LLMProviderType,
+  ModelCapability,
+  ModelInfo,
+  ProviderCategory,
+} from '@/agent/providers/types'
 import { useT } from '@/i18n'
 import { BrandInput } from '@browser-fs-analyzer/ui'
 import { BrandSlider } from '@browser-fs-analyzer/ui'
@@ -220,11 +228,19 @@ export function ModelSettings({ open }: ModelSettingsProps) {
     providerType,
     modelName,
     customBaseUrl,
+    customProviders,
+    activeCustomProviderId,
     temperature,
     maxTokens,
     setProviderType,
     setModelName,
     setCustomBaseUrl,
+    createCustomProvider,
+    updateCustomProvider,
+    removeCustomProvider,
+    setActiveCustomProvider,
+    addCustomProviderModel,
+    removeCustomProviderModel,
     setTemperature,
     setMaxTokens,
     setHasApiKey,
@@ -236,10 +252,31 @@ export function ModelSettings({ open }: ModelSettingsProps) {
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [customNameDraft, setCustomNameDraft] = useState('')
+  const [customBaseUrlDraft, setCustomBaseUrlDraft] = useState('')
+  const [customModelDraft, setCustomModelDraft] = useState('')
+  const [newModelDraft, setNewModelDraft] = useState('')
 
   const groupedProviders = useMemo(() => getProvidersByCategory(), [])
   const currentProviderMeta = PROVIDER_META[providerType]
-  const availableModels = useMemo(() => getModelsForProvider(providerType), [providerType])
+  const activeCustomProvider =
+    customProviders.find((provider) => provider.id === activeCustomProviderId) || customProviders[0]
+  const availableModels = useMemo<ModelInfo[]>(() => {
+    if (providerType === 'custom') {
+      return (activeCustomProvider?.models || []).map((id) => ({
+        id,
+        name: id,
+        capabilities: ['code'] as ModelCapability[],
+        contextWindow: 128000,
+      }))
+    }
+    return getModelsForProvider(providerType)
+  }, [providerType, activeCustomProvider])
+
+  const providerKey = useMemo(() => {
+    if (providerType !== 'custom') return providerType
+    return activeCustomProvider ? `custom:${activeCustomProvider.id}` : 'custom'
+  }, [providerType, activeCustomProvider])
   const selectedModel = useMemo(
     () => availableModels.find((m) => m.id === modelName),
     [availableModels, modelName]
@@ -247,7 +284,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
 
   // Load existing API key on mount and when dialog opens or provider changes
   useEffect(() => {
-    loadApiKey(providerType)
+    loadApiKey(providerKey)
       .then((key) => {
         setApiKey(key || '')
         setHasApiKey(!!key)
@@ -255,25 +292,48 @@ export function ModelSettings({ open }: ModelSettingsProps) {
       .catch((error) => {
         console.error('[ModelSettings] Failed to load API key:', error)
       })
-  }, [providerType, setHasApiKey, open])
+  }, [providerKey, setHasApiKey, open])
+
+  useEffect(() => {
+    if (providerType !== 'custom') return
+    if (!activeCustomProvider && customProviders.length > 0) {
+      setActiveCustomProvider(customProviders[0].id)
+    }
+    if (activeCustomProvider) {
+      setCustomNameDraft(activeCustomProvider.name)
+      setCustomBaseUrlDraft(activeCustomProvider.baseUrl)
+      setCustomModelDraft(activeCustomProvider.models[0] || '')
+    } else {
+      setCustomNameDraft('')
+      setCustomBaseUrlDraft(customBaseUrl)
+      setCustomModelDraft(modelName)
+    }
+  }, [
+    providerType,
+    activeCustomProvider,
+    customProviders,
+    setActiveCustomProvider,
+    customBaseUrl,
+    modelName,
+  ])
 
   const handleSaveKey = useCallback(async () => {
     const trimmedKey = apiKey.trim()
 
     if (!trimmedKey) {
-      await deleteApiKey(providerType)
+      await deleteApiKey(providerKey)
       setHasApiKey(false)
-      invalidateApiKeyCache(providerType)
+      invalidateApiKeyCache(providerKey)
       toast.success('API Key 已清空')
       return
     }
 
-    await saveApiKey(providerType, trimmedKey)
+    await saveApiKey(providerKey, trimmedKey)
     setHasApiKey(true)
     setSaved(true)
-    invalidateApiKeyCache(providerType)
+    invalidateApiKeyCache(providerKey)
     setTimeout(() => setSaved(false), 2000)
-  }, [apiKey, providerType, setHasApiKey, invalidateApiKeyCache])
+  }, [apiKey, providerKey, setHasApiKey, invalidateApiKeyCache])
 
   const handleProviderChange = useCallback(
     (type: string) => {
@@ -288,7 +348,9 @@ export function ModelSettings({ open }: ModelSettingsProps) {
       }
 
       // Load the new provider's key
-      loadApiKey(provider)
+      const keyName =
+        provider === 'custom' && activeCustomProvider ? `custom:${activeCustomProvider.id}` : provider
+      loadApiKey(keyName)
         .then((key) => {
           setApiKey(key || '')
           setHasApiKey(!!key)
@@ -297,8 +359,61 @@ export function ModelSettings({ open }: ModelSettingsProps) {
           console.error('[ModelSettings] Failed to load API key:', error)
         })
     },
-    [setProviderType, setModelName, setCustomBaseUrl, setHasApiKey]
+    [setProviderType, setModelName, setCustomBaseUrl, setHasApiKey, activeCustomProvider]
   )
+
+  const handleCreateCustomProvider = useCallback(() => {
+    const ok = createCustomProvider({
+      name: customNameDraft,
+      baseUrl: customBaseUrlDraft,
+      model: customModelDraft,
+    })
+    if (!ok) {
+      toast.error('请填写服务商名称、Base URL 和模型名称')
+      return
+    }
+    setNewModelDraft('')
+    toast.success('已添加自定义服务商')
+  }, [createCustomProvider, customNameDraft, customBaseUrlDraft, customModelDraft])
+
+  const handleSaveCustomProvider = useCallback(() => {
+    if (!activeCustomProvider) return
+    const ok = updateCustomProvider(activeCustomProvider.id, {
+      name: customNameDraft,
+      baseUrl: customBaseUrlDraft,
+      model: customModelDraft,
+    })
+    if (!ok) {
+      toast.error('请填写有效的服务商信息')
+      return
+    }
+    if (customModelDraft.trim()) {
+      setModelName(customModelDraft.trim())
+    }
+    toast.success('自定义服务商已更新')
+  }, [
+    activeCustomProvider,
+    updateCustomProvider,
+    customNameDraft,
+    customBaseUrlDraft,
+    customModelDraft,
+    setModelName,
+  ])
+
+  const handleAddCustomModel = useCallback(() => {
+    if (!activeCustomProvider) {
+      toast.error('请先创建并选择一个服务商')
+      return
+    }
+    const ok = addCustomProviderModel(activeCustomProvider.id, newModelDraft)
+    if (!ok) {
+      toast.error('模型名称不能为空')
+      return
+    }
+    setModelName(newModelDraft.trim())
+    setNewModelDraft('')
+    toast.success('模型已添加')
+  }, [activeCustomProvider, addCustomProviderModel, newModelDraft, setModelName])
 
   const handleModelChange = useCallback(
     (modelId: string) => {
@@ -359,6 +474,113 @@ export function ModelSettings({ open }: ModelSettingsProps) {
         )}
       </div>
 
+      {/* ── Custom Provider Management ── */}
+      {providerType === 'custom' && (
+        <div className="space-y-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-primary">自定义服务商</label>
+            {customProviders.length > 0 ? (
+              <BrandSelect
+                value={activeCustomProvider?.id || ''}
+                onValueChange={(id) => setActiveCustomProvider(id)}
+              >
+                <BrandSelectTrigger className="h-10">
+                  <BrandSelectValue placeholder="选择服务商" />
+                </BrandSelectTrigger>
+                <BrandSelectContent>
+                  {customProviders.map((provider) => (
+                    <BrandSelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </BrandSelectItem>
+                  ))}
+                </BrandSelectContent>
+              </BrandSelect>
+            ) : (
+              <p className="text-xs text-muted">尚未添加自定义服务商</p>
+            )}
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-3">
+            <BrandInput
+              value={customNameDraft}
+              onChange={(e) => setCustomNameDraft(e.target.value)}
+              placeholder="服务商名称"
+              className="h-10"
+            />
+            <BrandInput
+              value={customBaseUrlDraft}
+              onChange={(e) => setCustomBaseUrlDraft(e.target.value)}
+              placeholder="https://api.example.com/v1"
+              className="h-10 md:col-span-2"
+            />
+          </div>
+          <div className="flex gap-2">
+            <BrandInput
+              value={customModelDraft}
+              onChange={(e) => setCustomModelDraft(e.target.value)}
+              placeholder="默认模型，如 gpt-4o-mini"
+              className="h-10 flex-1"
+            />
+            {activeCustomProvider ? (
+              <>
+                <BrandButton variant="outline" onClick={handleSaveCustomProvider}>
+                  保存
+                </BrandButton>
+                <BrandButton
+                  variant="ghost"
+                  onClick={() => removeCustomProvider(activeCustomProvider.id)}
+                  title="删除服务商"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </BrandButton>
+              </>
+            ) : (
+              <BrandButton onClick={handleCreateCustomProvider}>
+                <Plus className="mr-1 h-4 w-4" />
+                添加
+              </BrandButton>
+            )}
+          </div>
+
+          {activeCustomProvider && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-secondary">模型列表</label>
+              <div className="flex gap-2">
+                <BrandInput
+                  value={newModelDraft}
+                  onChange={(e) => setNewModelDraft(e.target.value)}
+                  placeholder="新增模型名称"
+                  className="h-9 flex-1"
+                />
+                <BrandButton variant="outline" className="h-9 px-3" onClick={handleAddCustomModel}>
+                  添加模型
+                </BrandButton>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {activeCustomProvider.models.map((item) => (
+                  <span
+                    key={item}
+                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs text-neutral-700"
+                  >
+                    {item}
+                    {activeCustomProvider.models.length > 1 && (
+                      <button
+                        type="button"
+                        className="text-neutral-400 hover:text-red-500"
+                        onClick={() => removeCustomProviderModel(activeCustomProvider.id, item)}
+                        aria-label={`移除模型 ${item}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Model Selection ── */}
       {availableModels.length > 0 && (
         <div className="space-y-2">
@@ -397,7 +619,8 @@ export function ModelSettings({ open }: ModelSettingsProps) {
       )}
 
       {/* ── Custom Model Name (for custom/no models) ── */}
-      {(providerType === 'custom' || availableModels.length === 0) && (
+      {((providerType !== 'custom' && availableModels.length === 0) ||
+        (providerType === 'custom' && (!activeCustomProvider || availableModels.length === 0))) && (
         <div className="space-y-2">
           <label className="text-sm font-medium text-primary">{t('settings.modelName')}</label>
           <BrandInput
@@ -411,7 +634,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
       )}
 
       {/* ── Custom Base URL ── */}
-      {providerType === 'custom' && (
+      {providerType === 'custom' && !activeCustomProvider && (
         <div className="space-y-2">
           <label className="text-sm font-medium text-primary">API Base URL</label>
           <BrandInput

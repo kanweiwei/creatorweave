@@ -670,6 +670,12 @@ const SettingsDialogContent = forwardRef<
 
   const browserInfo = useMemo(() => navigator.userAgent, [])
 
+  useEffect(() => {
+    if (!open) {
+      setActiveTab('llm')
+    }
+  }, [open])
+
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'llm', label: t('settings.title') || 'LLM 设置', icon: <Settings className="h-4 w-4" /> },
     { id: 'sync', label: '跨设备同步', icon: <Cloud className="h-4 w-4" /> },
@@ -677,28 +683,38 @@ const SettingsDialogContent = forwardRef<
   ]
 
   return (
-    <BrandDialogContent ref={ref} className="w-[600px]" showOverlay={true} {...props}>
+    <BrandDialogContent
+      ref={ref}
+      className="flex h-[min(88vh,760px)] w-[min(94vw,760px)] max-w-none flex-col overflow-hidden p-0"
+      showOverlay={true}
+      {...props}
+    >
       <BrandDialogHeader>
         <div className="flex items-center gap-2.5">
           <Settings className="h-[18px] w-[18px] text-primary-600" />
           <BrandDialogTitle>{t('settings.title')}</BrandDialogTitle>
         </div>
         <BrandDialogClose asChild>
-          <button className="text-tertiary transition-colors hover:text-primary">
+          <button
+            type="button"
+            aria-label="关闭设置"
+            className="text-tertiary transition-colors hover:text-primary"
+          >
             <X className="h-5 w-5" />
           </button>
         </BrandDialogClose>
       </BrandDialogHeader>
 
-      <div className="flex">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Sidebar tabs */}
-        <div className="border-subtle w-40 border-r pr-2">
-          <nav className="space-y-1 py-2">
+        <div className="border-subtle shrink-0 border-b p-2 md:w-44 md:border-b-0 md:border-r md:p-2">
+          <nav className="flex gap-1 overflow-x-auto md:block md:space-y-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors md:w-full ${
                   activeTab === tab.id
                     ? 'dark:bg-primary-900/30 dark:text-primary-300 bg-primary-50 text-primary-700'
                     : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800'
@@ -712,24 +728,24 @@ const SettingsDialogContent = forwardRef<
         </div>
 
         {/* Tab content */}
-        <div className="custom-scrollbar max-h-[70vh] flex-1 overflow-y-auto pl-4">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
           {/* LLM Settings Tab */}
           {activeTab === 'llm' && (
-            <BrandDialogBody>
+            <BrandDialogBody className="p-0">
               <ModelSettings open={open} />
             </BrandDialogBody>
           )}
 
           {/* Sync Tab */}
           {activeTab === 'sync' && (
-            <div className="py-2 pr-2">
+            <div className="py-1">
               <SyncPanel deviceId={deviceId} browserInfo={browserInfo} />
             </div>
           )}
 
           {/* Offline Queue Tab */}
           {activeTab === 'offline' && (
-            <div className="py-2 pr-2">
+            <div className="py-1">
               <OfflineQueue />
             </div>
           )}
@@ -745,8 +761,8 @@ const SettingsDialog = forwardRef<
   React.ComponentPropsWithoutRef<typeof BrandDialog> & SettingsDialogProps
 >(({ open, onOpenChange, ...props }, ref) => {
   return (
-    <BrandDialog open={open} onOpenChange={onOpenChange}>
-      <SettingsDialogContent ref={ref as React.RefObject<HTMLDivElement>} open={open} {...props} />
+    <BrandDialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <SettingsDialogContent ref={ref as React.Ref<HTMLDivElement>} open={open} {...props} />
     </BrandDialog>
   )
 })

@@ -22,6 +22,39 @@ export interface EncryptedApiKey {
 
 const ENCRYPTION_KEY_NAME = 'bfosa-device-key'
 const KEY_ALGORITHM = 'AES-GCM'
+const KEY_LENGTH = 256
+
+async function createAndPersistEncryptionKey(
+  db: ReturnType<typeof getSQLiteDB>,
+  options?: { resetApiKeys?: boolean }
+): Promise<CryptoKey> {
+  const key = await crypto.subtle.generateKey(
+    { name: KEY_ALGORITHM, length: KEY_LENGTH },
+    true,
+    ['encrypt', 'decrypt']
+  )
+
+  const rawKey = await crypto.subtle.exportKey('raw', key)
+  await storeRawKey(rawKey)
+
+  await db.execute(
+    `INSERT INTO encryption_metadata (key_name, key_algorithm, key_length, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(key_name) DO UPDATE SET
+       key_algorithm = excluded.key_algorithm,
+       key_length = excluded.key_length`,
+    [ENCRYPTION_KEY_NAME, KEY_ALGORITHM, KEY_LENGTH, Date.now()]
+  )
+
+  if (options?.resetApiKeys) {
+    await db.execute('DELETE FROM api_keys')
+  }
+
+  return crypto.subtle.importKey('raw', rawKey, { name: KEY_ALGORITHM }, false, [
+    'encrypt',
+    'decrypt',
+  ])
+}
 
 /**
  * Get or create device-specific encryption key
@@ -37,34 +70,16 @@ async function getEncryptionKey(): Promise<CryptoKey> {
   }>('SELECT * FROM encryption_metadata WHERE key_name = ?', [ENCRYPTION_KEY_NAME])
 
   if (!metadataRow) {
-    // Create new encryption key
-    const key = await crypto.subtle.generateKey(
-      { name: KEY_ALGORITHM, length: 256 },
-      true, // extractable for export/import
-      ['encrypt', 'decrypt']
-    )
-
-    // Export and store raw key in IndexedDB (for persistence)
-    const rawKey = await crypto.subtle.exportKey('raw', key)
-    await storeRawKey(rawKey)
-
-    // Store metadata in SQLite
-    await db.execute(
-      'INSERT INTO encryption_metadata (key_name, key_algorithm, key_length, created_at) VALUES (?, ?, ?, ?)',
-      [ENCRYPTION_KEY_NAME, KEY_ALGORITHM, 256, Date.now()]
-    )
-
-    // Re-import as non-extractable
-    return crypto.subtle.importKey('raw', rawKey, { name: KEY_ALGORITHM }, false, [
-      'encrypt',
-      'decrypt',
-    ])
+    return createAndPersistEncryptionKey(db)
   }
 
   // Load raw key from IndexedDB and re-import
   const rawKey = await loadRawKey()
   if (!rawKey) {
-    throw new Error('Encryption key metadata exists but key not found in IndexedDB')
+    console.warn(
+      '[ApiKeyRepo] Encryption key metadata exists but IndexedDB key is missing. Regenerating key and resetting stored API keys.'
+    )
+    return createAndPersistEncryptionKey(db, { resetApiKeys: true })
   }
 
   return crypto.subtle.importKey('raw', rawKey, { name: KEY_ALGORITHM }, false, [
