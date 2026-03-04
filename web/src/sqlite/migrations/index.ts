@@ -31,7 +31,7 @@ export interface Migration {
 
 
 // Base schema version
-export const BASE_SCHEMA_VERSION = 1
+export const BASE_SCHEMA_VERSION = 2
 
 // ============================================================================
 // Migration Registry
@@ -43,7 +43,7 @@ export const BASE_SCHEMA_VERSION = 1
 // ============================================================================
 
 export const migrations: Migration[] = [
-  // No incremental migrations in current phase.
+  // No incremental migrations in current dev phase.
   // Schema changes are applied directly via sqlite-schema.sql.
 ]
 
@@ -57,8 +57,27 @@ export const migrations: Migration[] = [
 export async function getCurrentVersion(db: any): Promise<number> {
   try {
     const result = db.exec('PRAGMA user_version')
-    // Result is an array of arrays: [[version]]
-    return (result[0]?.[0] as number) || 0
+    // sqlite-wasm result shape may vary by build:
+    // - [{ columns, values }]
+    // - [[version]]
+    const versionFromValues = result?.[0]?.values?.[0]?.[0]
+    if (typeof versionFromValues === 'number') return versionFromValues
+
+    const versionFromArray = result?.[0]?.[0]
+    if (typeof versionFromArray === 'number') return versionFromArray
+
+    // Fallback: use prepared statement API.
+    const stmt = db.prepare('PRAGMA user_version')
+    try {
+      if (stmt.step()) {
+        const row = stmt.get({}) as { user_version?: number }
+        if (typeof row?.user_version === 'number') return row.user_version
+      }
+    } finally {
+      stmt.finalize()
+    }
+
+    return 0
   } catch {
     return 0
   }

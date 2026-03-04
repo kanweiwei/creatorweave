@@ -293,6 +293,7 @@ export const zhCN = {
     previous: '上一步',
     next: '下一步',
     complete: '完成',
+    stepProgress: '第 {current} / {total} 步',
     steps: {
       welcome: {
         title: '欢迎使用 Browser FS Analyzer！',

@@ -434,7 +434,9 @@ async function handleInit(reportProgress = false, _id: string = 'init') {
       try {
         db.close()
         db = null
-      } catch {}
+      } catch {
+        // Best-effort close before recreate; ignore cleanup failures.
+      }
 
       // Try to delete the database file using OPFS API
       try {
@@ -444,7 +446,9 @@ async function handleInit(reportProgress = false, _id: string = 'init') {
             // Try to get the file handle - if it exists, we'll recreate
             await poolUtil.root.getFileHandle(DB_NAME)
             console.warn('[SQLite Worker] Database file exists - will recreate')
-          } catch {}
+          } catch {
+            // File handle missing is acceptable during recovery.
+          }
         }
       } catch (deleteError) {
         console.warn('[SQLite Worker] Failed to clean up database:', deleteError)

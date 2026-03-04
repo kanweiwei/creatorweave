@@ -284,6 +284,7 @@ export const enUS = {
     previous: 'Previous',
     next: 'Next',
     complete: 'Complete',
+    stepProgress: 'Step {current} of {total}',
     steps: {
       welcome: {
         title: 'Welcome to Browser FS Analyzer!',

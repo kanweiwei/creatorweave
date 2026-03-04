@@ -26,7 +26,7 @@ export interface TourStep {
 }
 
 interface OnboardingTourProps {
-  steps: TourStep[]
+  steps?: TourStep[]
   onComplete?: () => void
   onSkip?: () => void
   autoStart?: boolean
@@ -103,6 +103,10 @@ export function OnboardingTour({
   const currentStep = steps[currentStepIndex]
   const isLastStep = currentStepIndex === steps.length - 1
   const isFirstStep = currentStepIndex === 0
+  const stepProgressText = t('onboarding.stepProgress', {
+    current: currentStepIndex + 1,
+    total: steps.length,
+  })
 
   const handleComplete = useCallback(() => {
     // 修复：无论是否勾选"不再显示"，完成引导都保存状态
@@ -178,7 +182,9 @@ export function OnboardingTour({
               ))}
             </div>
             <div className="mt-2 text-xs text-neutral-400">
-              Step {currentStepIndex + 1} of {steps.length}
+              {stepProgressText === 'onboarding.stepProgress'
+                ? `第 ${currentStepIndex + 1} / ${steps.length} 步`
+                : stepProgressText}
             </div>
           </div>
 

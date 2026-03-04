@@ -41,7 +41,6 @@ import { createUserMessage } from '@/agent/message-types'
 import {
   CommandPalette,
   OnboardingTour,
-  DEFAULT_ONBOARDING_STEPS,
   KeyboardShortcutsHelp,
   RecentFilesPanel,
   WorkspaceSettingsDialog,
@@ -581,7 +580,6 @@ export function WorkspaceLayout({ onBackToProjects, projectName }: WorkspaceLayo
 
       {/* Phase 4: Onboarding Tour */}
       <OnboardingTour
-        steps={DEFAULT_ONBOARDING_STEPS}
         autoStart={true}
         onComplete={() => console.log('[WorkspaceLayout] Onboarding tour completed')}
         onSkip={() => console.log('[WorkspaceLayout] Onboarding tour skipped')}

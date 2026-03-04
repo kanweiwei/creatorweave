@@ -59,12 +59,13 @@ export const useProjectStore = create<ProjectState>()(
         // Dev-phase hard cleanup: remove legacy seeded default project if it exists.
         const hasLegacyDefault = normalizedProjects.some((project) => project.id === DEFAULT_PROJECT_ID)
         if (hasLegacyDefault) {
+          if (normalizedActiveProjectId === DEFAULT_PROJECT_ID) {
+            await repo.clearActiveProject()
+            normalizedActiveProjectId = ''
+          }
           await repo.deleteProject(DEFAULT_PROJECT_ID)
           normalizedProjects = normalizedProjects.filter((project) => project.id !== DEFAULT_PROJECT_ID)
           normalizedStats = normalizedStats.filter((entry) => entry.projectId !== DEFAULT_PROJECT_ID)
-          if (normalizedActiveProjectId === DEFAULT_PROJECT_ID) {
-            normalizedActiveProjectId = ''
-          }
         }
 
         // Keep active project in sync with available projects.
