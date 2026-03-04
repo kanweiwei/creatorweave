@@ -109,6 +109,15 @@ export async function initStorage(options: InitStorageOptions = {}): Promise<Ini
       // Initialize SQLite (worker will determine actual OPFS availability)
       await initSQLiteDB(onProgress)
 
+      // Get actual mode from SQLite worker after initialization
+      const actualMode = getSQLiteDB().getMode()
+      if (actualMode === 'memory') {
+        currentStorageMode = 'sqlite-memory'
+      } else if (actualMode === 'opfs') {
+        currentStorageMode = 'sqlite-opfs'
+      }
+      // If actualMode is null (not initialized yet), keep default 'sqlite-opfs'
+
       onProgress?.({
         step: 'complete',
         total: 1,
