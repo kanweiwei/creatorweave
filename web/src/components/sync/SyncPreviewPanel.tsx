@@ -102,6 +102,7 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
   const pendingChanges = useWorkspaceStore((state) => state.pendingChanges)
   const clearChanges = useWorkspaceStore((state) => state.clearChanges)
   const [selectedFile, setSelectedFile] = useState<FileChange | null>(null)
+  const selectedPath = selectedFile?.path
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   
@@ -145,10 +146,10 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         ? pendingChanges.changes.filter(c => selectedPaths.includes(c.path))
         : pendingChanges.changes
 
-      // Sync selected changes to Native FS
-      const result = await workspace.syncToNative(
+      // Sync via unified pending pipeline (cache-backed)
+      const result = await workspace.syncToDisk(
         nativeDir,
-        filesToSync
+        filesToSync.map((c) => c.path)
       )
 
       // Show sync result
@@ -156,9 +157,12 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         setSyncError(`${result.failed} 个文件同步失败`)
       }
 
-      // Clear pending changes after sync
-      clearChanges()
-      setSelectedFile(null)
+      // Refresh pending snapshot after sync (supports partial sync)
+      await useWorkspaceStore.getState().refreshPendingChanges(true)
+      const latestChanges = useWorkspaceStore.getState().pendingChanges?.changes ?? []
+      if (!latestChanges.some((c) => c.path === selectedPath)) {
+        setSelectedFile(null)
+      }
       onSync?.()
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : '同步失败')
@@ -167,7 +171,7 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
       // Clear selection after sync
       setSelectedItems(new Set())
     }
-  }, [pendingChanges, isSyncing, clearChanges, onSync])
+  }, [pendingChanges, isSyncing, onSync, selectedPath])
 
   /**
    * Handle close (just close the panel, don't clear pending changes)

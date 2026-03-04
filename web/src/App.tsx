@@ -93,6 +93,7 @@ function App() {
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute(window.location.pathname))
+  const persistentStorageToastShownRef = useRef(false)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const createProject = useProjectStore((s) => s.createProject)
   const renameProject = useProjectStore((s) => s.renameProject)
@@ -383,6 +384,34 @@ function App() {
       const persisted = await requestPersistentStorage()
       console.log('[Storage] Persistent storage result:', persisted ? 'GRANTED ✅' : 'DENIED ❌')
 
+      if (!persisted && !persistentStorageToastShownRef.current) {
+        persistentStorageToastShownRef.current = true
+        toast.warning('浏览器未授予持久化存储，缓存可能在空间紧张时被清理。', {
+          action: {
+            label: '重试',
+            onClick: async () => {
+              const granted = await requestPersistentStorage()
+              // Retry folder-handle permission restore if needed.
+              const { useFolderAccessStore } = await import('@/store/folder-access.store')
+              const folderState = useFolderAccessStore.getState()
+              const folderRecord = folderState.getRecord()
+              let handleGranted = false
+
+              if (folderRecord?.status === 'needs_user_activation' && folderRecord.projectId) {
+                handleGranted = await folderState.requestPermission(folderRecord.projectId)
+              }
+
+              if (granted || handleGranted) {
+                toast.success('权限已恢复。')
+              } else {
+                toast.warning('仍未授予权限，请检查浏览器站点权限设置。')
+              }
+            },
+          },
+          duration: 7000,
+        })
+      }
+
       // Also try to restore directory handle permission if pending (from folder-access.store)
       const { useFolderAccessStore } = await import('@/store/folder-access.store')
       const folderState = useFolderAccessStore.getState()
@@ -412,6 +441,12 @@ function App() {
     window.addEventListener('click', handleFirstInteraction, { once: true })
     window.addEventListener('keydown', handleFirstInteraction, { once: true })
     window.addEventListener('touchstart', handleFirstInteraction, { once: true })
+
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction)
+      window.removeEventListener('keydown', handleFirstInteraction)
+      window.removeEventListener('touchstart', handleFirstInteraction)
+    }
   }, [])
 
   // Set up offline queue monitoring

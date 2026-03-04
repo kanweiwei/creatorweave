@@ -58,6 +58,10 @@ export function AssistantTurnBubble({
 }: AssistantTurnBubbleProps) {
   const isStreamingReasoning = streamingState?.reasoning ?? false
   const isStreamingContent = streamingState?.content ?? false
+  const hasCurrentToolCallInTurn = !!(
+    currentToolCall &&
+    turn.messages.some((msg) => msg.toolCalls?.some((tc) => tc.id === currentToolCall.id))
+  )
 
   // Find the last message with content for copy button
   const lastMessageWithContent = [...turn.messages].reverse().find((msg) => msg.content)
@@ -113,7 +117,7 @@ export function AssistantTurnBubble({
           )}
 
         {/* Active tool call streaming */}
-        {isProcessing && currentToolCall && (
+        {isProcessing && currentToolCall && !hasCurrentToolCallInTurn && (
           <ToolCallDisplay
             toolCall={currentToolCall}
             streamingArgs={streamingToolArgs || undefined}

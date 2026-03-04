@@ -18,7 +18,11 @@ import type { SessionMetadata, ChangeDetectionResult } from '@/opfs/types/opfs-t
 import { getSessionManager, SessionWorkspace } from '@/opfs/session'
 import { getWorkspaceRepository, type Workspace } from '@/sqlite/repositories/workspace.repository'
 import { getProjectRepository } from '@/sqlite/repositories/project.repository'
-import { requestDirectoryAccess, releaseDirectoryHandle } from '@/native-fs'
+import {
+  requestDirectoryAccess,
+  releaseDirectoryHandle,
+  bindRuntimeDirectoryHandle,
+} from '@/native-fs'
 import { toast } from 'sonner'
 
 // De-duplicate concurrent pending-change scans across UI/tool triggers.
@@ -682,6 +686,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         requestDirectoryAccess: async () => {
           const activeProjectId = await resolveActiveProjectId()
           if (!activeProjectId) return
+          const activeWorkspaceId = get().activeWorkspaceId
 
           set({ isLoading: true, error: null })
 
@@ -693,6 +698,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             })
 
             if (handle) {
+              // Bind handle for both project scope and active workspace scope.
+              // SessionWorkspace reads by workspace/session id.
+              bindRuntimeDirectoryHandle(activeProjectId, handle)
+              if (activeWorkspaceId) {
+                bindRuntimeDirectoryHandle(activeWorkspaceId, handle)
+              }
+
               // Store handle and update state
               set({
                 hasDirectoryHandle: true,

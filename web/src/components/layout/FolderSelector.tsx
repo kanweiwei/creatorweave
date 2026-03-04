@@ -166,7 +166,7 @@ export function FolderSelector() {
       )
     }
 
-    if (folderAccess.isNeedsActivation && !directoryHandle) {
+    if (folderAccess.isNeedsActivation) {
       return (
         <>
           <AlertCircle className="h-[14px] w-[14px] text-warning" />
@@ -201,7 +201,7 @@ export function FolderSelector() {
   return (
     <div className="relative" ref={containerRef}>
       {/* Restore permission button when needs activation */}
-      {folderAccess.isNeedsActivation && !directoryHandle && (
+      {folderAccess.isNeedsActivation && (
         <button
           type="button"
           onClick={handleRestorePermission}
@@ -221,7 +221,7 @@ export function FolderSelector() {
       )}
 
       {/* Normal folder selector button when no pending handle */}
-      {(!folderAccess.isNeedsActivation || directoryHandle) && (
+      {!folderAccess.isNeedsActivation && (
         <button
           type="button"
           onClick={handleToggle}

@@ -11,10 +11,14 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { type FileChange, type ChangeType } from '@/opfs/types/opfs-types'
 import { getActiveWorkspace } from '@/store/workspace.store'
 import {
+  isImageFile,
+  fileExistsInNativeFS,
   readFileFromOPFS,
   readFileFromNativeFS,
+  readBinaryFileFromOPFS,
+  readBinaryFileFromNativeFS,
 } from '@/opfs'
-import { diffLines, type Change } from 'diff'
+import { diffLines } from 'diff'
 
 type ViewMode = 'sideBySide' | 'inline'
 
@@ -58,18 +62,64 @@ function highlightCode(code: string): React.ReactNode {
 type FileContentState = {
   opfs: string | null
   native: string | null
+  opfsImageUrl: string | null
+  nativeImageUrl: string | null
+  showNativePanel: boolean
   loading: boolean
   error: string | null
+}
+
+type SideBySideRow = {
+  left: string
+  right: string
+  leftType: 'same' | 'removed' | 'empty'
+  rightType: 'same' | 'added' | 'empty'
+  leftLineNumber: number | null
+  rightLineNumber: number | null
+}
+
+type InlineDiffRow = {
+  lineNumber: number
+  text: string
+  type: 'same' | 'added' | 'removed'
+}
+
+function getImageMimeType(path: string): string {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  if (lower.endsWith('.ico')) return 'image/x-icon'
+  if (lower.endsWith('.bmp')) return 'image/bmp'
+  if (lower.endsWith('.avif')) return 'image/avif'
+  if (lower.endsWith('.heic')) return 'image/heic'
+  if (lower.endsWith('.heif')) return 'image/heif'
+  if (lower.endsWith('.tiff') || lower.endsWith('.tif')) return 'image/tiff'
+  return 'application/octet-stream'
+}
+
+function splitDiffLines(value: string): string[] {
+  const lines = value.split('\n')
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop()
+  }
+  return lines.length > 0 ? lines : ['']
 }
 
 export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) => {
   const [content, setContent] = useState<FileContentState>({
     opfs: null,
     native: null,
+    opfsImageUrl: null,
+    nativeImageUrl: null,
+    showNativePanel: true,
     loading: false,
     error: null,
   })
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode)
+  const [lightbox, setLightbox] = useState<{ src: string; title: string } | null>(null)
 
   // Save preference to localStorage when view mode changes
   const handleViewModeChange = (mode: ViewMode) => {
@@ -80,7 +130,15 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
   // Load file contents when selection changes
   useEffect(() => {
     if (!fileChange) {
-      setContent({ opfs: null, native: null, loading: false, error: null })
+      setContent({
+        opfs: null,
+        native: null,
+        opfsImageUrl: null,
+        nativeImageUrl: null,
+        showNativePanel: true,
+        loading: false,
+        error: null,
+      })
       return
     }
 
@@ -95,49 +153,99 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
 
         const { workspace, workspaceId } = activeWorkspace
         const filePath = fileChange.path
+        const isImage = isImageFile(filePath)
+        let showNativePanel = fileChange.type !== 'add'
+        let nativeDir: FileSystemDirectoryHandle | null = null
 
-        // Read from OPFS (target state before sync)
-        let opfsContent: string | null = null
-        try {
-          // For add/modify, OPFS should contain the new content.
-          // For delete, OPFS content is expected to be absent.
-          if (fileChange.type !== 'delete') {
-            opfsContent = await readFileFromOPFS(workspaceId, filePath)
+        if (fileChange.type !== 'add') {
+          nativeDir = await workspace.getNativeDirectoryHandle()
+          if (nativeDir) {
+            const exists = await fileExistsInNativeFS(nativeDir, filePath)
+            showNativePanel = exists
           }
-        } catch (err) {
-          console.warn('[FileDiffViewer] Failed to read OPFS content:', err)
-          opfsContent = null
         }
 
-        // Read from Native FS (current on-disk state before sync)
-        let nativeContent: string | null = null
-        try {
-          // For modify/delete, native should contain old content.
-          // For add, native content is expected to be absent.
-          if (fileChange.type !== 'add') {
-            const nativeDir = await workspace.getNativeDirectoryHandle()
-            if (nativeDir) {
-              nativeContent = await readFileFromNativeFS(nativeDir, filePath)
-            } else {
-              // No directory handle - user needs to grant permission
-              nativeContent = '[需要选择项目目录以查看本机文件内容]'
+        if (isImage) {
+          // Read image binary data and convert to data URLs for preview.
+          let opfsImageUrl: string | null = null
+          let nativeImageUrl: string | null = null
+          const mimeType = getImageMimeType(filePath)
+
+          try {
+            if (fileChange.type !== 'delete') {
+              const opfsBase64 = await readBinaryFileFromOPFS(workspaceId, filePath)
+              if (opfsBase64) {
+                opfsImageUrl = `data:${mimeType};base64,${opfsBase64}`
+              }
             }
+          } catch (err) {
+            console.warn('[FileDiffViewer] Failed to read OPFS image:', err)
           }
-        } catch (err) {
-          console.warn('[FileDiffViewer] Failed to read native content:', err)
-          nativeContent = '[读取本机文件失败]'
-        }
 
-        setContent({
-          opfs: opfsContent,
-          native: nativeContent,
-          loading: false,
-          error: null,
-        })
+          try {
+            if (fileChange.type !== 'add' && nativeDir) {
+              const nativeBase64 = await readBinaryFileFromNativeFS(nativeDir, filePath)
+                if (nativeBase64) {
+                  nativeImageUrl = `data:${mimeType};base64,${nativeBase64}`
+                }
+            }
+          } catch (err) {
+            console.warn('[FileDiffViewer] Failed to read native image:', err)
+          }
+
+          setContent({
+            opfs: null,
+            native: null,
+            opfsImageUrl,
+            nativeImageUrl,
+            showNativePanel,
+            loading: false,
+            error: null,
+          })
+        } else {
+          // Read text from OPFS (target state before sync)
+          let opfsContent: string | null = null
+          try {
+            if (fileChange.type !== 'delete') {
+              opfsContent = await readFileFromOPFS(workspaceId, filePath)
+            }
+          } catch (err) {
+            console.warn('[FileDiffViewer] Failed to read OPFS content:', err)
+            opfsContent = null
+          }
+
+          // Read text from Native FS (current on-disk state before sync)
+          let nativeContent: string | null = null
+          try {
+            if (fileChange.type !== 'add') {
+              if (nativeDir) {
+                nativeContent = await readFileFromNativeFS(nativeDir, filePath)
+              } else if (showNativePanel) {
+                nativeContent = '[需要选择项目目录以查看本机文件内容]'
+              }
+            }
+          } catch (err) {
+            console.warn('[FileDiffViewer] Failed to read native content:', err)
+            nativeContent = '[读取本机文件失败]'
+          }
+
+          setContent({
+            opfs: opfsContent,
+            native: nativeContent,
+            opfsImageUrl: null,
+            nativeImageUrl: null,
+            showNativePanel,
+            loading: false,
+            error: null,
+          })
+        }
       } catch (err) {
         setContent({
           opfs: null,
           native: null,
+          opfsImageUrl: null,
+          nativeImageUrl: null,
+          showNativePanel: true,
           loading: false,
           error: err instanceof Error ? err.message : '加载文件失败',
         })
@@ -152,6 +260,96 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     if (!content.opfs || !content.native) return []
     return diffLines(content.opfs, content.native)
   }, [content.opfs, content.native])
+  const sideBySideRows = useMemo<SideBySideRow[]>(() => {
+    if (!content.opfs || !content.native) return []
+
+    const rows: SideBySideRow[] = []
+    let leftLine = 1
+    let rightLine = 1
+
+    for (const part of diffResult) {
+      const lines = splitDiffLines(part.value)
+
+      if (part.removed) {
+        for (const line of lines) {
+          rows.push({
+            left: line,
+            right: '',
+            leftType: 'removed',
+            rightType: 'empty',
+            leftLineNumber: leftLine++,
+            rightLineNumber: null,
+          })
+        }
+        continue
+      }
+
+      if (part.added) {
+        for (const line of lines) {
+          rows.push({
+            left: '',
+            right: line,
+            leftType: 'empty',
+            rightType: 'added',
+            leftLineNumber: null,
+            rightLineNumber: rightLine++,
+          })
+        }
+        continue
+      }
+
+      for (const line of lines) {
+        rows.push({
+          left: line,
+          right: line,
+          leftType: 'same',
+          rightType: 'same',
+          leftLineNumber: leftLine++,
+          rightLineNumber: rightLine++,
+        })
+      }
+    }
+
+    return rows
+  }, [content.opfs, content.native, diffResult])
+  const inlineDiffRows = useMemo<InlineDiffRow[]>(() => {
+    const rows: InlineDiffRow[] = []
+    let lineNumber = 1
+
+    for (const part of diffResult) {
+      const lines = splitDiffLines(part.value)
+      const type: InlineDiffRow['type'] = part.added
+        ? 'added'
+        : part.removed
+          ? 'removed'
+          : 'same'
+
+      for (const line of lines) {
+        rows.push({
+          lineNumber: lineNumber++,
+          text: line,
+          type,
+        })
+      }
+    }
+
+    return rows
+  }, [diffResult])
+  const isImage = fileChange ? isImageFile(fileChange.path) : false
+
+  // Close lightbox with Escape key
+  useEffect(() => {
+    if (!lightbox) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setLightbox(null)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [lightbox])
 
   if (!fileChange) {
     return (
@@ -252,27 +450,70 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
 
     return (
       <div className="font-mono text-sm">
-        {diffResult.map((part: Change, index: number) => {
-          const bgColor = part.added ? 'bg-green-50' : part.removed ? 'bg-red-50' : ''
-          const textColor = part.added
-            ? 'text-green-700 dark:text-green-300'
-            : part.removed
-              ? 'text-red-700 dark:text-red-300'
-              : 'text-gray-700 dark:text-neutral-300'
-          const prefix = part.added ? '+ ' : part.removed ? '- ' : '  '
-          
+        {inlineDiffRows.map((row) => {
+          const bgColor =
+            row.type === 'added' ? 'bg-green-50' : row.type === 'removed' ? 'bg-red-50' : ''
+          const textColor =
+            row.type === 'added'
+              ? 'text-green-700 dark:text-green-300'
+              : row.type === 'removed'
+                ? 'text-red-700 dark:text-red-300'
+                : 'text-gray-700 dark:text-neutral-300'
+          const prefix = row.type === 'added' ? '+ ' : row.type === 'removed' ? '- ' : '  '
+
           return (
-            <div key={index} className={`flex ${bgColor}`}>
+            <div key={`inline-${row.lineNumber}`} className={`flex ${bgColor}`}>
               <span className="w-8 text-right text-gray-400 dark:text-neutral-500 select-none pr-2 border-r border-gray-200 dark:border-neutral-700">
-                {index + 1}
+                {row.lineNumber}
               </span>
               <span className={`flex-1 pl-3 whitespace-pre-wrap break-all ${textColor}`}>
-                {part.value.split('\n').map((line, lineIdx) => (
-                  <React.Fragment key={lineIdx}>
-                    {lineIdx > 0 && '\n'}
-                    {prefix}{line}
-                  </React.Fragment>
-                ))}
+                {prefix}
+                {row.text || '\u00A0'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const renderSideBySideColumn = (side: 'left' | 'right') => {
+    if (sideBySideRows.length === 0) {
+      return (
+        <div className="font-mono text-sm">
+          {highlightCode(side === 'left' ? content.opfs || '' : content.native || '')}
+        </div>
+      )
+    }
+
+    return (
+      <div className="font-mono text-sm">
+        {sideBySideRows.map((row, index) => {
+          const text = side === 'left' ? row.left : row.right
+          const type = side === 'left' ? row.leftType : row.rightType
+          const lineNumber = side === 'left' ? row.leftLineNumber : row.rightLineNumber
+
+          const bgClass =
+            type === 'removed'
+              ? 'bg-red-50/80 dark:bg-red-950/20'
+              : type === 'added'
+                ? 'bg-green-50/80 dark:bg-green-950/20'
+                : ''
+
+          const textClass =
+            type === 'removed'
+              ? 'text-red-700 dark:text-red-300'
+              : type === 'added'
+                ? 'text-green-700 dark:text-green-300'
+                : 'text-gray-700 dark:text-neutral-300'
+
+          return (
+            <div key={`${side}-${index}`} className={`flex ${bgClass}`}>
+              <span className="w-10 text-right text-gray-400 dark:text-neutral-500 select-none pr-3 border-r border-gray-200 dark:border-neutral-700">
+                {lineNumber ?? ''}
+              </span>
+              <span className={`flex-1 pl-3 whitespace-pre-wrap break-all ${textClass}`}>
+                {text || '\u00A0'}
               </span>
             </div>
           )
@@ -304,50 +545,55 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
             </p>
           </div>
 
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-2 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 p-1">
-            <button
-              onClick={() => handleViewModeChange('sideBySide')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === 'sideBySide'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
-              }`}
-              title="左右对比"
-            >
-              <span className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                </svg>
-                左右
-              </span>
-            </button>
-            <button
-              onClick={() => handleViewModeChange('inline')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === 'inline'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
-              }`}
-              title="行内对比"
-            >
-              <span className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                行内
-              </span>
-            </button>
-          </div>
+          {!isImage && content.showNativePanel && (
+            <div className="flex items-center gap-2 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 p-1">
+              <button
+                onClick={() => handleViewModeChange('sideBySide')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === 'sideBySide'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
+                }`}
+                title="左右对比"
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                  </svg>
+                  左右
+                </span>
+              </button>
+              <button
+                onClick={() => handleViewModeChange('inline')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === 'inline'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
+                }`}
+                title="行内对比"
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  行内
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Diff Content */}
       <div className="flex-1 flex overflow-hidden">
-        {viewMode === 'sideBySide' ? (
+        {isImage || !content.showNativePanel || viewMode === 'sideBySide' ? (
           <>
             {/* OPFS Version */}
-            <div className="flex-1 flex flex-col border-r border-gray-200 dark:border-neutral-700">
+            <div
+              className={`flex-1 flex flex-col ${
+                content.showNativePanel ? 'border-r border-gray-200 dark:border-neutral-700' : ''
+              }`}
+            >
               <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
                 <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">
                   OPFS 版本
@@ -357,8 +603,31 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                 </h4>
               </div>
               <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
-                {content.opfs !== null ? (
-                  highlightCode(content.opfs)
+                {isImage ? (
+                  content.opfsImageUrl ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLightbox({
+                          src: content.opfsImageUrl!,
+                          title: `OPFS 版本 - ${fileChange.path}`,
+                        })
+                      }
+                      className="h-full w-full flex items-center justify-center"
+                    >
+                      <img
+                        src={content.opfsImageUrl}
+                        alt={`OPFS: ${fileChange.path}`}
+                        className="max-w-full max-h-full object-contain rounded border border-gray-200 dark:border-neutral-700"
+                      />
+                    </button>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                      {fileChange.type === 'delete' ? '图片将被删除（OPFS 中无内容）' : '无法读取 OPFS 图片'}
+                    </div>
+                  )
+                ) : content.opfs !== null ? (
+                  content.showNativePanel ? renderSideBySideColumn('left') : highlightCode(content.opfs)
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
                     {fileChange.type === 'delete' ? '文件已删除（OPFS 中无内容）' : '无法读取 OPFS 内容'}
@@ -367,26 +636,45 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               </div>
             </div>
 
-            {/* Native FS Version */}
-            <div className="flex-1 flex flex-col">
-              <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">
-                  本机文件系统
-                  {fileChange.type === 'add' && (
-                    <span className="ml-2 text-xs text-green-600">(将创建)</span>
+            {content.showNativePanel && (
+              <div className="flex-1 flex flex-col">
+                <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">本机文件系统</h4>
+                </div>
+                <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
+                  {isImage ? (
+                    content.nativeImageUrl ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLightbox({
+                            src: content.nativeImageUrl!,
+                            title: `本机文件系统 - ${fileChange.path}`,
+                          })
+                        }
+                        className="h-full w-full flex items-center justify-center"
+                      >
+                        <img
+                          src={content.nativeImageUrl}
+                          alt={`Native: ${fileChange.path}`}
+                          className="max-w-full max-h-full object-contain rounded border border-gray-200 dark:border-neutral-700"
+                        />
+                      </button>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                        无法读取本机图片
+                      </div>
+                    )
+                  ) : content.native !== null ? (
+                    renderSideBySideColumn('right')
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                      无法读取本机文件
+                    </div>
                   )}
-                </h4>
+                </div>
               </div>
-              <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
-                {content.native !== null ? (
-                  highlightCode(content.native)
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
-                    {fileChange.type === 'add' ? '文件不存在（将创建）' : '无法读取本机文件'}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </>
         ) : (
           /* Inline Diff View */
@@ -405,6 +693,28 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
           </div>
         )}
       </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex flex-col"
+          onClick={() => setLightbox(null)}
+          role="presentation"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white bg-black/40">
+            <div className="text-sm truncate pr-3">{lightbox.title}</div>
+            <button
+              type="button"
+              onClick={() => setLightbox(null)}
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-white/30 hover:bg-white/10 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-6" onClick={(e) => e.stopPropagation()}>
+            <img src={lightbox.src} alt={lightbox.title} className="max-w-full max-h-full object-contain" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

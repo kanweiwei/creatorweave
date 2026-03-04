@@ -160,15 +160,18 @@ export function PendingSyncPanel() {
         ? pendingChanges.changes.filter(c => selectedItems.has(c.path))
         : pendingChanges.changes
 
-      // 执行同步
-      const result = await workspace.syncToNative(nativeDir, filesToSync)
+      // 执行同步（统一走 pending/cache 同步链路）
+      const result = await workspace.syncToDisk(
+        nativeDir,
+        filesToSync.map((c) => c.path)
+      )
 
       if (result.failed > 0) {
         console.error(`[PendingSyncPanel] ${result.failed} files failed to sync`)
       }
 
-      // 同步后清空列表
-      clearChanges()
+      // 同步后刷新列表（支持部分同步）
+      await useWorkspaceStore.getState().refreshPendingChanges(true)
       setSelectedItems(new Set())
       setSelectAll(false)
 
@@ -183,7 +186,7 @@ export function PendingSyncPanel() {
     } finally {
       setIsSyncing(false)
     }
-  }, [pendingChanges, isSyncing, clearChanges, selectedItems])
+  }, [pendingChanges, isSyncing, selectedItems])
 
   // 没有待同步文件时显示空状态
   if (isEmpty) {

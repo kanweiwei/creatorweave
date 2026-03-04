@@ -439,8 +439,6 @@ export class AgentLoop {
         for (const tc of toolCalls) {
           if (signal.aborted) break
 
-          callbacks?.onToolCallStart?.(tc)
-
           let args: Record<string, unknown>
           try {
             args = JSON.parse(tc.function.arguments)

@@ -39,8 +39,29 @@ export async function readFileFromOPFS(
     const fileHandle = await getFileHandleFromDir(filesDir, normalizedPath)
 
     if (!fileHandle) {
-      console.warn(`[FileReader] File not found in OPFS: ${path}`)
-      return null
+      // Fallback to working cache (file_write / editor pipeline may only update cache).
+      const cacheContent = await workspace.readCachedFile(normalizePath(path).replace(/^\//, ''))
+      if (cacheContent === null) {
+        console.warn(`[FileReader] File not found in OPFS/files or cache: ${path}`)
+        return null
+      }
+
+      if (typeof cacheContent === 'string') {
+        return cacheContent
+      }
+      if (cacheContent instanceof Blob) {
+        try {
+          return await cacheContent.text()
+        } catch {
+          return null
+        }
+      }
+
+      try {
+        return new TextDecoder().decode(cacheContent)
+      } catch {
+        return null
+      }
     }
 
     const file = await fileHandle.getFile()

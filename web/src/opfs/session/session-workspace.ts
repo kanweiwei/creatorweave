@@ -23,6 +23,7 @@ import { SessionCacheManager } from './session-cache'
 import { SessionPendingManager } from './session-pending'
 import { SessionUndoStorage } from './session-undo'
 import { scanFilesInWorker } from '@/workers/diff-worker-manager'
+import { getRuntimeDirectoryHandle } from '@/native-fs'
 
 const SESSION_METADATA_FILE = 'session.json'
 const FILES_DIR = 'files'
@@ -251,7 +252,19 @@ export class SessionWorkspace {
   async undo(recordId: string): Promise<void> {
     if (!this.initialized) await this.initialize()
 
+    const record = this.undoStorage.getRecord(recordId)
+    if (!record) {
+      throw new Error(`Undo record not found: ${recordId}`)
+    }
+
     await this.undoStorage.undo(recordId, this.cacheManager)
+
+    // Keep pending queue aligned with working cache state.
+    if (record.type === 'create') {
+      await this.pendingManager.removeByPath(record.path)
+    } else if (record.type === 'modify' || record.type === 'delete') {
+      await this.pendingManager.add(record.path)
+    }
 
     // Update last accessed time
     this.metadata.lastAccessedAt = Date.now()
@@ -265,7 +278,21 @@ export class SessionWorkspace {
   async redo(recordId: string): Promise<void> {
     if (!this.initialized) await this.initialize()
 
+    const record = this.undoStorage.getRecord(recordId)
+    if (!record) {
+      throw new Error(`Undo record not found: ${recordId}`)
+    }
+
     await this.undoStorage.redo(recordId, this.cacheManager)
+
+    // Keep pending queue aligned with redone operation semantics.
+    if (record.type === 'create') {
+      await this.pendingManager.markAsCreated(record.path)
+    } else if (record.type === 'modify') {
+      await this.pendingManager.add(record.path)
+    } else if (record.type === 'delete') {
+      await this.pendingManager.markForDeletion(record.path)
+    }
 
     // Update last accessed time
     this.metadata.lastAccessedAt = Date.now()
@@ -277,10 +304,10 @@ export class SessionWorkspace {
    * @param directoryHandle Real filesystem directory handle
    * @returns Sync result
    */
-  async syncToDisk(directoryHandle: FileSystemDirectoryHandle): Promise<SyncResult> {
+  async syncToDisk(directoryHandle: FileSystemDirectoryHandle, onlyPaths?: string[]): Promise<SyncResult> {
     if (!this.initialized) await this.initialize()
 
-    const result = await this.pendingManager.sync(directoryHandle, this.cacheManager)
+    const result = await this.pendingManager.sync(directoryHandle, this.cacheManager, onlyPaths)
 
     // Update last accessed time
     this.metadata.lastAccessedAt = Date.now()
@@ -328,6 +355,15 @@ export class SessionWorkspace {
    */
   getCachedPaths(): string[] {
     return this.cacheManager.getCachedPaths()
+  }
+
+  /**
+   * Read file content from working cache only (no native FS fallback).
+   * Useful for previewing pending edits that are not materialized into files/ yet.
+   */
+  async readCachedFile(path: string): Promise<FileContent | null> {
+    if (!this.initialized) await this.initialize()
+    return await this.cacheManager.readCached(path)
   }
 
   /**
@@ -388,9 +424,21 @@ export class SessionWorkspace {
     if (!this.metadata.rootDirectory) return null
 
     try {
-      // Try to get existing handle from session storage
-      const handle = (globalThis as any).sessionWorkspace?.nativeHandles?.get(this.sessionId)
+      // Handle is managed in native-fs runtime registry.
+      const handle = getRuntimeDirectoryHandle(this.sessionId)
       if (handle) return handle
+
+      // Fallback: directory access is granted at project scope in workspace.store.
+      try {
+        const { getProjectRepository } = await import('@/sqlite/repositories/project.repository')
+        const activeProject = await getProjectRepository().findActiveProject()
+        if (activeProject?.id) {
+          const projectHandle = getRuntimeDirectoryHandle(activeProject.id)
+          if (projectHandle) return projectHandle
+        }
+      } catch {
+        // Ignore fallback lookup errors and continue to null return.
+      }
 
       // Need to request fresh handle from user
       return null
@@ -667,8 +715,16 @@ export class SessionWorkspace {
   async refreshPendingChanges(): Promise<ChangeDetectionResult> {
     const normalizeComparePath = (p: string): string => {
       // Worker scan keys are relative paths without leading slash.
-      // Pending records may include a leading "/" in some flows.
-      return p.startsWith('/') ? p.slice(1) : p
+      // Pending/cache records can be "/foo", "foo", "/mnt/foo", or "/mnt/foo/bar".
+      let normalized = p.replace(/\\/g, '/')
+      if (normalized.startsWith('/mnt/')) {
+        normalized = normalized.slice(5)
+      } else if (normalized === '/mnt') {
+        normalized = ''
+      } else if (normalized.startsWith('/')) {
+        normalized = normalized.slice(1)
+      }
+      return normalized
     }
 
     // 1. Get current pending changes (from previous operations)
@@ -688,6 +744,7 @@ export class SessionWorkspace {
     // Check for new or modified files (in OPFS but not in pending, or different mtime)
     for (const [path, item] of currentFiles.entries()) {
       const pendingItem = existingPaths.get(path)
+      const pendingPath = pendingItem?.path ?? path
 
       if (!pendingItem) {
         // New file in OPFS (not in pending.json) - add as created
@@ -697,8 +754,8 @@ export class SessionWorkspace {
       } else if (pendingItem.type !== 'delete' && pendingItem.fsMtime !== item.mtime) {
         // File was modified after being added to pending - update mtime
         // Note: fsMtime will be set during sync, just update timestamp here
-        await this.pendingManager.add(path) // This updates timestamp
-        detectedChanges.push({ type: 'modify', path, size: item.size, mtime: item.mtime })
+        await this.pendingManager.add(pendingPath) // Keep original path shape to avoid duplicate records
+        detectedChanges.push({ type: 'modify', path: pendingPath, size: item.size, mtime: item.mtime })
         detectedModified++
       }
       // If pending item is 'delete', file was restored - remove from pending
@@ -711,8 +768,8 @@ export class SessionWorkspace {
           await this.pendingManager.remove(deleteRecordId)
         }
         // Now add as created/modified
-        await this.pendingManager.markAsCreated(path)
-        detectedChanges.push({ type: 'add', path, size: item.size, mtime: item.mtime })
+        await this.pendingManager.markAsCreated(pendingPath)
+        detectedChanges.push({ type: 'add', path: pendingPath, size: item.size, mtime: item.mtime })
         detectedAdded++
       }
     }
@@ -720,6 +777,14 @@ export class SessionWorkspace {
     // Check for deleted files (in pending but not in current OPFS scan)
     for (const pending of existingPending) {
       if (pending.type !== 'delete' && !currentFiles.has(normalizeComparePath(pending.path))) {
+        // Keep cache-originated pending edits as modify/create.
+        // They are valid changes even if files/ scan doesn't include them.
+        const normalizedPath = normalizeComparePath(pending.path)
+        const stillInCache = this.hasCachedFile(pending.path) || this.hasCachedFile(normalizedPath)
+        if (stillInCache) {
+          continue
+        }
+
         // File was deleted, add delete record
         await this.pendingManager.markForDeletion(pending.path)
         detectedChanges.push({ type: 'delete', path: pending.path })

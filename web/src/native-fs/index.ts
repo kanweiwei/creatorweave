@@ -17,6 +17,9 @@ import {
   requestDirectoryAccess,
   getStoredDirectoryHandle,
   releaseDirectoryHandle,
+  bindRuntimeDirectoryHandle,
+  getRuntimeDirectoryHandle,
+  unbindRuntimeDirectoryHandle,
 } from './directory-handle-manager'
 
 // Re-export types and functions
@@ -27,6 +30,9 @@ export {
   requestDirectoryAccess,
   getStoredDirectoryHandle,
   releaseDirectoryHandle,
+  bindRuntimeDirectoryHandle,
+  getRuntimeDirectoryHandle,
+  unbindRuntimeDirectoryHandle,
 }
 
 /**

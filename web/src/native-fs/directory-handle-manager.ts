@@ -269,6 +269,7 @@ export class DirectoryHandleManager {
 
 // Singleton instance
 let defaultManager: DirectoryHandleManager | null = null
+const runtimeHandles = new Map<string, FileSystemDirectoryHandle>()
 
 /**
  * Get default directory handle manager instance
@@ -292,9 +293,37 @@ export async function requestDirectoryAccess(
 
   if (handle) {
     await manager.storeHandle(workspaceId, handle)
+    runtimeHandles.set(workspaceId, handle)
   }
 
   return handle
+}
+
+/**
+ * Bind an in-memory handle alias to an already granted directory handle.
+ * Useful when one permission should be reused by multiple IDs (project/workspace).
+ */
+export function bindRuntimeDirectoryHandle(
+  id: string,
+  handle: FileSystemDirectoryHandle
+): void {
+  runtimeHandles.set(id, handle)
+}
+
+/**
+ * Get currently available in-memory directory handle by ID.
+ */
+export function getRuntimeDirectoryHandle(
+  id: string
+): FileSystemDirectoryHandle | null {
+  return runtimeHandles.get(id) ?? null
+}
+
+/**
+ * Remove an in-memory directory handle binding by ID.
+ */
+export function unbindRuntimeDirectoryHandle(id: string): void {
+  runtimeHandles.delete(id)
 }
 
 /**
@@ -313,4 +342,5 @@ export async function getStoredDirectoryHandle(
 export async function releaseDirectoryHandle(workspaceId: string): Promise<void> {
   const manager = getDirectoryHandleManager()
   await manager.releaseHandle(workspaceId)
+  runtimeHandles.delete(workspaceId)
 }

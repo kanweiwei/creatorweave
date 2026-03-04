@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import type { FolderAccessRecord, FolderAccessStatus, FolderAccessStore } from '@/types/folder-access'
 import { folderAccessRepo } from '@/services/folder-access.repository'
 import { selectFolderReadWrite } from '@/services/fsAccess.service'
+import { bindRuntimeDirectoryHandle, unbindRuntimeDirectoryHandle } from '@/native-fs'
 
 /**
  * 初始空记录
@@ -98,6 +99,7 @@ export const useFolderAccessStore = create<FolderAccessStore>()(
                 updatedAt: Date.now(),
               }
             })
+            bindRuntimeDirectoryHandle(projectId, handle)
             console.log('[FolderAccessStore] Permission granted, handle ready:', handle.name)
           } else if (permission === 'prompt') {
             // 需要用户激活 -> needs_user_activation
@@ -182,6 +184,7 @@ export const useFolderAccessStore = create<FolderAccessStore>()(
 
         // 持久化
         await folderAccessRepo.save(record)
+        bindRuntimeDirectoryHandle(projectId, handle)
 
         set((state) => {
           state.records[projectId] = record
@@ -251,6 +254,7 @@ export const useFolderAccessStore = create<FolderAccessStore>()(
 
       // 持久化
       await folderAccessRepo.save(record)
+      bindRuntimeDirectoryHandle(projectId, handle)
 
       set((state) => {
         state.records[projectId] = record
@@ -294,6 +298,7 @@ export const useFolderAccessStore = create<FolderAccessStore>()(
 
           // 更新持久化
           await folderAccessRepo.save(get().records[projectId])
+          bindRuntimeDirectoryHandle(projectId, handle)
 
           toast.success('文件夹权限已恢复')
           get().notifyFileTreeRefresh()
@@ -345,6 +350,7 @@ export const useFolderAccessStore = create<FolderAccessStore>()(
       try {
         // 关键：彻底删除 IndexedDB 记录
         await folderAccessRepo.delete(projectId)
+        unbindRuntimeDirectoryHandle(projectId)
 
         set((state) => {
           state.records[projectId] = createEmptyRecord(projectId)

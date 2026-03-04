@@ -189,11 +189,26 @@ export class SessionPendingManager {
   }
 
   /**
+   * Remove pending record by path
+   * @param path File path
+   */
+  async removeByPath(path: string): Promise<void> {
+    const entry = this.findPendingEntryByPath(path)
+    if (!entry) return
+    this.pendingChanges.delete(entry[0])
+    await this.savePending()
+  }
+
+  /**
    * Sync to real filesystem
    * @param directoryHandle Real filesystem directory handle
    * @param cacheManager Cache manager (for reading OPFS content)
    */
-  async sync(directoryHandle: FileSystemDirectoryHandle, cacheManager: any): Promise<SyncResult> {
+  async sync(
+    directoryHandle: FileSystemDirectoryHandle,
+    cacheManager: any,
+    onlyPaths?: string[]
+  ): Promise<SyncResult> {
     const result: SyncResult = {
       success: 0,
       failed: 0,
@@ -202,8 +217,23 @@ export class SessionPendingManager {
     }
 
     const toRemove: string[] = []
+    const normalizeComparePath = (p: string): string => {
+      let normalized = p.replace(/\\/g, '/')
+      if (normalized.startsWith('/mnt/')) {
+        normalized = normalized.slice(5)
+      } else if (normalized.startsWith('/')) {
+        normalized = normalized.slice(1)
+      }
+      return normalized
+    }
+    const allowedPaths = onlyPaths ? new Set(onlyPaths.map((p) => normalizeComparePath(p))) : null
 
     for (const change of this.getAll()) {
+      if (allowedPaths && !allowedPaths.has(normalizeComparePath(change.path))) {
+        result.skipped++
+        continue
+      }
+
       try {
         if (change.type === 'delete') {
           await this.deleteFile(directoryHandle, change.path)

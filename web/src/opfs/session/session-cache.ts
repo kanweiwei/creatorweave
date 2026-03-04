@@ -226,6 +226,23 @@ export class SessionCacheManager {
   }
 
   /**
+   * Read file content directly from cache without touching native filesystem.
+   * Returns null if the file is not cached.
+   */
+  async readCached(path: string): Promise<FileContent | null> {
+    if (!this.initialized) await this.initialize()
+    if (!this.index.has(path)) {
+      return null
+    }
+
+    try {
+      return await this.readFromCache(path)
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * Write content to OPFS cache
    */
   private async writeToCache(path: string, content: FileContent): Promise<void> {
