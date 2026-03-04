@@ -22,6 +22,10 @@ export const listFilesDefinition: ToolDefinition = {
           type: 'number',
           description: 'Maximum depth to traverse (default: 3)',
         },
+        maxDepth: {
+          type: 'number',
+          description: 'Alias of max_depth',
+        },
       },
     },
   },
@@ -35,8 +39,22 @@ function formatSize(bytes: number): string {
 }
 
 export const listFilesExecutor: ToolExecutor = async (args, context) => {
-  const subPath = (args.path as string) || ''
-  const maxDepth = (args.max_depth as number) || 3
+  const rawPath = typeof args.path === 'string' ? args.path : ''
+  const normalizedPath = rawPath.trim()
+  // Treat ".", "./", "/" as project root for better LLM compatibility.
+  const subPath =
+    normalizedPath === '' ||
+    normalizedPath === '.' ||
+    normalizedPath === './' ||
+    normalizedPath === '/'
+      ? ''
+      : normalizedPath.replace(/^\.?\//, '').replace(/\/+$/, '')
+
+  const rawMaxDepth = args.max_depth ?? args.maxDepth
+  const maxDepth =
+    typeof rawMaxDepth === 'number' && Number.isFinite(rawMaxDepth)
+      ? Math.max(1, Math.min(10, Math.floor(rawMaxDepth)))
+      : 3
 
   if (!context.directoryHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
@@ -46,7 +64,11 @@ export const listFilesExecutor: ToolExecutor = async (args, context) => {
     let searchHandle = context.directoryHandle
     if (subPath) {
       const parts = subPath.split('/').filter(Boolean)
+      if (parts.some((p) => p === '..')) {
+        return JSON.stringify({ error: 'List failed: path cannot include ".."' })
+      }
       for (const part of parts) {
+        if (part === '.') continue
         searchHandle = await searchHandle.getDirectoryHandle(part)
       }
     }
