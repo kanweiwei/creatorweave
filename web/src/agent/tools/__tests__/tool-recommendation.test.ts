@@ -77,8 +77,8 @@ describe('IntentAnalyzer', () => {
       expect(result.primaryIntent).toBe('code-search')
     })
 
-    it('should detect grep pattern mentions', () => {
-      const result = analyzer.analyze('grep for useState')
+    it('should detect text-search pattern mentions', () => {
+      const result = analyzer.analyze('search text for useState')
       expect(result.primaryIntent).toBe('code-search')
     })
 
@@ -170,21 +170,23 @@ describe('RecommendationEngine', () => {
   })
 
   describe('tool recommendations for code search', () => {
-    it('should recommend grep for code search', () => {
+    it('should recommend search_text for code search', () => {
       const recommendations = engine.recommend('search for useEffect usage in components')
-      const grepTool = recommendations.find((r) => r.toolName === 'grep')
+      const searchTool = recommendations.find((r) => r.toolName === 'search_text')
 
-      expect(grepTool).toBeDefined()
-      expect(grepTool?.category).toBe('search')
+      expect(searchTool).toBeDefined()
+      expect(searchTool?.category).toBe('search')
     })
 
     it('should include file pattern in example', () => {
       const recommendations = engine.recommend('find useState in TSX files')
       // @ts-expect-error - reserved for future assertions
-      const grepTool = recommendations.find((r) => r.toolName === 'grep')
+      const searchTool = recommendations.find((r) => r.toolName === 'search_text')
 
-      // grep is recommended for code search
       expect(recommendations.length).toBeGreaterThan(0)
+      if (searchTool) {
+        expect(searchTool.example).toContain('file_pattern')
+      }
     })
   })
 

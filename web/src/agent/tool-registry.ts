@@ -15,7 +15,7 @@ import { fileEditDefinition, fileEditExecutor } from './tools/file-edit.tool'
 import { fileBatchWriteDefinition, fileBatchWriteExecutor } from './tools/file-batch.tool'
 import { fileSyncDefinition, fileSyncExecutor } from './tools/file-sync.tool'
 import { globDefinition, globExecutor } from './tools/glob.tool'
-import { grepDefinition, grepExecutor } from './tools/grep.tool'
+import { searchTextDefinition, searchTextExecutor } from './tools/search-text.tool'
 import { listFilesDefinition, listFilesExecutor } from './tools/list-files.tool'
 import { pythonCodeDefinition, pythonCodeExecutor } from './tools/python.tool'
 import { javascriptCodeDefinition, javascriptCodeExecutor } from './tools/javascript-execution.tool'
@@ -31,8 +31,6 @@ import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm
 import {
   batchEditDefinition,
   batchEditExecutor,
-  advancedSearchDefinition,
-  advancedSearchExecutor,
   fileBatchReadDefinition,
   fileBatchReadExecutor,
 } from './tools/batch-operations.tool'
@@ -74,7 +72,7 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: fileBatchWriteDefinition, executor: fileBatchWriteExecutor },
   { definition: fileSyncDefinition, executor: fileSyncExecutor },
   { definition: globDefinition, executor: globExecutor },
-  { definition: grepDefinition, executor: grepExecutor },
+  { definition: searchTextDefinition, executor: searchTextExecutor },
   { definition: listFilesDefinition, executor: listFilesExecutor },
   { definition: pythonCodeDefinition, executor: pythonCodeExecutor },
   { definition: javascriptCodeDefinition, executor: javascriptCodeExecutor },
@@ -82,7 +80,6 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: findReferencesDefinition, executor: findReferencesExecutor },
   { definition: goToDefinitionDefinition, executor: goToDefinitionExecutor },
   { definition: batchEditDefinition, executor: batchEditExecutor },
-  { definition: advancedSearchDefinition, executor: advancedSearchExecutor },
   { definition: fileBatchReadDefinition, executor: fileBatchReadExecutor },
   { definition: analyzeDataDefinition, executor: analyzeDataExecutor },
   { definition: generateChartDefinition, executor: generateChartExecutor },
