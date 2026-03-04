@@ -25,13 +25,9 @@ import {
 import { toast } from 'sonner'
 import { getMCPManager } from '@/mcp'
 import type { MCPServerConfig, MCPConnectionState } from '@/mcp/mcp-types'
+import { useT } from '@/i18n'
 
 type TransportType = 'sse' | 'streamable_http'
-
-const TRANSPORT_LABELS: Record<TransportType, string> = {
-  sse: 'SSE (Server-Sent Events)',
-  streamable_http: 'Streamable HTTP',
-}
 
 interface MCPServerItem extends MCPServerConfig {
   connectionStatus?: MCPConnectionState
@@ -65,6 +61,18 @@ const EMPTY_FORM: ServerFormData = {
 
 export function MCPSettings() {
   const mcpManager = getMCPManager()
+  const t = useT()
+  const tf = useCallback(
+    (key: string, fallback: string, params?: Record<string, string | number>) => {
+      const value = t(key, params)
+      return !value || value === key ? fallback : value
+    },
+    [t]
+  )
+  const transportLabels: Record<TransportType, string> = {
+    sse: tf('mcp.form.transport.sse', 'SSE (Server-Sent Events)'),
+    streamable_http: tf('mcp.form.transport.streamableHttp', 'Streamable HTTP'),
+  }
 
   // State
   const [servers, setServers] = useState<MCPServerItem[]>([])
@@ -99,24 +107,42 @@ export function MCPSettings() {
       setServers(serverItems)
     } catch (error) {
       console.error('[MCPSettings] Failed to load servers:', error)
-      toast.error('加载 MCP 服务器失败')
+      toast.error('Failed to load MCP servers')
     } finally {
       setLoading(false)
     }
   }, [mcpManager])
 
   const refreshConnectionStatuses = useCallback(() => {
-    setServers((prev) =>
-      prev.map((server) => {
+    setServers((prev) => {
+      let changed = false
+      const next = prev.map((server) => {
         const status = mcpManager.getConnectionStatus(server.id)
+        const nextStatus = status?.state || 'disconnected'
+        const nextTools = status?.tools?.map((t) => t.name) || []
+        const nextError = status?.error
+
+        const toolsChanged =
+          (server.tools?.length || 0) !== nextTools.length ||
+          (server.tools || []).some((name, index) => name !== nextTools[index])
+
+        if (
+          server.connectionStatus !== nextStatus ||
+          server.error !== nextError ||
+          toolsChanged
+        ) {
+          changed = true
+        }
+
         return {
           ...server,
-          connectionStatus: status?.state || 'disconnected',
-          tools: status?.tools?.map((t) => t.name) || [],
-          error: status?.error,
+          connectionStatus: nextStatus,
+          tools: nextTools,
+          error: nextError,
         }
       })
-    )
+      return changed ? next : prev
+    })
   }, [mcpManager])
 
   // Load servers on mount
@@ -131,7 +157,7 @@ export function MCPSettings() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [servers, refreshConnectionStatuses])
+  }, [refreshConnectionStatuses])
 
   // Form handling
   const openAddForm = () => {
@@ -171,27 +197,30 @@ export function MCPSettings() {
     // Validate server ID
     const validation = mcpManager.validateServerId(formData.id)
     if (formData.id && !validation.valid) {
-      errors.id = validation.error || 'Invalid server ID'
+      errors.id = validation.error || tf('mcp.validation.invalidServerId', 'Invalid server ID')
     }
 
     // Validate required fields
     if (!formData.name.trim()) {
-      errors.name = '请输入服务器名称'
+      errors.name = tf('mcp.validation.nameRequired', 'Please enter server name')
     }
     if (!formData.url.trim()) {
-      errors.url = '请输入服务器 URL'
+      errors.url = tf('mcp.validation.urlRequired', 'Please enter server URL')
     } else {
       try {
         new URL(formData.url)
       } catch {
-        errors.url = '请输入有效的 URL'
+        errors.url = tf('mcp.validation.urlInvalid', 'Please enter a valid URL')
       }
     }
 
     // Validate timeout
     const timeout = parseInt(formData.timeout)
     if (isNaN(timeout) || timeout < 1000 || timeout > 300000) {
-      errors.timeout = '超时时间应在 1000-300000ms 之间'
+      errors.timeout = tf(
+        'mcp.validation.timeoutRange',
+        'Timeout must be between 1000-300000ms'
+      )
     }
 
     setFormErrors(errors)
@@ -217,7 +246,7 @@ export function MCPSettings() {
           timeout: parseInt(formData.timeout),
           type: formData.type,
         })
-        toast.success('服务器配置已更新')
+        toast.success(tf('mcp.toast.updated', 'Server configuration updated'))
       } else {
         // Add new server
         await mcpManager.addServer({
@@ -231,31 +260,31 @@ export function MCPSettings() {
           timeout: parseInt(formData.timeout),
           type: formData.type,
         })
-        toast.success('服务器已添加')
+        toast.success(tf('mcp.toast.added', 'Server added'))
       }
 
       await loadServers()
       closeForm()
     } catch (error) {
       console.error('[MCPSettings] Failed to save server:', error)
-      toast.error(error instanceof Error ? error.message : '保存失败')
+      toast.error(error instanceof Error ? error.message : tf('mcp.toast.saveFailed', 'Save failed'))
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (serverId: string) => {
-    if (!confirm('确定要删除此 MCP 服务器吗？')) {
+    if (!confirm(tf('mcp.confirmDelete', 'Are you sure you want to delete this MCP server?'))) {
       return
     }
 
     try {
       await mcpManager.removeServer(serverId)
       await loadServers()
-      toast.success('服务器已删除')
+      toast.success(tf('mcp.toast.deleted', 'Server deleted'))
     } catch (error) {
       console.error('[MCPSettings] Failed to delete server:', error)
-      toast.error('删除失败')
+      toast.error(tf('mcp.toast.deleteFailed', 'Delete failed'))
     }
   }
 
@@ -265,7 +294,7 @@ export function MCPSettings() {
       await loadServers()
     } catch (error) {
       console.error('[MCPSettings] Failed to toggle server:', error)
-      toast.error('更新状态失败')
+      toast.error(tf('mcp.toast.updateStatusFailed', 'Failed to update status'))
     }
   }
 
@@ -299,10 +328,10 @@ export function MCPSettings() {
     }
 
     if (formData.id && servers.some((s) => s.id === formData.id && s.id !== editingServer)) {
-      return <p className="text-xs text-danger">服务器 ID 已存在</p>
+      return <p className="text-xs text-danger">{tf('mcp.validation.serverIdExists', 'Server ID already exists')}</p>
     }
 
-    return <p className="text-xs text-success">✓ ID 格式正确</p>
+    return <p className="text-xs text-success">✓ {tf('mcp.validation.serverIdValid', 'ID format is valid')}</p>
   }
 
   return (
@@ -310,13 +339,13 @@ export function MCPSettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">MCP 服务器</h3>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">管理外部 MCP 服务连接</p>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{tf('mcp.title', 'MCP Servers')}</h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">{tf('mcp.description', 'Manage external MCP service connections')}</p>
         </div>
         <button
           onClick={loadServers}
           className="text-tertiary flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:text-primary"
-          title="刷新"
+          title={tf('common.refresh', 'Refresh')}
         >
           <RefreshCw className="h-4 w-4" />
         </button>
@@ -329,7 +358,7 @@ export function MCPSettings() {
           className="hover:border-primary-300 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-secondary transition-colors hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
         >
           <Plus className="h-4 w-4" />
-          添加 MCP 服务器
+          {tf('mcp.addServer', 'Add MCP Server')}
         </button>
       )}
 
@@ -338,7 +367,7 @@ export function MCPSettings() {
         <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-              {editingServer ? '编辑服务器' : '添加服务器'}
+              {editingServer ? tf('mcp.editServer', 'Edit Server') : tf('mcp.addServer', 'Add MCP Server')}
             </h4>
             <button onClick={closeForm} className="text-tertiary hover:text-danger">
               <X className="h-4 w-4" />
@@ -348,13 +377,13 @@ export function MCPSettings() {
           <div className="space-y-3">
             {/* Server ID */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">服务器 ID *</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.serverId', 'Server ID')} *</label>
               <div className="relative">
                 <input
                   type="text"
                   value={formData.id}
                   onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                  placeholder="如: excel-analyzer"
+                  placeholder={tf('mcp.form.serverIdPlaceholder', 'e.g. excel-analyzer')}
                   className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
                     formErrors.id ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
                   }`}
@@ -363,18 +392,18 @@ export function MCPSettings() {
                 <ServerIdValidation />
               </div>
               <p className="text-tertiary text-xs">
-                用于工具调用，如: excel-analyzer:analyze_spreadsheet
+                {tf('mcp.form.serverIdHint', 'Used for tool calls, e.g. excel-analyzer:analyze_spreadsheet')}
               </p>
             </div>
 
             {/* Name */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">显示名称 *</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.displayName', 'Display Name')} *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="如: Excel 文档分析器"
+                placeholder={tf('mcp.form.displayNamePlaceholder', 'e.g. Excel Analyzer')}
                 className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
                     formErrors.name ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
                 }`}
@@ -384,19 +413,19 @@ export function MCPSettings() {
 
             {/* Description */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">描述</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.description', 'Description')}</label>
               <input
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="服务器功能描述"
+                placeholder={tf('mcp.form.descriptionPlaceholder', 'Server capability description')}
                 className="w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
               />
             </div>
 
             {/* URL */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">服务器 URL *</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.serverUrl', 'Server URL')} *</label>
               <input
                 type="text"
                 value={formData.url}
@@ -411,7 +440,7 @@ export function MCPSettings() {
 
             {/* Transport Type */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">传输类型</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.transportType', 'Transport Type')}</label>
               <select
                 value={formData.transport}
                 onChange={(e) =>
@@ -419,14 +448,16 @@ export function MCPSettings() {
                 }
                 className="w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
               >
-                <option value="sse">SSE (Server-Sent Events)</option>
-                <option value="streamable_http">Streamable HTTP (实验性)</option>
+                <option value="sse">{transportLabels.sse}</option>
+                <option value="streamable_http">
+                  {tf('mcp.form.transport.streamableHttpExperimental', 'Streamable HTTP (Experimental)')}
+                </option>
               </select>
             </div>
 
             {/* Token */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">认证 Token（可选）</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.authTokenOptional', 'Auth Token (Optional)')}</label>
               <div className="relative">
                 <input
                   type={showToken ? 'text' : 'password'}
@@ -447,7 +478,7 @@ export function MCPSettings() {
 
             {/* Timeout */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">超时时间 (ms)</label>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.timeoutMs', 'Timeout (ms)')}</label>
               <input
                 type="number"
                 value={formData.timeout}
@@ -468,7 +499,7 @@ export function MCPSettings() {
                 onClick={closeForm}
                 className="rounded-md border border-gray-200 px-4 py-2 text-sm text-secondary transition-colors hover:bg-gray-50 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:text-neutral-300"
               >
-                取消
+                {tf('common.cancel', 'Cancel')}
               </button>
               <button
                 onClick={handleSave}
@@ -478,12 +509,12 @@ export function MCPSettings() {
                 {saving ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    保存中...
+                    {tf('mcp.saving', 'Saving...')}
                   </>
                 ) : (
                   <>
                     <Check className="h-4 w-4" />
-                    {editingServer ? '更新' : '添加'}
+                    {editingServer ? tf('mcp.update', 'Update') : tf('mcp.add', 'Add')}
                   </>
                 )}
               </button>
@@ -496,8 +527,8 @@ export function MCPSettings() {
       {!loading && servers.length === 0 && !showAddForm && (
         <div className="py-8 text-center text-sm text-secondary">
           <Globe className="mx-auto mb-2 h-8 w-8 opacity-50" />
-          <p>暂无 MCP 服务器</p>
-          <p className="text-tertiary text-xs">点击上方按钮添加服务器</p>
+          <p>{tf('mcp.empty.title', 'No MCP servers')}</p>
+          <p className="text-tertiary text-xs">{tf('mcp.empty.hint', 'Click the button above to add a server')}</p>
         </div>
       )}
 
@@ -528,7 +559,7 @@ export function MCPSettings() {
                         ? 'bg-success/10 text-success hover:bg-success/20'
                         : 'bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-neutral-800 dark:text-neutral-500 dark:hover:bg-neutral-700'
                     }`}
-                    title={server.enabled ? '点击禁用' : '点击启用'}
+                    title={server.enabled ? tf('mcp.actions.clickToDisable', 'Click to disable') : tf('mcp.actions.clickToEnable', 'Click to enable')}
                   >
                     <Power
                       className="h-3.5 w-3.5"
@@ -547,12 +578,12 @@ export function MCPSettings() {
                     </h4>
                     {server.type === 'builtin' && (
                       <span className="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                        内置
+                        {tf('mcp.badge.builtin', 'Builtin')}
                       </span>
                     )}
                     {!server.enabled && (
                       <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-neutral-700 dark:text-neutral-300">
-                        已禁用
+                        {tf('mcp.badge.disabled', 'Disabled')}
                       </span>
                     )}
                   </div>
@@ -569,9 +600,9 @@ export function MCPSettings() {
 
                     {/* Connection details */}
                     <div className="text-tertiary flex items-center gap-3 text-xs">
-                      <span>{TRANSPORT_LABELS[server.transport as TransportType]}</span>
+                      <span>{transportLabels[server.transport as TransportType]}</span>
                       {server.tools && server.tools.length > 0 && (
-                        <span>• {server.tools.length} 个工具</span>
+                        <span>• {tf('mcp.toolsCount', '{count} tool(s)', { count: server.tools.length })}</span>
                       )}
                       {server.error && <span className="text-danger">• {server.error}</span>}
                     </div>
@@ -584,7 +615,7 @@ export function MCPSettings() {
                   <button
                     onClick={() => openEditForm(server)}
                     className="text-tertiary flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-gray-100 hover:text-primary dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-                    title="编辑配置"
+                    title={tf('mcp.actions.editConfig', 'Edit configuration')}
                   >
                     <Edit className="h-4 w-4" />
                   </button>
@@ -593,7 +624,7 @@ export function MCPSettings() {
                   <button
                     onClick={() => handleDelete(server.id)}
                     className="text-tertiary flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-danger/10 hover:text-danger"
-                    title="删除服务器"
+                    title={tf('mcp.actions.deleteServer', 'Delete server')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
