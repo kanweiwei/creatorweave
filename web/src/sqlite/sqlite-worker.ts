@@ -182,7 +182,7 @@ async function handleRecover() {
         console.log(`[SQLite Worker] ${recoverId}: Reusing existing poolUtil`)
       }
       // Use OpfsSAHPoolDb to reopen the database
-      db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'ct')
+      db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'c')
       dbMode = 'opfs'
 
       // Verify connection works
@@ -292,9 +292,9 @@ async function handleInit(reportProgress = false, _id: string = 'init') {
       poolUtil = await sqlite3.installOpfsSAHPoolVfs(POOL_CONFIG)
 
       // Use the OpfsSAHPoolDb constructor from poolUtil
-      // 'ct' flag = create-if-not-exists, truncate-if-does (opens existing or creates new)
+      // 'c' flag = create-if-not-exists (opens existing or creates new, never truncates)
       // @ts-ignore - OpfsSAHPoolDb types are incomplete
-      db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'ct')
+      db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'c')
       dbMode = 'opfs'
 
       // Check if database was newly created or opened existing
@@ -424,7 +424,7 @@ function handleQueryAll(sql: string, params: unknown[]): unknown[] {
     // Try to reconnect using opfs-sahpool
     if (poolUtil) {
       try {
-        db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'ct')
+        db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'c')
         dbMode = 'opfs'
       } catch (reconnectError) {
         console.error('[SQLite Worker] Reconnection failed:', reconnectError)
@@ -481,7 +481,7 @@ function handleExecute(sql: string, params: unknown[]): void {
     // Try to reconnect using opfs-sahpool
     if (poolUtil) {
       try {
-        db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'ct')
+        db = new poolUtil.OpfsSAHPoolDb(DB_NAME, 'c')
         dbMode = 'opfs'
       } catch (reconnectError) {
         console.error('[SQLite Worker] Reconnection failed:', reconnectError)
