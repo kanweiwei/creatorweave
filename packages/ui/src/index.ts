@@ -24,7 +24,22 @@ export * from './components/brand'
 // - Card, Separator, Tabs, Accordion, Collapsible
 // - Dialog, Sheet, Popover, Alert, Progress, Skeleton, Badge, Avatar
 // - Toaster, toast
-// - DropdownMenu, ContextMenu, NavigationMenu, Tooltip, HoverCard
+// - ContextMenu, NavigationMenu, Tooltip, HoverCard
 //
 // If you need these base components, use shadcn/ui directly or
 // consume them through our Brand components.
+
+// DropdownMenu - exported for project management features
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+} from './components/ui/dropdown-menu'

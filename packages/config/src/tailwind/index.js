@@ -174,6 +174,13 @@ export function createBaseConfig(options = {}) {
       'accordion-down': 'accordion-down 0.2s ease-out',
       'accordion-up': 'accordion-up 0.2s ease-out',
     },
+    zIndex: {
+      base: 'var(--z-base, 0)',
+      dropdown: 'var(--z-dropdown, 100)',
+      overlay: 'var(--z-overlay, 1000)',
+      modal: 'var(--z-modal, 1001)',
+      tooltip: 'var(--z-tooltip, 9998)',
+    },
   }
 
   // Merge user's theme.extend with base extend

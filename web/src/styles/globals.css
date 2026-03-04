@@ -28,6 +28,10 @@
     --destructive: 15 74% 57%; /* #E07B54 */
     --destructive-foreground: 0 0% 100%;
 
+    /* ========== Z-Index Layers ========== */
+    --z-overlay: 1000;
+    --z-modal: 1001;
+
     --border: 0 0% 90%; /* #E5E5E5 */
     --input: 0 0% 90%;
     --ring: 174 72% 56%; /* Teal */
