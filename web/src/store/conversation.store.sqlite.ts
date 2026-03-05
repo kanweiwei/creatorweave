@@ -32,7 +32,7 @@ import { StreamingQueue } from '../utils/streaming-queue'
 // Enable Immer Map/Set support
 enableMapSet()
 import { AgentLoop } from '@/agent/agent-loop'
-import { GLMProvider } from '@/agent/llm/glm-provider'
+import { createLLMProvider } from '@/agent/llm/provider-factory'
 import { ContextManager } from '@/agent/context-manager'
 import { getToolRegistry } from '@/agent/tool-registry'
 import { getApiKeyRepository } from '@/sqlite'
@@ -532,8 +532,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           return
         }
 
-        const provider = new GLMProvider({
+        const provider = createLLMProvider({
           apiKey,
+          providerType,
           baseUrl: providerConfig.baseUrl,
           model: providerConfig.modelName,
         })

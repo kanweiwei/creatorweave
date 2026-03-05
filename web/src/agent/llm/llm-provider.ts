@@ -69,6 +69,8 @@ export interface ChatCompletionChunk {
       content?: string | null
       /** Chain-of-thought reasoning content (GLM-4.7+ specific) */
       reasoning_content?: string | null
+      /** Optional generic reasoning field for non-GLM providers */
+      reasoning?: string | null
       tool_calls?: Array<{
         index: number
         id?: string

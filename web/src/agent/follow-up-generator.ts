@@ -5,7 +5,7 @@
  * Reuses the user's API key but with an internal flash model config.
  */
 
-import { GLMProvider } from './llm/glm-provider'
+import { createLLMProvider } from './llm/provider-factory'
 import type { Message } from './message-types'
 import type { LLMProviderType } from '@/agent/providers/types'
 
@@ -141,8 +141,9 @@ export async function generateFollowUp(
     }
 
     // Create provider with flash model config
-    const provider = new GLMProvider({
+    const provider = createLLMProvider({
       apiKey,
+      providerType,
       baseUrl: config.baseURL,
       model: config.model,
     })

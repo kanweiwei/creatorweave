@@ -34,6 +34,7 @@ import { triggerPrefetch } from './prefetch'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
+const DEFAULT_TOOL_TIMEOUT = 30000
 
 export interface AgentCallbacks {
   /** Called when a new assistant message starts */
@@ -75,6 +76,8 @@ export interface AgentCallbacks {
     serverId: string
     toolCallId: string
   }) => void
+  /** Called when a tool execution times out */
+  onToolTimeout?: (toolCall: ToolCall) => void
 }
 
 export interface AgentLoopConfig {
@@ -88,6 +91,8 @@ export interface AgentLoopConfig {
   sessionId?: string
   /** Callback when loop completes (before onComplete) - for side effects like refresh */
   onLoopComplete?: () => Promise<void>
+  /** Tool execution timeout in milliseconds (default: 30000ms) */
+  toolExecutionTimeout?: number
 }
 
 export class AgentLoop {
@@ -100,6 +105,7 @@ export class AgentLoop {
   private abortController: AbortController | null = null
   private sessionId?: string
   private onLoopComplete?: () => Promise<void>
+  private toolExecutionTimeout: number
 
   constructor(config: AgentLoopConfig) {
     this.provider = config.provider
@@ -110,6 +116,7 @@ export class AgentLoop {
     this.baseSystemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT
     this.sessionId = config.sessionId
     this.onLoopComplete = config.onLoopComplete
+    this.toolExecutionTimeout = config.toolExecutionTimeout || DEFAULT_TOOL_TIMEOUT
     this.contextManager.setSystemPrompt(this.baseSystemPrompt)
   }
 
@@ -259,6 +266,22 @@ export class AgentLoop {
     })
   }
 
+  /** Execute tool with timeout protection to prevent hanging loops */
+  private async executeToolWithTimeout(
+    toolName: string,
+    args: Record<string, unknown>,
+    timeoutMs: number
+  ): Promise<string> {
+    return Promise.race([
+      this.toolRegistry.execute(toolName, args, this.toolContext),
+      new Promise<string>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Tool "${toolName}" timed out after ${timeoutMs}ms`))
+        }, timeoutMs)
+      }),
+    ])
+  }
+
   /**
    * Run the agent loop with a list of messages.
    * Appends new assistant/tool messages and returns the full updated list.
@@ -316,15 +339,16 @@ export class AgentLoop {
           const choice = chunk.choices[0]
           if (!choice) continue
 
-          // --- Reasoning phase (GLM-4.7+ chain-of-thought) ---
-          if (choice.delta.reasoning_content) {
+          // --- Reasoning phase ---
+          const reasoningDelta = choice.delta.reasoning_content ?? choice.delta.reasoning
+          if (reasoningDelta) {
             // First reasoning delta → reasoning phase starts
             if (!reasoningPhaseStarted) {
               reasoningPhaseStarted = true
               callbacks?.onReasoningStart?.()
             }
-            reasoning += choice.delta.reasoning_content
-            callbacks?.onReasoningDelta?.(choice.delta.reasoning_content)
+            reasoning += reasoningDelta
+            callbacks?.onReasoningDelta?.(reasoningDelta)
           }
 
           // --- Content phase ---
@@ -439,6 +463,8 @@ export class AgentLoop {
         for (const tc of toolCalls) {
           if (signal.aborted) break
 
+          callbacks?.onToolCallStart?.(tc)
+
           let args: Record<string, unknown>
           try {
             args = JSON.parse(tc.function.arguments)
@@ -447,7 +473,11 @@ export class AgentLoop {
           }
 
           try {
-            const result = await this.toolRegistry.execute(tc.function.name, args, this.toolContext)
+            const result = await this.executeToolWithTimeout(
+              tc.function.name,
+              args,
+              this.toolExecutionTimeout
+            )
 
             // SEP-1306: Check for binary elicitation in tool result
             let elicitationData: {
@@ -513,6 +543,9 @@ export class AgentLoop {
             callbacks?.onMessagesUpdated?.(allMessages)
             callbacks?.onToolCallComplete?.(tc, result)
           } catch (toolError) {
+            if (toolError instanceof Error && toolError.message.includes('timed out')) {
+              callbacks?.onToolTimeout?.(tc)
+            }
             console.error(`[AgentLoop] Tool ${tc.function.name} failed:`, toolError)
             const errorMsg = toolError instanceof Error ? toolError.message : String(toolError)
             const toolResult: ToolResult = {
