@@ -33,6 +33,14 @@ export class PiAIProvider implements LLMProvider {
     this.maxContextTokens = this.model.contextWindow || MAX_CONTEXT_TOKENS
   }
 
+  getModel(): Model<Api> {
+    return this.model
+  }
+
+  getApiKey(): string {
+    return this.apiKey
+  }
+
   async chat(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
     const context = this.toPiAIContext(request)
     const message = await complete(this.model, context, {

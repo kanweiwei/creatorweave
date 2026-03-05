@@ -30,6 +30,7 @@
     "@browser-fs-analyzer/i18n": "workspace:*",
     "@browser-fs-analyzer/ui": "workspace:*",
     "@iconify/react": "^6.0.2",
+    "@mariozechner/pi-agent-core": "^0.56.1",
     "@mariozechner/pi-ai": "^0.56.0",
     "@mozilla/readability": "^0.6.0",
     "@sqlite.org/sqlite-wasm": "3.51.2-build6",

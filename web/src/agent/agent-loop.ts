@@ -31,6 +31,17 @@ import {
 import { getIntelligenceCoordinator } from './intelligence-coordinator'
 // Phase 2 P1: Predictive file loading
 import { triggerPrefetch } from './prefetch'
+import { agentLoopContinue, type AgentTool } from '@mariozechner/pi-agent-core'
+import type {
+  AgentEvent as PiAgentEvent,
+  AgentMessage as PiAgentMessage,
+} from '@mariozechner/pi-agent-core'
+import type {
+  AssistantMessageEvent as PiAssistantMessageEvent,
+  Message as PiMessage,
+  ToolResultMessage as PiToolResultMessage,
+} from '@mariozechner/pi-ai'
+import { PiAIProvider } from './llm/pi-ai-provider'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
@@ -282,6 +293,378 @@ export class AgentLoop {
     ])
   }
 
+  private isPiProvider(provider: LLMProvider): provider is PiAIProvider {
+    return provider instanceof PiAIProvider
+  }
+
+  private parseToolArgs(args: string): Record<string, unknown> {
+    try {
+      return JSON.parse(args)
+    } catch {
+      return {}
+    }
+  }
+
+  private extractTextContent(content: unknown): string | null {
+    if (typeof content === 'string') return content
+    if (!Array.isArray(content)) return null
+
+    const text = content
+      .filter((item): item is { type: string; text?: string; thinking?: string } => !!item)
+      .map((item) => {
+        if (item.type === 'text') return item.text || ''
+        if (item.type === 'thinking') return item.thinking || ''
+        return ''
+      })
+      .join('')
+    return text || null
+  }
+
+  private internalToPiMessages(messages: Message[]): PiMessage[] {
+    return messages.flatMap((msg): PiMessage[] => {
+      if (msg.role === 'user') {
+        return [
+          {
+            role: 'user',
+            content: msg.content || '',
+            timestamp: msg.timestamp || Date.now(),
+          },
+        ]
+      }
+
+      if (msg.role === 'assistant') {
+        const content: Array<
+          | { type: 'text'; text: string }
+          | { type: 'thinking'; thinking: string }
+          | { type: 'toolCall'; id: string; name: string; arguments: Record<string, unknown> }
+        > = []
+
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content })
+        }
+        if (msg.reasoning) {
+          content.push({ type: 'thinking', thinking: msg.reasoning })
+        }
+        for (const toolCall of msg.toolCalls || []) {
+          content.push({
+            type: 'toolCall',
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: this.parseToolArgs(toolCall.function.arguments),
+          })
+        }
+
+        return [
+          {
+            role: 'assistant',
+            content,
+            api: this.isPiProvider(this.provider) ? this.provider.getModel().api : 'openai-completions',
+            provider: this.isPiProvider(this.provider)
+              ? this.provider.getModel().provider
+              : 'custom',
+            model: this.isPiProvider(this.provider) ? this.provider.getModel().id : 'unknown',
+            usage: {
+              input: msg.usage?.promptTokens ?? 0,
+              output: msg.usage?.completionTokens ?? 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: msg.usage?.totalTokens ?? 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: 'stop',
+            timestamp: msg.timestamp || Date.now(),
+          },
+        ]
+      }
+
+      if (msg.role === 'tool') {
+        return [
+          {
+            role: 'toolResult',
+            toolCallId: msg.toolCallId || '',
+            toolName: msg.name || 'tool',
+            content: [{ type: 'text', text: msg.content || '' }],
+            isError: msg.content?.startsWith('Error:') ?? false,
+            timestamp: msg.timestamp || Date.now(),
+          },
+        ]
+      }
+
+      return []
+    })
+  }
+
+  private piToInternalMessage(message: PiAgentMessage): Message | null {
+    const now = Date.now()
+    if (typeof message !== 'object' || !message || !('role' in message)) return null
+
+    if (message.role === 'user') {
+      return {
+        id: `${now}-${Math.random().toString(36).slice(2, 9)}`,
+        role: 'user',
+        content: this.extractTextContent(message.content),
+        timestamp: message.timestamp || now,
+      }
+    }
+
+    if (message.role === 'assistant') {
+      const text = message.content
+        .filter((item) => !!item)
+        .filter((item) => item.type === 'text')
+        .map((item) => ('text' in item ? item.text || '' : ''))
+        .join('')
+      const reasoning = message.content
+        .filter((item) => !!item)
+        .filter((item) => item.type === 'thinking')
+        .map((item) => ('thinking' in item ? item.thinking || '' : ''))
+        .join('')
+      const toolCalls: ToolCall[] = message.content
+        .filter(
+          (item): item is { type: 'toolCall'; id: string; name: string; arguments: Record<string, unknown> } =>
+            item.type === 'toolCall'
+        )
+        .map((item) => ({
+          id: item.id,
+          type: 'function',
+          function: {
+            name: item.name,
+            arguments: JSON.stringify(item.arguments || {}),
+          },
+        }))
+
+      return createAssistantMessage(
+        text || null,
+        toolCalls.length > 0 ? toolCalls : undefined,
+        {
+          promptTokens: message.usage?.input || 0,
+          completionTokens: message.usage?.output || 0,
+          totalTokens: message.usage?.totalTokens || 0,
+        },
+        reasoning || null
+      )
+    }
+
+    if (message.role === 'toolResult') {
+      const text = this.extractTextContent(message.content) || ''
+      return createToolMessage({
+        toolCallId: message.toolCallId,
+        name: message.toolName,
+        content: text,
+      })
+    }
+
+    return null
+  }
+
+  private applyPiAssistantUpdate(event: PiAssistantMessageEvent, callbacks?: AgentCallbacks): void {
+    if (event.type === 'thinking_start') callbacks?.onReasoningStart?.()
+    if (event.type === 'thinking_delta') callbacks?.onReasoningDelta?.(event.delta)
+    if (event.type === 'thinking_end') callbacks?.onReasoningComplete?.(event.content)
+    if (event.type === 'text_start') callbacks?.onContentStart?.()
+    if (event.type === 'text_delta') callbacks?.onContentDelta?.(event.delta)
+    if (event.type === 'text_end') callbacks?.onContentComplete?.(event.content)
+
+    if (event.type === 'toolcall_start') {
+      const partial = event.partial.content[event.contentIndex]
+      if (partial?.type === 'toolCall') {
+        callbacks?.onToolCallStart?.({
+          id: partial.id,
+          type: 'function',
+          function: { name: partial.name, arguments: JSON.stringify(partial.arguments || {}) },
+        })
+      }
+    }
+    if (event.type === 'toolcall_delta') {
+      callbacks?.onToolCallDelta?.(event.contentIndex, event.delta)
+    }
+  }
+
+  private async runWithPiAgentCore(
+    messages: Message[],
+    callbacks?: AgentCallbacks
+  ): Promise<Message[]> {
+    if (!this.isPiProvider(this.provider)) {
+      return messages
+    }
+
+    const signal = this.abortController?.signal
+    if (!signal) return messages
+
+    let allMessages = messages
+    let shouldStopForElicitation = false
+    const model = this.provider.getModel()
+    const apiKey = this.provider.getApiKey()
+
+    const agentTools: AgentTool[] = this.toolRegistry.getToolDefinitions().map((toolDef) => ({
+      name: toolDef.function.name,
+      label: toolDef.function.name,
+      description: toolDef.function.description || '',
+      parameters: toolDef.function.parameters as never,
+      execute: async (toolCallId, params) => {
+        const args = (params || {}) as Record<string, unknown>
+        const toolCall: ToolCall = {
+          id: toolCallId,
+          type: 'function',
+          function: {
+            name: toolDef.function.name,
+            arguments: JSON.stringify(args),
+          },
+        }
+
+        try {
+          const result = await this.executeToolWithTimeout(
+            toolDef.function.name,
+            args,
+            this.toolExecutionTimeout
+          )
+
+          let elicitationData: {
+            mode: 'binary'
+            message: string
+            toolName: string
+            args: Record<string, unknown>
+            serverId: string
+          } | null = null
+          try {
+            const parsedResult = JSON.parse(result)
+            if (parsedResult._elicitation?.mode === 'binary') {
+              elicitationData = parsedResult._elicitation
+            }
+          } catch {
+            // non-json tool output
+          }
+
+          if (elicitationData && callbacks?.onElicitation) {
+            shouldStopForElicitation = true
+            callbacks.onElicitation({
+              ...elicitationData,
+              toolCallId,
+            })
+            this.abortController?.abort()
+          }
+
+          if (toolDef.function.name === 'run_python_code' && result) {
+            try {
+              const parsedResult = JSON.parse(result)
+              if (parsedResult.fileChanges) {
+                const { useWorkspaceStore } = await import('@/store/workspace.store')
+                useWorkspaceStore.getState().addChanges(parsedResult.fileChanges)
+              }
+            } catch {
+              // ignore non-json outputs
+            }
+          }
+
+          return {
+            content: [{ type: 'text', text: result }],
+            details: { raw: result },
+          }
+        } catch (toolError) {
+          if (toolError instanceof Error && toolError.message.includes('timed out')) {
+            callbacks?.onToolTimeout?.(toolCall)
+          }
+          throw toolError
+        }
+      },
+    }))
+
+    const context = {
+      systemPrompt: this.contextManager.getConfig().systemPrompt || this.baseSystemPrompt,
+      messages: this.internalToPiMessages(messages),
+      tools: agentTools,
+    }
+
+    const loop = agentLoopContinue(
+      context,
+      {
+        model,
+        getApiKey: () => apiKey,
+        maxTokens: model.maxTokens,
+        convertToLlm: async (agentMessages) => {
+          const internalMessages = agentMessages
+            .map((m) => this.piToInternalMessage(m))
+            .filter((m): m is Message => m !== null)
+          const trimmed = this.contextManager.trimMessages(messagesToChatMessages(internalMessages)).messages
+          return this.internalToPiMessages(
+            trimmed.map((msg) => ({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              role: msg.role,
+              content: msg.content,
+              toolCalls: msg.tool_calls?.map((tc) => ({
+                id: tc.id,
+                type: 'function',
+                function: { name: tc.function.name, arguments: tc.function.arguments },
+              })),
+              toolCallId: msg.tool_call_id,
+              name: msg.name,
+              timestamp: Date.now(),
+            }))
+          )
+        },
+      },
+      signal
+    )
+
+    callbacks?.onMessageStart?.()
+    for await (const event of loop) {
+      const typedEvent = event as PiAgentEvent
+      if (typedEvent.type === 'message_update') {
+        this.applyPiAssistantUpdate(typedEvent.assistantMessageEvent, callbacks)
+      }
+
+      if (typedEvent.type === 'tool_execution_start') {
+        callbacks?.onToolCallStart?.({
+          id: typedEvent.toolCallId,
+          type: 'function',
+          function: {
+            name: typedEvent.toolName,
+            arguments: JSON.stringify(typedEvent.args || {}),
+          },
+        })
+      }
+
+      if (typedEvent.type === 'tool_execution_end') {
+        const resultText = this.extractTextContent((typedEvent.result as PiToolResultMessage)?.content) || ''
+        callbacks?.onToolCallComplete?.(
+          {
+            id: typedEvent.toolCallId,
+            type: 'function',
+            function: {
+              name: typedEvent.toolName,
+              arguments: '{}',
+            },
+          },
+          resultText
+        )
+      }
+
+      if (typedEvent.type === 'message_end') {
+        const mapped = this.piToInternalMessage(typedEvent.message)
+        if (!mapped || mapped.role === 'user') continue
+        allMessages = produce(allMessages, (draft) => {
+          draft.push(mapped)
+        })
+        callbacks?.onMessagesUpdated?.(allMessages)
+      }
+    }
+
+    if (shouldStopForElicitation) {
+      callbacks?.onComplete?.(allMessages)
+      return allMessages
+    }
+
+    if (this.onLoopComplete) {
+      try {
+        await this.onLoopComplete()
+      } catch (error) {
+        console.warn('[AgentLoop] onLoopComplete callback failed:', error)
+      }
+    }
+
+    callbacks?.onComplete?.(allMessages)
+    return allMessages
+  }
+
   /**
    * Run the agent loop with a list of messages.
    * Appends new assistant/tool messages and returns the full updated list.
@@ -297,6 +680,22 @@ export class AgentLoop {
 
     // Inject matching skills and MCP services into system prompt
     await this.injectEnhancements(messages)
+
+    if (this.isPiProvider(this.provider)) {
+      try {
+        return await this.runWithPiAgentCore(messages, callbacks)
+      } catch (error) {
+        if (signal.aborted) {
+          callbacks?.onComplete?.(messages)
+          return messages
+        }
+        const err = error instanceof Error ? error : new Error(String(error))
+        callbacks?.onError?.(err)
+        throw err
+      } finally {
+        this.abortController = null
+      }
+    }
 
     try {
       for (let iteration = 0; iteration < this.maxIterations; iteration++) {
