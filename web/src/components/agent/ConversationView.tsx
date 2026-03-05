@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, MessageSquare, Bot } from 'lucide-react'
+import { Send, StopCircle, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
@@ -424,31 +424,6 @@ export function ConversationView({
                     runtimeToolCalls={activeConversation?.draftAssistant?.toolCalls}
                     runtimeSteps={activeConversation?.draftAssistant?.steps}
                   />
-                )}
-
-                {/* Pending indicator - show when waiting for response and no assistant turn yet */}
-                {isProcessing && status === 'pending' && !hasAssistantTurn && (
-                  <div className="flex gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
-                      <Bot className="h-4 w-4" />
-                    </div>
-                    <div className="inline-block rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-neutral-500 shadow-sm">
-                      <span className="flex items-center gap-1">
-                        <span
-                          className="h-2 w-2 animate-bounce rounded-full bg-primary-500"
-                          style={{ animationDelay: '0ms' }}
-                        />
-                        <span
-                          className="h-2 w-2 animate-bounce rounded-full bg-primary-500"
-                          style={{ animationDelay: '160ms' }}
-                        />
-                        <span
-                          className="h-2 w-2 animate-bounce rounded-full bg-primary-500"
-                          style={{ animationDelay: '320ms' }}
-                        />
-                      </span>
-                    </div>
-                  </div>
                 )}
 
                 <div ref={messagesEndRef} />
