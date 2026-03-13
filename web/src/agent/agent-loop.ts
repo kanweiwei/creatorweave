@@ -490,6 +490,7 @@ export class AgentLoop {
     let shouldStopForElicitation = false
     let assistantMessageCount = 0
     let reachedMaxIterations = false
+    let assistantMessageStarted = false
     const startedToolCalls = new Set<string>()
     const toolCallArgsById = new Map<string, Record<string, unknown>>()
     const pendingToolCompletions = new Map<string, { toolCall: ToolCall; resultText: string }>()
@@ -610,10 +611,15 @@ export class AgentLoop {
       for await (const event of loop) {
         const typedEvent = event as PiAgentEvent
         if (typedEvent.type === 'message_start' && typedEvent.message.role === 'assistant') {
+          assistantMessageStarted = true
           callbacks?.onMessageStart?.()
         }
 
         if (typedEvent.type === 'message_update') {
+          if (!assistantMessageStarted) {
+            assistantMessageStarted = true
+            callbacks?.onMessageStart?.()
+          }
           this.applyPiAssistantUpdate(typedEvent.assistantMessageEvent, callbacks, (toolCall) => {
             if (startedToolCalls.has(toolCall.id)) return
             startedToolCalls.add(toolCall.id)
@@ -655,6 +661,9 @@ export class AgentLoop {
         if (typedEvent.type === 'message_end') {
           const mapped = this.piToInternalMessage(typedEvent.message)
           if (!mapped || mapped.role === 'user') continue
+          if (mapped.role === 'assistant') {
+            assistantMessageStarted = false
+          }
           if (mapped.role === 'assistant') {
             assistantMessageCount++
             if (assistantMessageCount > this.maxIterations) {

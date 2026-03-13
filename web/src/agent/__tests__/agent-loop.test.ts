@@ -203,6 +203,28 @@ describe('AgentLoop', () => {
       expect(result.filter((m) => m.role === 'assistant')).toHaveLength(2)
     })
 
+    it('should fallback to onMessageStart when message_update arrives before message_start', async () => {
+      mockAgentLoopContinue.mockImplementation(() => {
+        return (async function* () {
+          yield { type: 'message_update', assistantMessageEvent: { type: 'text_start' } }
+          yield { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Hello' } }
+          yield { type: 'message_end', message: assistantMessage('Hello') }
+        })()
+      })
+
+      const loop = new AgentLoop({
+        provider: mockProvider,
+        toolRegistry: mockTools,
+        contextManager: mockContextManager,
+        toolContext: createMockToolContext(),
+      })
+
+      const callbacks = { onMessageStart: vi.fn() }
+      const result = await loop.run([createUserMessage('test')], callbacks)
+      expect(callbacks.onMessageStart).toHaveBeenCalledOnce()
+      expect(result[result.length - 1].content).toBe('Hello')
+    })
+
     it('should handle empty assistant content', async () => {
       mockAgentLoopContinue.mockImplementation(() => {
         return (async function* () {
