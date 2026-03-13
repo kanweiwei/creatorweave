@@ -38,13 +38,13 @@
   --transition-slow: 300ms ease;
 
   /* === Z-Index === */
-  --z-dropdown: 100;
-  --z-sticky: 200;
-  --z-fixed: 300;
-  --z-modal-backdrop: 400;
-  --z-modal: 500;
-  --z-popover: 600;
-  --z-tooltip: 700;
+  --z-plugin-dropdown: 100;
+  --z-plugin-sticky: 200;
+  --z-plugin-fixed: 300;
+  --z-plugin-modal-backdrop: 400;
+  --z-plugin-modal: 500;
+  --z-plugin-popover: 600;
+  --z-plugin-tooltip: 700;
 }
 
 /* ==========================================================================

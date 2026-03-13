@@ -65,7 +65,7 @@ export function PluginDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[var(--z-modal-backdrop)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-plugin-modal-backdrop, 400)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={() => onClose(false)}
     >
       <div
