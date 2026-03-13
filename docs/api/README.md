@@ -1,6 +1,6 @@
 # API Documentation
 
-Complete API reference for CreatorWeave.
+Complete API reference for AI Workspace.
 
 ## Stores (Zustand)
 

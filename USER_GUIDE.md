@@ -1,4 +1,4 @@
-# CreatorWeave - User Guide
+# AI Workspace - User Guide
 
 ## Table of Contents
 

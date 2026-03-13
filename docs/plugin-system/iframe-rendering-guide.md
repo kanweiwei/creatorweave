@@ -27,12 +27,12 @@
 #[wasm_bindgen]
 pub fn finalize(outputs_json: String) -> String {
     let html = r#"
-        <div class="creatorweave-card">
+        <div class="plugin-card">
             <h3>Results</h3>
-            <div class="creatorweave-metrics">
-                <div class="creatorweave-metric">
-                    <div class="creatorweave-metric-label">Files</div>
-                    <div class="creatorweave-metric-value">42</div>
+            <div class="plugin-metrics">
+                <div class="plugin-metric">
+                    <div class="plugin-metric-label">Files</div>
+                    <div class="plugin-metric-value">42</div>
                 </div>
             </div>
         </div>
@@ -82,27 +82,27 @@ function MyComponent() {
 
 ```html
 <!-- 卡片 -->
-<div class="creatorweave-card">Content</div>
+<div class="plugin-card">Content</div>
 
 <!-- 指标网格 -->
-<div class="creatorweave-metrics">
-  <div class="creatorweave-metric">...</div>
+<div class="plugin-metrics">
+  <div class="plugin-metric">...</div>
 </div>
 ```
 
 ### 指标
 
 ```html
-<div class="creatorweave-metric">
-  <div class="creatorweave-metric-label">Label</div>
-  <div class="creatorweave-metric-value">Value</div>
+<div class="plugin-metric">
+  <div class="plugin-metric-label">Label</div>
+  <div class="plugin-metric-value">Value</div>
 </div>
 ```
 
 ### 表格
 
 ```html
-<table class="creatorweave-table">
+<table class="plugin-table">
   <thead>
     <tr>
       <th>Column 1</th>
@@ -121,44 +121,44 @@ function MyComponent() {
 ### 徽章
 
 ```html
-<span class="creatorweave-badge creatorweave-badge-success">Success</span>
-<span class="creatorweave-badge creatorweave-badge-warning">Warning</span>
-<span class="creatorweave-badge creatorweave-badge-error">Error</span>
-<span class="creatorweave-badge creatorweave-badge-info">Info</span>
+<span class="plugin-badge plugin-badge-success">Success</span>
+<span class="plugin-badge plugin-badge-warning">Warning</span>
+<span class="plugin-badge plugin-badge-error">Error</span>
+<span class="plugin-badge plugin-badge-info">Info</span>
 ```
 
 ### 按钮
 
 ```html
-<button class="creatorweave-btn creatorweave-btn-primary">Primary</button>
-<button class="creatorweave-btn creatorweave-btn-secondary">Secondary</button>
+<button class="plugin-btn plugin-btn-primary">Primary</button>
+<button class="plugin-btn plugin-btn-secondary">Secondary</button>
 ```
 
 ### 进度条
 
 ```html
-<div class="creatorweave-progress">
-  <div class="creatorweave-progress-bar" style="width: 75%"></div>
+<div class="plugin-progress">
+  <div class="plugin-progress-bar" style="width: 75%"></div>
 </div>
 ```
 
 ### 标签页
 
 ```html
-<div class="creatorweave-tabs">
-  <button class="creatorweave-tab active">Tab 1</button>
-  <button class="creatorweave-tab">Tab 2</button>
+<div class="plugin-tabs">
+  <button class="plugin-tab active">Tab 1</button>
+  <button class="plugin-tab">Tab 2</button>
 </div>
 ```
 
 ### 手风琴
 
 ```html
-<div class="creatorweave-accordion-item">
-  <button class="creatorweave-accordion-header">
+<div class="plugin-accordion-item">
+  <button class="plugin-accordion-header">
     Title
   </button>
-  <div class="creatorweave-accordion-content">
+  <div class="plugin-accordion-content">
     Content
   </div>
 </div>

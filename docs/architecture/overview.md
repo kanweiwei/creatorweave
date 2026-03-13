@@ -1,4 +1,4 @@
-# CreatorWeave 架构总览
+# AI Workspace 架构总览
 
 > 本文档基于当前仓库代码（`master`）整理，目标是给开发者一个可执行的系统地图：模块边界、关键数据流、启动路径、以及排障入口。
 
@@ -81,7 +81,7 @@
 3. `PluginResultAggregator` 聚合多插件结果。
 4. `PluginMonitorService` 做资源监控和违规记录。
 5. `PluginStreamService` 面向大文件分块处理。
-6. UI 渲染由 `PluginResultRenderer` 与 CreatorWeave Plugin API（`CreatorWeavePluginAPI`）承接。
+6. UI 渲染由 `PluginResultRenderer` 与 Plugin API（`PluginHostAPI`）承接。
 
 ### 5.3 Python（Pyodide）
 

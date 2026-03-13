@@ -28,7 +28,7 @@
           "id": "lWQvE",
           "name": "subtitle",
           "fill": "#9CA3AF",
-          "content": "CreatorWeave Application Design System — Vibrant Editorial Fusion / Teal Cyan",
+          "content": "AI Workspace Application Design System — Vibrant Editorial Fusion / Teal Cyan",
           "fontFamily": "JetBrains Mono",
           "fontSize": 12,
           "fontWeight": "500",
@@ -1479,7 +1479,7 @@
           "id": "0srxt",
           "name": "dsubtitle",
           "fill": "#525252",
-          "content": "CreatorWeave Application Design System — Vibrant Editorial Fusion / Teal Cyan",
+          "content": "AI Workspace Application Design System — Vibrant Editorial Fusion / Teal Cyan",
           "fontFamily": "JetBrains Mono",
           "fontSize": 12,
           "fontWeight": "500",
@@ -3009,7 +3009,7 @@
                       "id": "n3Lqm",
                       "name": "brandText1",
                       "fill": "$text-primary",
-                      "content": "CreatorWeave",
+                      "content": "AI Workspace",
                       "fontFamily": "Inter",
                       "fontSize": 15,
                       "fontWeight": "600"
@@ -3285,7 +3285,7 @@
                           "id": "XwEMr",
                           "name": "brandText2",
                           "fill": "$text-primary",
-                          "content": "CreatorWeave",
+                          "content": "AI Workspace",
                           "fontFamily": "Inter",
                           "fontSize": 15,
                           "fontWeight": "600"
@@ -12926,7 +12926,7 @@
                   "id": "SLRkB",
                   "name": "brand",
                   "fill": "$text-primary",
-                  "content": "CreatorWeave",
+                  "content": "AI Workspace",
                   "fontFamily": "Newsreader",
                   "fontSize": 16,
                   "fontWeight": "500"
@@ -13839,7 +13839,7 @@
                       "id": "4cNtf",
                       "name": "titleTxt",
                       "fill": "$text-primary",
-                      "content": "CreatorWeave",
+                      "content": "AI Workspace",
                       "fontFamily": "Newsreader",
                       "fontSize": 28,
                       "fontWeight": "500"
@@ -14045,7 +14045,7 @@
                   "id": "GkyCa",
                   "name": "brand",
                   "fill": "$text-primary",
-                  "content": "CreatorWeave",
+                  "content": "AI Workspace",
                   "fontFamily": "Newsreader",
                   "fontSize": 16,
                   "fontWeight": "500"
@@ -15416,7 +15416,7 @@
                   "id": "KFkLr",
                   "name": "brand",
                   "fill": "$text-primary",
-                  "content": "CreatorWeave",
+                  "content": "AI Workspace",
                   "fontFamily": "Newsreader",
                   "fontSize": 16,
                   "fontWeight": "500"

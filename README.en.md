@@ -1,4 +1,4 @@
-# CreatorWeave
+# AI Workspace
 
 <div align="center">
 

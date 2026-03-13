@@ -1,4 +1,4 @@
-# CreatorWeave
+# AI Workspace
 
 <div align="center">
 
@@ -13,9 +13,9 @@
 
 </div>
 
-## What is CreatorWeave?
+## What is AI Workspace?
 
-CreatorWeave is an **AI-native creator workspace** for content creators and builder teams. It combines local-first file workflows, AI copilots, knowledge-base workflows, and multi-agent orchestration in one browser-native product.
+AI Workspace is an **AI-native creator workspace** for content creators and builder teams. It combines local-first file workflows, AI copilots, knowledge-base workflows, and multi-agent orchestration in one browser-native product.
 
 ### Key Product Description
 
