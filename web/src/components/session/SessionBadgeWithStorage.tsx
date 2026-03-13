@@ -279,7 +279,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                         'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
                         cleanupScope === 'old'
                           ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                          : 'text-secondary hover:bg-gray-50'
+                          : 'text-secondary hover:bg-muted dark:hover:bg-muted'
                       )}
                     >
                       <div
@@ -287,7 +287,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                           'h-3 w-3 rounded-full border',
                           cleanupScope === 'old'
                             ? 'border-primary-500 bg-primary-500'
-                            : 'border-gray-300'
+                            : 'border-border dark:border-border'
                         )}
                       />
                       仅清理旧会话 (30天未活跃)
@@ -299,7 +299,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                         'flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors',
                         cleanupScope === 'all'
                           ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                          : 'text-secondary hover:bg-gray-50'
+                          : 'text-secondary hover:bg-muted dark:hover:bg-muted'
                       )}
                     >
                       <div
@@ -307,7 +307,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                           'h-3 w-3 rounded-full border',
                           cleanupScope === 'all'
                             ? 'border-primary-500 bg-primary-500'
-                            : 'border-gray-300'
+                            : 'border-border dark:border-border'
                         )}
                       />
                       清理所有工作区缓存
@@ -392,7 +392,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                       </ul>
                     </div>
 
-                    <div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-neutral-800">
+                    <div className="rounded-md bg-muted dark:bg-muted px-3 py-2 dark:bg-muted">
                       <p className="flex items-center gap-2 text-[10px] text-muted">
                         <Info className="h-3.5 w-3.5 shrink-0" />
                         <span>删除后对话记录还在，但无法再访问这个对话的文件缓存</span>
@@ -425,7 +425,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
     return (
       <>
         {/* Dropdown menu - 使用与 LanguageSwitcher 相同的 z-index */}
-        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-border bg-white shadow-lg dark:border-border dark:bg-card">
           {/* Header - Current session */}
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">
@@ -458,7 +458,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                     </span>
                     <span className="font-medium">{storage.usagePercent.toFixed(1)}%</span>
                   </div>
-                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-neutral-700">
+                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-muted dark:bg-neutral-700">
                     <div
                       className={cn(
                         'h-full rounded-full transition-all duration-300',
@@ -527,7 +527,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                       key={session.id}
                       className={cn(
                         'flex items-center gap-2 px-4 py-2 transition-colors',
-                        isActive ? 'bg-primary-50' : 'hover:bg-gray-50'
+                        isActive ? 'bg-primary-50' : 'hover:bg-muted dark:hover:bg-muted'
                       )}
                     >
                       {/* Active indicator */}
@@ -604,7 +604,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                 type="button"
                 onClick={() => handleOpenCleanupDialog('old')}
                 disabled={cleanupLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs text-secondary transition-colors hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs text-secondary transition-colors hover:bg-muted dark:hover:bg-muted dark:hover:bg-neutral-800 disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 {cleanupLoading ? '加载中...' : '清理文件缓存'}

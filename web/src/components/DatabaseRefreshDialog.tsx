@@ -36,10 +36,10 @@ export function DatabaseRefreshDialog({ isOpen }: DatabaseRefreshDialogProps) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Warning Icon */}
-        <div className="flex justify-center bg-amber-50 px-6 pt-6">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+        <div className="flex justify-center bg-warning-bg px-6 pt-6">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warning-bg">
             <svg
-              className="h-8 w-8 text-amber-600"
+              className="h-8 w-8 text-warning"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="1.5"
@@ -83,7 +83,7 @@ export function DatabaseRefreshDialog({ isOpen }: DatabaseRefreshDialogProps) {
           <button
             ref={buttonRef}
             onClick={handleRefresh}
-            className="w-full rounded-lg bg-primary-600 px-4 py-3 text-base font-semibold text-white shadow-lg transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            className="w-full rounded-lg bg-primary-600 px-4 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
           >
             刷新页面
             <span className="ml-2 text-sm opacity-80">(Refresh Page)</span>

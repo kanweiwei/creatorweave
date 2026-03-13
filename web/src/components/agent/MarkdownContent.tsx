@@ -21,14 +21,14 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
           const isBlock = match || (typeof children === 'string' && children.includes('\n'))
           if (isBlock) {
             return (
-              <div className="my-2 overflow-hidden rounded-md border border-neutral-200">
+              <div className="my-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
                 {match && (
-                  <div className="bg-neutral-100 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                  <div className="bg-neutral-100 dark:bg-neutral-800 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                     {match[1]}
                   </div>
                 )}
-                <pre className="overflow-x-auto bg-neutral-50 p-3">
-                  <code className={`text-[13px] leading-relaxed ${className || ''}`} {...props}>
+                <pre className="overflow-x-auto bg-neutral-50 dark:bg-[#1A1A1A] p-3">
+                  <code className={`text-[13px] leading-relaxed text-neutral-800 dark:text-white ${className || ''}`} {...props}>
                     {children}
                   </code>
                 </pre>
@@ -37,7 +37,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
           }
           return (
             <code
-              className="rounded bg-neutral-100 px-1.5 py-0.5 text-[13px] text-pink-600"
+              className="rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[13px] text-pink-600 dark:text-pink-400"
               {...props}
             >
               {children}
@@ -62,7 +62,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary-600 underline hover:text-primary-700"
+              className="text-primary-600 dark:text-primary-400 underline hover:text-primary-700 dark:hover:text-primary-300"
             >
               {children}
             </a>
@@ -70,18 +70,18 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         },
         // Headings
         h1({ children }) {
-          return <h1 className="mb-2 text-base font-bold">{children}</h1>
+          return <h1 className="mb-2 text-base font-bold text-neutral-900 dark:text-white">{children}</h1>
         },
         h2({ children }) {
-          return <h2 className="mb-1.5 text-sm font-bold">{children}</h2>
+          return <h2 className="mb-1.5 text-sm font-bold text-neutral-900 dark:text-white">{children}</h2>
         },
         h3({ children }) {
-          return <h3 className="mb-1 text-sm font-semibold">{children}</h3>
+          return <h3 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-white">{children}</h3>
         },
         // Blockquote
         blockquote({ children }) {
           return (
-            <blockquote className="mb-2 border-l-2 border-neutral-300 pl-3 text-neutral-600 last:mb-0">
+            <blockquote className="mb-2 border-l-2 border-neutral-300 dark:border-neutral-600 pl-3 text-neutral-600 dark:text-white last:mb-0">
               {children}
             </blockquote>
           )
@@ -96,17 +96,17 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         },
         th({ children }) {
           return (
-            <th className="border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left font-medium">
+            <th className="border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-1.5 text-left font-medium dark:text-white">
               {children}
             </th>
           )
         },
         td({ children }) {
-          return <td className="border border-neutral-200 px-3 py-1.5">{children}</td>
+          return <td className="border border-neutral-200 dark:border-neutral-700 px-3 py-1.5 dark:text-white">{children}</td>
         },
         // Horizontal rule
         hr() {
-          return <hr className="my-3 border-neutral-200" />
+          return <hr className="my-3 border-neutral-200 dark:border-neutral-700" />
         },
       }}
     >

@@ -198,7 +198,7 @@ export function OnboardingTour({
                 type="checkbox"
                 checked={dontShowAgain}
                 onChange={(e) => setDontShowAgain(e.target.checked)}
-                className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800"
               />
               {t('onboarding.dontShowAgain') || "Don't show again"}
             </label>

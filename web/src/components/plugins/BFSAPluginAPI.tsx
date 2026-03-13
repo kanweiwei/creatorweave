@@ -80,36 +80,45 @@ function toToastType(value: unknown): ToastMessage['type'] {
 
 //=============================================================================
 // Shared Styles (injected into plugin iframe)
+// Uses design system tokens where possible for theme consistency
 //=============================================================================
 
 const SHARED_STYLES = `
   :root {
-    --bfsa-primary: #2563eb;
-    --bfsa-primary-hover: #1d4ed8;
-    --bfsa-success: #16a34a;
-    --bfsa-warning: #ca8a04;
-    --bfsa-danger: #dc2626;
-    --bfsa-gray-50: #f9fafb;
-    --bfsa-gray-100: #f3f4f6;
-    --bfsa-gray-200: #e5e7eb;
-    --bfsa-gray-400: #9ca3af;
-    --bfsa-gray-500: #6b7280;
-    --bfsa-gray-600: #4b5563;
-    --bfsa-gray-700: #374151;
-    --bfsa-gray-900: #111827;
-    --bfsa-surface: #ffffff;
+    /* Primary (Teal - matching design system) */
+    --bfsa-primary: #14B8A6;
+    --bfsa-primary-hover: #0D9488;
+    /* Status colors */
+    --bfsa-success: #16A34A;
+    --bfsa-warning: #D97706;
+    --bfsa-danger: #DC2626;
+    /* Neutral palette (mapped to design system) */
+    --bfsa-gray-50: #FAFAFA;
+    --bfsa-gray-100: #F5F5F5;
+    --bfsa-gray-200: #E5E5E5;
+    --bfsa-gray-400: #A3A3A3;
+    --bfsa-gray-500: #737373;
+    --bfsa-gray-600: #525252;
+    --bfsa-gray-700: #404040;
+    --bfsa-gray-900: #171717;
+    --bfsa-surface: #FFFFFF;
   }
 
   .dark {
-    --bfsa-gray-50: #111827;
-    --bfsa-gray-100: #1f2937;
-    --bfsa-gray-200: #374151;
-    --bfsa-gray-400: #9ca3af;
-    --bfsa-gray-500: #d1d5db;
-    --bfsa-gray-600: #e5e7eb;
-    --bfsa-gray-700: #f3f4f6;
-    --bfsa-gray-900: #f9fafb;
-    --bfsa-surface: #111827;
+    --bfsa-primary: #2DD4BF;
+    --bfsa-primary-hover: #5EEAD4;
+    --bfsa-success: #22C55E;
+    --bfsa-warning: #FBBF24;
+    --bfsa-danger: #F59E6B;
+    --bfsa-gray-50: #1A1A1A;
+    --bfsa-gray-100: #171717;
+    --bfsa-gray-200: #262626;
+    --bfsa-gray-400: #525252;
+    --bfsa-gray-500: #737373;
+    --bfsa-gray-600: #A3A3A3;
+    --bfsa-gray-700: #E5E5E5;
+    --bfsa-gray-900: #F5F5F5;
+    --bfsa-surface: #0A0A0A;
   }
 
   * { box-sizing: border-box; }
@@ -232,10 +241,10 @@ const SHARED_STYLES = `
     font-weight: 500;
   }
 
-  .bfsa-badge-success { background: #dcfce7; color: #166534; }
-  .bfsa-badge-warning { background: #fef9c3; color: #854d0e; }
-  .bfsa-badge-error { background: #fee2e2; color: #991b1b; }
-  .bfsa-badge-info { background: #dbeafe; color: #1e40af; }
+  .bfsa-badge-success { background: var(--success-bg); color: var(--success-text); }
+  .bfsa-badge-warning { background: var(--warning-bg); color: var(--warning-text, var(--bfsa-gray-700)); }
+  .bfsa-badge-error { background: var(--danger-bg); color: var(--danger-text, var(--bfsa-gray-700)); }
+  .bfsa-badge-info { background: var(--bfsa-gray-100); color: var(--bfsa-primary); }
 
   /* Button */
   .bfsa-btn {
@@ -609,19 +618,19 @@ const BFSA_API_SCRIPT = (apiVersion: string, deviceId: string, theme: 'light' | 
           return Promise.resolve('${theme}');
         },
 
-        // Get color palette
+        // Get color palette (matches design system)
         getColors: function() {
           return Promise.resolve({
-            primary: '#2563eb',
-            success: '#16a34a',
-            warning: '#ca8a04',
-            danger: '#dc2626',
-            gray50: '#f9fafb',
-            gray100: '#f3f4f6',
-            gray200: '#e5e7eb',
-            gray500: '#6b7280',
-            gray700: '#374151',
-            gray900: '#111827'
+            primary: '#14B8A6',
+            success: '#16A34A',
+            warning: '#D97706',
+            danger: '#DC2626',
+            gray50: '#FAFAFA',
+            gray100: '#F5F5F5',
+            gray200: '#E5E5E5',
+            gray500: '#737373',
+            gray700: '#404040',
+            gray900: '#171717'
           });
         },
 
@@ -1126,14 +1135,14 @@ export function BFSAPluginAPIRenderer({ result, onAction, analysisData }: BFSAPl
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 dark:border-neutral-700 dark:bg-neutral-900">
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900">
       {/* Header bar */}
       {result.title && (
-        <div className="flex items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-800">
-          <span className="text-sm font-medium text-gray-700 dark:text-neutral-200">{result.title}</span>
+        <div className="flex items-center justify-between rounded-t-lg border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-800">
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{result.title}</span>
           <div className="flex items-center gap-2">
             <div className={`h-2 w-2 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`} />
-            <span className="text-xs text-gray-500 dark:text-neutral-400">{isReady ? 'Plugin Ready' : 'Loading...'}</span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">{isReady ? 'Plugin Ready' : 'Loading...'}</span>
           </div>
         </div>
       )}
@@ -1149,9 +1158,9 @@ export function BFSAPluginAPIRenderer({ result, onAction, analysisData }: BFSAPl
       />
 
       {/* Footer with controls */}
-      <div className="flex items-center justify-between rounded-b-lg border-t border-gray-200 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-800">
+      <div className="flex items-center justify-between rounded-b-lg border-t border-neutral-200 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-800">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 dark:text-neutral-500">BFSA API v1.0</span>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">BFSA API v1.0</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1160,7 +1169,7 @@ export function BFSAPluginAPIRenderer({ result, onAction, analysisData }: BFSAPl
               const iframe = iframeRef.current
               iframe?.contentWindow?.location.reload()
             }}
-            className="text-xs text-gray-500 hover:text-gray-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            className="text-xs text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
           >
             Refresh
           </button>
@@ -1177,7 +1186,7 @@ export function BFSAPluginAPIRenderer({ result, onAction, analysisData }: BFSAPl
               </h3>
               <button
                 onClick={() => setModalContent(null)}
-                className="text-gray-400 hover:text-gray-600 dark:text-neutral-500 dark:hover:text-neutral-300"
+                className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
               >
                 ✕
               </button>
@@ -1186,7 +1195,7 @@ export function BFSAPluginAPIRenderer({ result, onAction, analysisData }: BFSAPl
             <div className="flex justify-end gap-2 border-t p-4">
               <button
                 onClick={() => setModalContent(null)}
-                className="rounded px-4 py-2 text-gray-700 hover:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                className="rounded px-4 py-2 text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
               >
                 Close
               </button>

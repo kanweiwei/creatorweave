@@ -186,7 +186,7 @@ export function WebContainerPanel({ isOpen, onClose }: WebContainerPanelProps) {
 
         <div className="space-y-3 border-b border-neutral-200 p-4 dark:border-neutral-700">
           <BrandCard variant="content" className="rounded-xl">
-            <BrandCardHeader className="space-y-1 border-b border-gray-200 px-4 py-3 dark:border-neutral-700">
+            <BrandCardHeader className="space-y-1 border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
               <BrandCardTitle className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 启动配置
               </BrandCardTitle>
@@ -227,7 +227,7 @@ export function WebContainerPanel({ isOpen, onClose }: WebContainerPanelProps) {
                 <div>
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between rounded-md border border-gray-200 px-2.5 py-2 text-left text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                    className="flex w-full items-center justify-between rounded-md border border-neutral-200 px-2.5 py-2 text-left text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
                     onClick={() => setShowAdvanced((prev) => !prev)}
                   >
                     <span>高级选项</span>
@@ -420,7 +420,7 @@ export function WebContainerPanel({ isOpen, onClose }: WebContainerPanelProps) {
             </div>
 
             <div className="min-h-0 flex-1 p-3">
-              <div className="h-full overflow-hidden rounded-lg border border-gray-200 dark:border-neutral-700">
+              <div className="h-full overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
                 <FileTreePanel
                   directoryHandle={activeDirectoryHandle}
                   rootName={activeDirectoryHandle?.name ?? '项目目录'}

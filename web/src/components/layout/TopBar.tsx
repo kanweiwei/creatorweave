@@ -92,7 +92,7 @@ export function TopBar({
   return (
     <>
       <TooltipProvider delayDuration={200}>
-        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-gray-200 bg-background px-4 dark:border-neutral-700">
+        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-neutral-200 bg-background px-4 dark:border-border">
         {/* Left: Menu button (mobile) + Logo + Name */}
         <div className="flex items-center gap-2.5">
           {onBackToProjects && (
@@ -118,15 +118,15 @@ export function TopBar({
           {activeProjectName && (
             <div className="flex items-center gap-1">
               <ActionTooltip label={t('topbar.projectLabel', { name: activeProjectName })}>
-                <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                <span className="rounded-md bg-muted px-2 py-1 text-xs text-secondary dark:bg-muted dark:text-muted">
                   {activeProjectName}
                 </span>
               </ActionTooltip>
               {activeWorkspaceName && (
                 <>
-                  <span className="text-xs text-neutral-400 dark:text-neutral-500">/</span>
+                  <span className="text-xs text-tertiary dark:text-muted">/</span>
                   <ActionTooltip label={t('topbar.workspaceLabel', { name: activeWorkspaceName })}>
-                    <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                    <span className="rounded-md bg-muted px-2 py-1 text-xs text-secondary dark:bg-muted dark:text-muted">
                       {activeWorkspaceName}
                     </span>
                   </ActionTooltip>
@@ -169,7 +169,7 @@ export function TopBar({
           {/* Theme Toggle */}
           <ThemeToggle />
 
-          <div className="h-5 w-px bg-neutral-200" />
+          <div className="h-5 w-px bg-muted" />
 
           {/* Workspace Settings (Phase 4) */}
           <ActionTooltip label={t('topbar.tooltips.workspaceSettings')}>
@@ -213,7 +213,7 @@ export function TopBar({
             </BrandButton>
           </ActionTooltip>
 
-          <div className="h-5 w-px bg-neutral-200" />
+          <div className="h-5 w-px bg-muted" />
 
           {/* Settings */}
           <ActionTooltip label={t('topbar.tooltips.appSettings')}>

@@ -119,11 +119,11 @@ function getStatusColor(status: GitFileStatus['status']): string {
     case 'deleted':
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
     case 'renamed':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100'
+      return 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-100'
     case 'untracked':
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
+      return 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100'
     default:
-      return 'bg-gray-100 text-gray-800'
+      return 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300'
   }
 }
 
@@ -203,7 +203,7 @@ function CommitItem({
               {commit.refs.map((ref) => (
                 <span
                   key={ref}
-                  className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800 dark:bg-blue-900 dark:text-blue-100"
+                  className="rounded bg-primary-100 px-1.5 py-0.5 text-xs text-primary-700 dark:bg-primary-900 dark:text-primary-100"
                 >
                   {ref}
                 </span>
@@ -290,9 +290,9 @@ function FileStatusItem({
             'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
           file.status === 'deleted' && 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
           file.status === 'renamed' &&
-            'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+            'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300',
           file.status === 'untracked' &&
-            'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+            'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
         )}
       >
         {file.status === 'untracked' ? <Folder className="h-4 w-4" /> : getStatusIcon(file.status)}

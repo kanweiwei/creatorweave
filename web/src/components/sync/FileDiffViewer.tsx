@@ -47,7 +47,7 @@ function highlightCode(code: string): React.ReactNode {
     <div className="font-mono text-sm">
       {lines.map((line, i) => (
         <div key={i} className="flex">
-          <span className="w-8 text-right text-gray-400 dark:text-neutral-500 select-none pr-3 border-r border-gray-200 dark:border-neutral-700">
+          <span className="w-8 text-right text-tertiary dark:text-muted select-none pr-3 border-r border dark:border-border">
             {i + 1}
           </span>
           <span className="flex-1 pl-3 whitespace-pre-wrap break-all">
@@ -354,9 +354,9 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
   if (!fileChange) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12 px-4">
-        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-full bg-muted dark:bg-muted flex items-center justify-center mb-4">
           <svg
-            className="w-8 h-8 text-gray-400 dark:text-neutral-500"
+            className="w-8 h-8 text-tertiary dark:text-muted"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -369,8 +369,8 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
             />
           </svg>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-neutral-100 mb-2">选择文件查看详情</h3>
-        <p className="text-sm text-gray-500 dark:text-neutral-400 max-w-sm">
+        <h3 className="text-lg font-medium text-primary dark:text-primary-foreground mb-2">选择文件查看详情</h3>
+        <p className="text-sm text-tertiary dark:text-muted max-w-sm">
           从左侧列表选择一个文件，查看 OPFS 与本机文件系统的差异
         </p>
       </div>
@@ -381,8 +381,8 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500 dark:text-neutral-400">加载文件内容...</p>
+          <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-tertiary dark:text-muted">加载文件内容...</p>
         </div>
       </div>
     )
@@ -407,8 +407,8 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-neutral-100 mb-2">加载失败</h3>
-          <p className="text-sm text-gray-500 dark:text-neutral-400">{content.error}</p>
+          <h3 className="text-lg font-medium text-primary dark:text-primary-foreground mb-2">加载失败</h3>
+          <p className="text-sm text-tertiary dark:text-muted">{content.error}</p>
         </div>
       </div>
     )
@@ -442,7 +442,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
   const renderInlineDiff = () => {
     if (!content.opfs && !content.native) {
       return (
-        <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+        <div className="flex items-center justify-center h-full text-tertiary dark:text-muted text-sm">
           无法比较
         </div>
       )
@@ -452,18 +452,18 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
       <div className="font-mono text-sm">
         {inlineDiffRows.map((row) => {
           const bgColor =
-            row.type === 'added' ? 'bg-green-50' : row.type === 'removed' ? 'bg-red-50' : ''
+            row.type === 'added' ? 'bg-success-bg' : row.type === 'removed' ? 'bg-danger-bg' : ''
           const textColor =
             row.type === 'added'
               ? 'text-green-700 dark:text-green-300'
               : row.type === 'removed'
                 ? 'text-red-700 dark:text-red-300'
-                : 'text-gray-700 dark:text-neutral-300'
+                : 'text-secondary dark:text-muted'
           const prefix = row.type === 'added' ? '+ ' : row.type === 'removed' ? '- ' : '  '
 
           return (
             <div key={`inline-${row.lineNumber}`} className={`flex ${bgColor}`}>
-              <span className="w-8 text-right text-gray-400 dark:text-neutral-500 select-none pr-2 border-r border-gray-200 dark:border-neutral-700">
+              <span className="w-8 text-right text-tertiary dark:text-muted select-none pr-2 border-r border dark:border-border">
                 {row.lineNumber}
               </span>
               <span className={`flex-1 pl-3 whitespace-pre-wrap break-all ${textColor}`}>
@@ -495,9 +495,9 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
 
           const bgClass =
             type === 'removed'
-              ? 'bg-red-50/80 dark:bg-red-950/20'
+              ? 'bg-danger-bg/80 dark:bg-danger-950/20'
               : type === 'added'
-                ? 'bg-green-50/80 dark:bg-green-950/20'
+                ? 'bg-success-bg/80 dark:bg-success-950/20'
                 : ''
 
           const textClass =
@@ -505,11 +505,11 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               ? 'text-red-700 dark:text-red-300'
               : type === 'added'
                 ? 'text-green-700 dark:text-green-300'
-                : 'text-gray-700 dark:text-neutral-300'
+                : 'text-secondary dark:text-muted'
 
           return (
             <div key={`${side}-${index}`} className={`flex ${bgClass}`}>
-              <span className="w-10 text-right text-gray-400 dark:text-neutral-500 select-none pr-3 border-r border-gray-200 dark:border-neutral-700">
+              <span className="w-10 text-right text-tertiary dark:text-muted select-none pr-3 border-r border dark:border-border">
                 {lineNumber ?? ''}
               </span>
               <span className={`flex-1 pl-3 whitespace-pre-wrap break-all ${textClass}`}>
@@ -525,7 +525,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800">
+      <div className="px-4 py-3 border-b border dark:border-border bg-muted dark:bg-muted">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -534,25 +534,25 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               >
                 {getChangeTypeLabel(fileChange.type)}
               </span>
-              <span className="text-sm font-medium text-gray-900 dark:text-neutral-100" title={fileChange.path}>
+              <span className="text-sm font-medium text-primary dark:text-primary-foreground" title={fileChange.path}>
                 {fileChange.path.length > 40
                   ? `...${fileChange.path.slice(-37)}`
                   : fileChange.path}
               </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-neutral-400 mt-1">
+            <p className="text-xs text-tertiary dark:text-muted mt-1">
               {fileChange.size ? `${(fileChange.size / 1024).toFixed(1)} KB` : '-'}
             </p>
           </div>
 
           {!isImage && content.showNativePanel && (
-            <div className="flex items-center gap-2 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 p-1">
+            <div className="flex items-center gap-2 bg-card dark:bg-card rounded-lg border border dark:border-border p-1">
               <button
                 onClick={() => handleViewModeChange('sideBySide')}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   viewMode === 'sideBySide'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-secondary dark:text-muted hover:bg-muted dark:hover:bg-muted'
                 }`}
                 title="左右对比"
               >
@@ -567,8 +567,8 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                 onClick={() => handleViewModeChange('inline')}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   viewMode === 'inline'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-secondary dark:text-muted hover:bg-muted dark:hover:bg-muted'
                 }`}
                 title="行内对比"
               >
@@ -591,18 +591,18 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
             {/* OPFS Version */}
             <div
               className={`flex-1 flex flex-col ${
-                content.showNativePanel ? 'border-r border-gray-200 dark:border-neutral-700' : ''
+                content.showNativePanel ? 'border-r border dark:border-border' : ''
               }`}
             >
-              <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">
+              <div className="px-4 py-2 bg-muted dark:bg-muted border-b border dark:border-border">
+                <h4 className="text-sm font-medium text-secondary dark:text-muted">
                   OPFS 版本
                   {fileChange.type === 'delete' && (
                     <span className="ml-2 text-xs text-red-600">(将被删除)</span>
                   )}
                 </h4>
               </div>
-              <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
+              <div className="flex-1 overflow-auto bg-card dark:bg-card p-4">
                 {isImage ? (
                   content.opfsImageUrl ? (
                     <button
@@ -618,18 +618,19 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                       <img
                         src={content.opfsImageUrl}
                         alt={`OPFS: ${fileChange.path}`}
-                        className="max-w-full max-h-full object-contain rounded border border-gray-200 dark:border-neutral-700"
+                        className="max-w-full max-h-full object-contain rounded border border dark:border-border"
+                        loading="lazy"
                       />
                     </button>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                    <div className="flex items-center justify-center h-full text-tertiary dark:text-muted text-sm">
                       {fileChange.type === 'delete' ? '图片将被删除（OPFS 中无内容）' : '无法读取 OPFS 图片'}
                     </div>
                   )
                 ) : content.opfs !== null ? (
                   content.showNativePanel ? renderSideBySideColumn('left') : highlightCode(content.opfs)
                 ) : (
-                  <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                  <div className="flex items-center justify-center h-full text-tertiary dark:text-muted text-sm">
                     {fileChange.type === 'delete' ? '文件已删除（OPFS 中无内容）' : '无法读取 OPFS 内容'}
                   </div>
                 )}
@@ -638,10 +639,10 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
 
             {content.showNativePanel && (
               <div className="flex-1 flex flex-col">
-                <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">本机文件系统</h4>
+                <div className="px-4 py-2 bg-muted dark:bg-muted border-b border dark:border-border">
+                  <h4 className="text-sm font-medium text-secondary dark:text-muted">本机文件系统</h4>
                 </div>
-                <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
+                <div className="flex-1 overflow-auto bg-card dark:bg-card p-4">
                   {isImage ? (
                     content.nativeImageUrl ? (
                       <button
@@ -657,18 +658,19 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                         <img
                           src={content.nativeImageUrl}
                           alt={`Native: ${fileChange.path}`}
-                          className="max-w-full max-h-full object-contain rounded border border-gray-200 dark:border-neutral-700"
+                          className="max-w-full max-h-full object-contain rounded border border dark:border-border"
+                          loading="lazy"
                         />
                       </button>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                      <div className="flex items-center justify-center h-full text-tertiary dark:text-muted text-sm">
                         无法读取本机图片
                       </div>
                     )
                   ) : content.native !== null ? (
                     renderSideBySideColumn('right')
                   ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400 dark:text-neutral-500 text-sm">
+                    <div className="flex items-center justify-center h-full text-tertiary dark:text-muted text-sm">
                       无法读取本机文件
                     </div>
                   )}
@@ -679,15 +681,15 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
         ) : (
           /* Inline Diff View */
           <div className="flex-1 flex flex-col">
-            <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-neutral-300">
+            <div className="px-4 py-2 bg-muted dark:bg-muted border-b border dark:border-border">
+              <h4 className="text-sm font-medium text-secondary dark:text-muted">
                 差异对比
-                <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">
+                <span className="ml-2 text-xs text-tertiary dark:text-muted">
                   (绿色: 新增, 红色: 删除)
                 </span>
               </h4>
             </div>
-            <div className="flex-1 overflow-auto bg-white dark:bg-neutral-900 p-4">
+            <div className="flex-1 overflow-auto bg-card dark:bg-card p-4">
               {renderInlineDiff()}
             </div>
           </div>
@@ -705,7 +707,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
             <button
               type="button"
               onClick={() => setLightbox(null)}
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-white/30 hover:bg-white/10 transition-colors"
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-white/30 hover:bg-card/10 transition-colors"
             >
               关闭
             </button>

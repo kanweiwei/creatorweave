@@ -136,7 +136,7 @@ export function PendingPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-1.5">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-1.5 dark:border-neutral-700">
         <span className="text-xs font-medium text-neutral-600">待同步 ({currentPendingCount})</span>
 
         {/* Sync button */}

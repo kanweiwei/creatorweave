@@ -43,7 +43,7 @@ export function StorageLoading({
   // Error state
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-gray-900">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4 dark:bg-neutral-900">
         <div className="w-full max-w-md">
           <BrandCard
             variant="info"
@@ -66,7 +66,7 @@ export function StorageLoading({
             <div className="space-y-4 px-6 pb-6">
               {canReset && (
                 <>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
                     这可能由于数据库损坏或迁移失败导致。重置数据库将清除所有数据并重新创建。
                   </p>
                   <button
@@ -91,7 +91,7 @@ export function StorageLoading({
             </div>
           </BrandCard>
 
-          <p className="mt-4 text-center text-xs text-gray-400">{t('app.productName')}</p>
+          <p className="mt-4 text-center text-xs text-neutral-400 dark:text-neutral-500">{t('app.productName')}</p>
         </div>
       </div>
     )
@@ -99,7 +99,7 @@ export function StorageLoading({
 
   // Normal loading state
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4 dark:bg-neutral-900">
       <div className="w-full max-w-md">
         <BrandCard variant="info" className="text-center">
           <BrandCardHeader className="items-center justify-center pb-6">
@@ -143,7 +143,7 @@ export function StorageLoading({
           </div>
         </BrandCard>
 
-        <p className="mt-4 text-center text-xs text-gray-400">{t('app.productName')}</p>
+        <p className="mt-4 text-center text-xs text-neutral-400 dark:text-neutral-500">{t('app.productName')}</p>
       </div>
     </div>
   )

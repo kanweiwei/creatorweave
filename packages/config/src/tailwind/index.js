@@ -156,7 +156,7 @@ export function createBaseConfig(options = {}) {
       sm: 'calc(var(--radius) - 4px)',
     },
     fontFamily: {
-      sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       display: ['Newsreader', 'ui-serif', 'Georgia', 'serif'],
       mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
     },

@@ -339,8 +339,8 @@ export function MCPSettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{tf('mcp.title', 'MCP Servers')}</h3>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">{tf('mcp.description', 'Manage external MCP service connections')}</p>
+          <h3 className="text-sm font-semibold text-primary dark:text-primary-foreground">{tf('mcp.title', 'MCP Servers')}</h3>
+          <p className="text-xs text-tertiary dark:text-muted">{tf('mcp.description', 'Manage external MCP service connections')}</p>
         </div>
         <button
           onClick={loadServers}
@@ -355,7 +355,7 @@ export function MCPSettings() {
       {!showAddForm && (
         <button
           onClick={openAddForm}
-          className="hover:border-primary-300 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-secondary transition-colors hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+          className="hover:border-primary-300 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border bg-muted px-4 py-3 text-sm text-secondary transition-colors hover:bg-primary-50 dark:border-border dark:bg-muted dark:hover:bg-muted"
         >
           <Plus className="h-4 w-4" />
           {tf('mcp.addServer', 'Add MCP Server')}
@@ -364,9 +364,9 @@ export function MCPSettings() {
 
       {/* Add/Edit Form */}
       {showAddForm && (
-        <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="space-y-4 rounded-lg border border bg-card p-4 dark:border-border dark:bg-card">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            <h4 className="text-sm font-medium text-primary dark:text-primary-foreground">
               {editingServer ? tf('mcp.editServer', 'Edit Server') : tf('mcp.addServer', 'Add MCP Server')}
             </h4>
             <button onClick={closeForm} className="text-tertiary hover:text-danger">
@@ -377,15 +377,15 @@ export function MCPSettings() {
           <div className="space-y-3">
             {/* Server ID */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.serverId', 'Server ID')} *</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.serverId', 'Server ID')} *</label>
               <div className="relative">
                 <input
                   type="text"
                   value={formData.id}
                   onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                   placeholder={tf('mcp.form.serverIdPlaceholder', 'e.g. excel-analyzer')}
-                  className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
-                    formErrors.id ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
+                  className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-primary-foreground ${
+                    formErrors.id ? 'border-danger' : 'border-neutral-200 dark:border-border'
                   }`}
                   disabled={!!editingServer}
                 />
@@ -398,14 +398,14 @@ export function MCPSettings() {
 
             {/* Name */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.displayName', 'Display Name')} *</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.displayName', 'Display Name')} *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder={tf('mcp.form.displayNamePlaceholder', 'e.g. Excel Analyzer')}
-                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
-                    formErrors.name ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
+                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-primary-foreground ${
+                    formErrors.name ? 'border-danger' : 'border-neutral-200 dark:border-border'
                 }`}
               />
               {formErrors.name && <p className="text-xs text-danger">{formErrors.name}</p>}
@@ -413,26 +413,26 @@ export function MCPSettings() {
 
             {/* Description */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.description', 'Description')}</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.description', 'Description')}</label>
               <input
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder={tf('mcp.form.descriptionPlaceholder', 'Server capability description')}
-                className="w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                className="w-full rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-border dark:text-primary-foreground"
               />
             </div>
 
             {/* URL */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.serverUrl', 'Server URL')} *</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.serverUrl', 'Server URL')} *</label>
               <input
                 type="text"
                 value={formData.url}
                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                 placeholder="http://localhost:8080/mcp"
-                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
-                    formErrors.url ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
+                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-primary-foreground ${
+                    formErrors.url ? 'border-danger' : 'border-neutral-200 dark:border-border'
                 }`}
               />
               {formErrors.url && <p className="text-xs text-danger">{formErrors.url}</p>}
@@ -440,13 +440,13 @@ export function MCPSettings() {
 
             {/* Transport Type */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.transportType', 'Transport Type')}</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.transportType', 'Transport Type')}</label>
               <select
                 value={formData.transport}
                 onChange={(e) =>
                   setFormData({ ...formData, transport: e.target.value as TransportType })
                 }
-                className="w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                className="w-full rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:border-border dark:text-primary-foreground"
               >
                 <option value="sse">{transportLabels.sse}</option>
                 <option value="streamable_http">
@@ -457,14 +457,14 @@ export function MCPSettings() {
 
             {/* Token */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.authTokenOptional', 'Auth Token (Optional)')}</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.authTokenOptional', 'Auth Token (Optional)')}</label>
               <div className="relative">
                 <input
                   type={showToken ? 'text' : 'password'}
                   value={formData.token}
                   onChange={(e) => setFormData({ ...formData, token: e.target.value })}
                   placeholder="Bearer token"
-                  className="w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 pr-10 text-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  className="w-full rounded-md border border-neutral-200 bg-transparent px-3 py-2 pr-10 text-sm focus:border-primary-500 focus:outline-none dark:border-border dark:text-primary-foreground"
                 />
                 <button
                   type="button"
@@ -478,7 +478,7 @@ export function MCPSettings() {
 
             {/* Timeout */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{tf('mcp.form.timeoutMs', 'Timeout (ms)')}</label>
+              <label className="text-xs font-medium text-secondary dark:text-muted">{tf('mcp.form.timeoutMs', 'Timeout (ms)')}</label>
               <input
                 type="number"
                 value={formData.timeout}
@@ -486,8 +486,8 @@ export function MCPSettings() {
                 min="1000"
                 max="300000"
                 step="1000"
-                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-neutral-100 ${
-                  formErrors.timeout ? 'border-danger' : 'border-gray-200 dark:border-neutral-700'
+                className={`w-full rounded-md border bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:text-primary-foreground ${
+                  formErrors.timeout ? 'border-danger' : 'border-neutral-200 dark:border-border'
                 }`}
               />
               {formErrors.timeout && <p className="text-xs text-danger">{formErrors.timeout}</p>}
@@ -497,7 +497,7 @@ export function MCPSettings() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={closeForm}
-                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-secondary transition-colors hover:bg-gray-50 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:text-neutral-300"
+                className="rounded-md border border px-4 py-2 text-sm text-secondary transition-colors hover:bg-muted dark:border-border dark:hover:bg-muted dark:text-muted"
               >
                 {tf('common.cancel', 'Cancel')}
               </button>
@@ -543,8 +543,8 @@ export function MCPSettings() {
               key={server.id}
               className={`group relative rounded-lg border transition-all ${
                 !server.enabled
-                  ? 'border-gray-100 bg-gray-50 opacity-60 dark:border-neutral-800 dark:bg-neutral-900/60'
-                  : 'hover:border-primary-200 border-gray-200 bg-white hover:bg-primary-50/30 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'
+                  ? 'border bg-muted opacity-60 dark:border-border dark:bg-card/60'
+                  : 'hover:border-primary-200 border-neutral-200 bg-white hover:bg-primary-50/30 dark:border-border dark:bg-card dark:hover:bg-muted'
               }`}
             >
               <div className="flex items-start gap-3 p-3">
@@ -557,7 +557,7 @@ export function MCPSettings() {
                     className={`flex h-7 w-7 items-center justify-center rounded-md transition-all ${
                       server.enabled
                         ? 'bg-success/10 text-success hover:bg-success/20'
-                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-neutral-800 dark:text-neutral-500 dark:hover:bg-neutral-700'
+                        : 'bg-muted text-secondary hover:bg-muted dark:bg-card dark:text-muted dark:hover:bg-muted'
                     }`}
                     title={server.enabled ? tf('mcp.actions.clickToDisable', 'Click to disable') : tf('mcp.actions.clickToEnable', 'Click to enable')}
                   >
@@ -582,7 +582,7 @@ export function MCPSettings() {
                       </span>
                     )}
                     {!server.enabled && (
-                      <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-neutral-700 dark:text-neutral-300">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-secondary dark:bg-muted dark:text-muted">
                         {tf('mcp.badge.disabled', 'Disabled')}
                       </span>
                     )}
@@ -614,7 +614,7 @@ export function MCPSettings() {
                   {/* Edit */}
                   <button
                     onClick={() => openEditForm(server)}
-                    className="text-tertiary flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-gray-100 hover:text-primary dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                    className="text-tertiary flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-primary dark:hover:bg-muted dark:hover:text-muted"
                     title={tf('mcp.actions.editConfig', 'Edit configuration')}
                   >
                     <Edit className="h-4 w-4" />

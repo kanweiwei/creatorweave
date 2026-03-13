@@ -19,14 +19,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@browser-fs-analyzer/ui'
-import { MoreVertical, Archive, ArchiveRestore, Pencil, Trash2, FolderPlus, SearchX, Plus, ShieldCheck, Brain } from 'lucide-react'
+import { MoreVertical, Archive, ArchiveRestore, Pencil, Trash2, SearchX, Plus, ShieldCheck, Brain } from 'lucide-react'
 
 // 动画关键帧样式
 const animationStyles = `
   @keyframes fadeInUp {
     from {
       opacity: 0;
-      transform: translateY(16px);
+      transform: translateY(10px);
     }
     to {
       opacity: 1;
@@ -36,17 +36,15 @@ const animationStyles = `
   @keyframes pulse {
     0%, 100% {
       opacity: 1;
-      transform: scale(1);
     }
     50% {
-      opacity: 0.7;
-      transform: scale(1.05);
+      opacity: 0.8;
     }
   }
   @keyframes slideIn {
     from {
       opacity: 0;
-      transform: translateX(-8px);
+      transform: translateX(-4px);
     }
     to {
       opacity: 1;
@@ -73,6 +71,19 @@ const animationStyles = `
   .ph-delay-200 { animation-delay: 200ms; }
   .ph-delay-300 { animation-delay: 300ms; }
   .ph-delay-400 { animation-delay: 400ms; }
+
+  /* 减少动画偏好支持 */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in-up,
+    .animate-pulse-slow,
+    .animate-slide-in {
+      animation: none;
+      opacity: 1;
+    }
+    .group:hover {
+      transform: none;
+    }
+  }
 `
 
 // 格式化相对时间
@@ -260,47 +271,37 @@ export function ProjectHome({
   }
 
   return (
-    <div className="relative min-h-screen bg-neutral-50 dark:bg-neutral-950">
+    <div className="relative min-h-screen bg-muted dark:bg-background">
       <style>{animationStyles}</style>
-      <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-90"
-        aria-hidden="true"
-        style={{
-          background:
-            'radial-gradient(60rem 32rem at 12% -8%, rgba(59,130,246,0.16), transparent 60%), radial-gradient(52rem 30rem at 90% 2%, rgba(16,185,129,0.14), transparent 62%), linear-gradient(160deg, #f8fafc 0%, #f1f5f9 45%, #eef2ff 100%)',
-        }}
-      />
       <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-10">
-        <header className="mb-6 rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm backdrop-blur relative overflow-hidden animate-fade-in-up dark:border-neutral-700 dark:bg-neutral-900/80">
-          {/* 装饰性渐变光晕 */}
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-2xl" />
-
+        <header className="mb-8 rounded-2xl border border bg-card p-8 relative overflow-hidden animate-fade-in-up dark:border-border dark:bg-card">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary-50/50 to-transparent dark:from-primary-900/10 pointer-events-none" />
           <div className="relative flex items-start justify-between">
             <div>
               <div className="mb-3 flex items-center gap-3">
-                <BrandBadge color="purple" shape="pill">
+                <BrandBadge color="primary" shape="pill">
                   <ShieldCheck className="mr-1.5 h-3 w-3" />
                   数据仅本地处理
                 </BrandBadge>
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
+                <div className="text-xs uppercase tracking-[0.18em] text-tertiary dark:text-muted">
                   Local Workspace
                 </div>
               </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-100">
-                开始今天的工作
+              <h1 className="text-4xl font-bold tracking-tight text-primary sm:text-5xl dark:text-primary-foreground">
+                你好，让我们开始吧
               </h1>
-              <p className="mt-2 max-w-3xl text-sm text-neutral-600 sm:text-base dark:text-neutral-300">
-                先决定下一步，再进入项目细节。支持创作、整理、开发与研究等多种工作流。
+              <p className="mt-2 max-w-3xl text-sm text-secondary sm:text-base dark:text-secondary-foreground">
+                创建或选择一个项目，开启你的本地 AI 工作空间。
               </p>
             </div>
-            <div className="hidden sm:flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-100 dark:border-neutral-700 dark:from-neutral-800 dark:to-neutral-700">
-              <Brain className="w-7 h-7 text-purple-500" />
+            <div className="hidden sm:flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-50/80 border border-primary-200/50 dark:border-primary-800/50 dark:bg-primary-900/30">
+              <Brain className="w-8 h-8 text-primary-600" />
             </div>
           </div>
         </header>
 
-        <section className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm animate-fade-in-up ph-duration-200 ph-delay-100 dark:border-neutral-700 dark:bg-neutral-900">
-          <div className="mb-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">创建或打开 Project</div>
+        <section className="mb-6 rounded-xl border border bg-card p-4 animate-fade-in-up ph-duration-200 ph-delay-100 dark:border-border dark:bg-card">
+          <div className="mb-2 text-sm font-medium text-primary dark:text-primary-foreground">创建或打开 Project</div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <BrandInput
               id="project-name-input"
@@ -320,7 +321,7 @@ export function ProjectHome({
               variant="primary"
               onClick={() => void handleCreate()}
               disabled={isCreating || isLoading || !draftName.trim()}
-              className="transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+              className="transition-all duration-150 hover:opacity-90 active:opacity-80"
             >
               创建项目
             </BrandButton>
@@ -328,55 +329,37 @@ export function ProjectHome({
         </section>
 
         <section className="mb-6">
-          <div className="mb-3 text-sm font-medium text-neutral-700 animate-slide-in dark:text-neutral-300">继续上次工作</div>
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md animate-fade-in-up ph-duration-200 ph-delay-200 dark:border-neutral-700 dark:bg-neutral-900">
+          <div className="mb-3 text-sm font-medium text-tertiary animate-slide-in dark:text-muted">继续上次工作</div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4 animate-fade-in-up ph-duration-200 ph-delay-200 dark:border-border/50 dark:bg-card/50">
             {currentProject ? (
               <>
-                <div className="mb-2 flex items-center gap-2">
-                  <BrandBadge type="tag" color="purple">
-                    {currentProject.id === activeProjectId ? '当前项目' : '最近更新'}
-                  </BrandBadge>
-                  {currentProject.status === 'archived' && (
-                    <BrandBadge variant="neutral" shape="pill">
-                      已归档
-                    </BrandBadge>
-                  )}
-                </div>
-                <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{currentProject.name}</h2>
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                  {formatRelativeTime(currentProject.updatedAt)} · 工作区{' '}
-                  {projectStats[currentProject.id]?.workspaceCount || 0}
-                </p>
-                <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base font-medium text-primary truncate dark:text-primary-foreground">{currentProject.name}</h2>
+                    <p className="mt-0.5 text-xs text-tertiary dark:text-muted">
+                      {formatRelativeTime(currentProject.updatedAt)} · {projectStats[currentProject.id]?.workspaceCount || 0} 个工作区
+                    </p>
+                  </div>
                   <BrandButton
                     onClick={() => void onOpenProject(currentProject.id)}
                     variant="primary"
-                    className="transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                    className="ml-3 shrink-0"
                   >
-                    继续处理
+                    继续
                   </BrandButton>
                 </div>
               </>
             ) : (
-              <>
-                <div className="flex flex-col items-center justify-center py-4">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 animate-pulse-slow dark:bg-neutral-800">
-                    <FolderPlus className="h-6 w-6 text-neutral-400" />
-                  </div>
-                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">还没有项目</h2>
-                  <p className="mt-1 text-sm text-neutral-600 text-center dark:text-neutral-400">
-                    先创建一个 Project，后续就可以从这里一键继续。
-                  </p>
-                  <BrandButton
-                    variant="primary"
-                    className="mt-4 transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
-                    onClick={() => setShowCreateDialog(true)}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    创建第一个项目
-                  </BrandButton>
-                </div>
-              </>
+              <div className="flex items-center justify-between py-1">
+                <p className="text-sm text-tertiary dark:text-muted">暂无最近项目</p>
+                <BrandButton
+                  variant="ghost"
+                  onClick={() => setShowCreateDialog(true)}
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  创建
+                </BrandButton>
+              </div>
             )}
           </div>
         </section>
@@ -384,11 +367,11 @@ export function ProjectHome({
         <section>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-medium text-neutral-700 animate-slide-in dark:text-neutral-300">最近项目</div>
-              <div className="flex rounded-lg bg-neutral-100 p-0.5 relative dark:bg-neutral-800">
+              <div className="text-sm font-medium text-secondary animate-slide-in dark:text-secondary-foreground">最近项目</div>
+              <div className="flex rounded-lg bg-muted p-0.5 relative dark:bg-muted">
                 {/* 滑块背景 */}
                 <div
-                  className="absolute top-0.5 h-[calc(100%-4px)] rounded-md bg-white shadow-sm transition-all duration-300 ease-out dark:bg-neutral-700"
+                  className="absolute top-0.5 h-[calc(100%-4px)] rounded-md bg-card shadow-sm transition-all duration-300 ease-out dark:bg-card"
                   style={{
                     width: 'calc(33.333% - 2px)',
                     left: statusFilter === 'all' ? '2px' : statusFilter === 'active' ? 'calc(33.333% + 1px)' : 'calc(66.666% + 1px)',
@@ -396,30 +379,30 @@ export function ProjectHome({
                 />
                 <button
                   onClick={() => setStatusFilter('all')}
-                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
                     statusFilter === 'all'
-                      ? 'text-neutral-900 dark:text-neutral-100'
-                      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+                      ? 'text-primary dark:text-primary-foreground'
+                      : 'text-secondary hover:text-primary dark:text-muted dark:hover:text-primary-foreground'
                   }`}
                 >
                   全部
                 </button>
                 <button
                   onClick={() => setStatusFilter('active')}
-                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
                     statusFilter === 'active'
-                      ? 'text-neutral-900 dark:text-neutral-100'
-                      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+                      ? 'text-primary dark:text-primary-foreground'
+                      : 'text-secondary hover:text-primary dark:text-muted dark:hover:text-primary-foreground'
                   }`}
                 >
                   活跃
                 </button>
                 <button
                   onClick={() => setStatusFilter('archived')}
-                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`relative z-10 rounded-md px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
                     statusFilter === 'archived'
-                      ? 'text-neutral-900 dark:text-neutral-100'
-                      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+                      ? 'text-primary dark:text-primary-foreground'
+                      : 'text-secondary hover:text-primary dark:text-muted dark:hover:text-primary-foreground'
                   }`}
                 >
                   已归档
@@ -435,17 +418,17 @@ export function ProjectHome({
           </div>
 
           {visibleProjects.length === 0 && (
-            <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center animate-fade-in-up ph-duration-300 dark:border-neutral-700 dark:bg-neutral-900">
+            <div className="rounded-xl border border-dashed border bg-card p-10 text-center animate-fade-in-up ph-duration-300 dark:border-border dark:bg-card">
               <div className="mb-3 flex justify-center">
-                <SearchX className="h-10 w-10 text-neutral-300 animate-pulse-slow" />
+                <SearchX className="h-8 w-8 text-muted" />
               </div>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                {search ? '没有匹配的项目，试试其他关键词。' : '暂无项目'}
+              <p className="text-sm text-secondary dark:text-muted">
+                {search ? '没有找到匹配的项目试试其他关键词？' : '暂无项目'}
               </p>
               {!search && projects.length === 0 && (
                 <BrandButton
                   variant="primary"
-                  className="mt-4 transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                  className="mt-4"
                   onClick={() => setShowCreateDialog(true)}
                 >
                   <Plus className="mr-2 h-4 w-4" />
@@ -465,14 +448,14 @@ export function ProjectHome({
               return (
                 <div
                   key={project.id}
-                  className="group rounded-xl border border-neutral-200 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg animate-fade-in-up dark:border-neutral-700 dark:bg-neutral-900"
+                  className="group rounded-xl border border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm animate-fade-in-up dark:border-border dark:bg-card"
                   style={{
                     animationDelay: `${(index % 4) * 100}ms`,
                     animationFillMode: 'both',
                   }}
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-base font-medium text-neutral-900 dark:text-neutral-100">{project.name}</span>
+                    <span className="text-base font-medium text-primary dark:text-primary-foreground">{project.name}</span>
                     <div className="flex items-center gap-2">
                       {isArchived && (
                         <BrandBadge variant="neutral" shape="pill">
@@ -480,16 +463,16 @@ export function ProjectHome({
                         </BrandBadge>
                       )}
                       {isActive && (
-                        <BrandBadge type="tag" color="purple">
+                        <BrandBadge type="tag" color="primary">
                           当前
                         </BrandBadge>
                       )}
                     </div>
                   </div>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="text-xs text-tertiary dark:text-muted">
                     {formatRelativeTime(project.updatedAt)}
                   </p>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+                  <div className="mt-2 flex items-center gap-3 text-xs text-tertiary dark:text-muted">
                     <span>工作区 {stats?.workspaceCount || 0}</span>
                     <span>
                       最近活跃{' '}
@@ -503,7 +486,7 @@ export function ProjectHome({
                       onClick={() => void onOpenProject(project.id)}
                       variant="primary"
                       disabled={isLoading || isActionSubmitting}
-                      className="transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                      className="transition-all duration-150 hover:opacity-90 active:opacity-80"
                     >
                       进入项目
                     </BrandButton>
@@ -513,7 +496,7 @@ export function ProjectHome({
                           variant="ghost"
                           iconButton
                           disabled={isProjectActionPending || isActionSubmitting}
-                          className="transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                          className="transition-colors hover:bg-muted dark:hover:bg-muted"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </BrandButton>
@@ -561,7 +544,7 @@ export function ProjectHome({
                                 setDeleteConfirmText('')
                               }}
                               disabled={isProjectActionPending || isActionSubmitting}
-                              className="text-red-600 focus:text-red-600"
+                              className="text-danger focus:text-danger"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               {isProjectActionPending && pendingProjectAction?.type === 'delete'
@@ -631,10 +614,10 @@ export function ProjectHome({
             <BrandDialogTitle>归档项目</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
-            <p className="text-sm text-neutral-700">
+            <p className="text-sm text-secondary">
               确认归档项目「{archivingProject?.name}」？归档后项目不会默认展示，但可随时取消归档。
             </p>
-            <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-secondary">
               <BrandCheckbox
                 checked={archiveDontAskAgain}
                 onCheckedChange={(checked) => setArchiveDontAskAgain(Boolean(checked))}
@@ -672,10 +655,10 @@ export function ProjectHome({
             <BrandDialogTitle>删除项目</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
-            <p className="text-sm text-neutral-700">
+            <p className="text-sm text-secondary">
               确认删除项目「{deletingProject?.name}」？该操作会删除项目关联的工作区记录，且不可撤销。
             </p>
-            <p className="mt-2 text-xs text-neutral-500">请输入项目名称以确认删除：</p>
+            <p className="mt-2 text-xs text-tertiary">请输入项目名称以确认删除：</p>
             <BrandInput
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
@@ -722,7 +705,7 @@ export function ProjectHome({
             <BrandDialogTitle>创建新项目</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
-            <p className="text-sm text-neutral-700 mb-3">
+            <p className="text-sm text-secondary mb-3">
               为你的新项目起一个名字，用于组织和区分不同的工作空间。
             </p>
             <BrandInput

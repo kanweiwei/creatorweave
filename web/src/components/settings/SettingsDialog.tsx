@@ -443,14 +443,14 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
   return (
     <div className="space-y-4">
       {/* Tabs */}
-      <div className="flex border-b border-neutral-200">
+      <div className="flex border-b border">
         <button
           type="button"
           onClick={() => setActiveTab('upload')}
           className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'upload'
               ? 'border-b-2 border-primary-500 text-primary-600'
-              : 'text-neutral-500 hover:text-neutral-700'
+              : 'text-tertiary hover:text-secondary'
           }`}
         >
           <Upload className="mr-2 inline h-4 w-4" />
@@ -462,7 +462,7 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
           className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'list'
               ? 'border-b-2 border-primary-500 text-primary-600'
-              : 'text-neutral-500 hover:text-neutral-700'
+              : 'text-tertiary hover:text-secondary'
           }`}
         >
           <Download className="mr-2 inline h-4 w-4" />
@@ -485,29 +485,29 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
           </div>
 
           {/* Device Info */}
-          <div className="rounded-lg border border-neutral-200 p-3">
+          <div className="rounded-lg border border p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Monitor className="h-4 w-4 text-neutral-500" />
-                <span className="text-sm font-medium text-neutral-700">当前设备</span>
+                <Monitor className="h-4 w-4 text-tertiary" />
+                <span className="text-sm font-medium text-secondary">当前设备</span>
               </div>
-              <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+              <span className="rounded bg-muted px-2 py-0.5 text-xs text-secondary">
                 {extractBrowserInfo(browserInfo)}
               </span>
             </div>
-            <p className="mt-1 text-xs text-neutral-500">设备 ID: {deviceId}</p>
+            <p className="mt-1 text-xs text-tertiary">设备 ID: {deviceId}</p>
           </div>
 
           {/* Upload Progress */}
           {isUploading && (
             <div className="space-y-2">
-              <div className="h-2 overflow-hidden rounded-full bg-neutral-200">
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full bg-primary-500 transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
-              <p className="text-center text-sm text-neutral-500">
+              <p className="text-center text-sm text-tertiary">
                 {uploadProgress < 50 ? '正在准备数据...' : '正在上传到云端...'}
               </p>
             </div>
@@ -543,7 +543,7 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
         <div className="space-y-4">
           {/* Refresh Button */}
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium text-neutral-700">已同步的会话</h4>
+            <h4 className="text-sm font-medium text-secondary">已同步的会话</h4>
             <BrandButton
               variant="outline"
               className="h-8 px-3 text-xs"
@@ -569,20 +569,20 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
           <div className="custom-scrollbar max-h-64 overflow-y-auto">
             {isLoading && sessions.length === 0 ? (
               <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 animate-spin text-neutral-400" />
+                <RefreshCw className="h-6 w-6 animate-spin text-tertiary" />
               </div>
             ) : sessions.length === 0 ? (
               <div className="py-8 text-center">
-                <Cloud className="mx-auto h-8 w-8 text-neutral-300" />
-                <p className="mt-2 text-sm text-neutral-500">暂无同步的会话</p>
-                <p className="mt-1 text-xs text-neutral-400">上传会话后可以在这里管理</p>
+                <Cloud className="mx-auto h-8 w-8 text-tertiary" />
+                <p className="mt-2 text-sm text-tertiary">暂无同步的会话</p>
+                <p className="mt-1 text-xs text-tertiary">上传会话后可以在这里管理</p>
               </div>
             ) : (
               <ul className="space-y-2">
                 {sessions.map((session) => (
                   <li
                     key={session.syncId}
-                    className="hover:border-primary-200 group flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 p-3 transition-colors hover:bg-primary-50/50"
+                    className="hover:border-primary-200 group flex cursor-pointer items-center gap-3 rounded-lg border border p-3 transition-colors hover:bg-primary-50/50"
                     onClick={() => handleDownload(session.syncId)}
                   >
                     {/* Session Icon */}
@@ -593,14 +593,14 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
                     {/* Session Info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium text-neutral-700">
+                        <span className="truncate text-sm font-medium text-secondary">
                           {session.title}
                         </span>
-                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-tertiary">
                           {formatSize(session.size)}
                         </span>
                       </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-tertiary">
                         <span>{extractBrowserInfo(session.deviceInfo)}</span>
                         <span>-</span>
                         <span className="flex items-center gap-1">
@@ -608,7 +608,7 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
                           {formatDate(session.updatedAt)}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[10px] text-neutral-400">
+                      <p className="mt-0.5 text-[10px] text-tertiary">
                         过期时间: {formatExpiryDate(session.expiresAt)}
                       </p>
                     </div>
@@ -630,7 +630,7 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
           </div>
 
           {/* Server Info */}
-          <div className="flex items-center justify-between rounded-lg border border-neutral-100 bg-neutral-50 p-2 text-xs text-neutral-500">
+          <div className="flex items-center justify-between rounded-lg border border bg-muted p-2 text-xs text-tertiary">
             <span>服务器: {relayUrl}</span>
             <a
               href={`${relayUrl}/health`}
@@ -717,7 +717,7 @@ const SettingsDialogContent = forwardRef<
                 className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors md:w-full ${
                   activeTab === tab.id
                     ? 'dark:bg-primary-900/30 dark:text-primary-300 bg-primary-50 text-primary-700'
-                    : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                    : 'text-secondary hover:bg-muted dark:text-tertiary dark:hover:bg-muted'
                 }`}
               >
                 {tab.icon}

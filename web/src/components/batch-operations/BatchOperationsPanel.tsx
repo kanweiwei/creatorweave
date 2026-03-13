@@ -399,7 +399,7 @@ export function BatchOperationsPanel({ onExecute, onUndo, className }: BatchOper
           onChange={(e) => setReadPaths(e.target.value)}
           placeholder="src/index.ts&#10;src/utils.ts&#10;README.md"
           disabled={state.isRunning}
-          className="min-h-[120px] w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="min-h-[120px] w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
         />
       </div>
 
@@ -450,11 +450,11 @@ export function BatchOperationsPanel({ onExecute, onUndo, className }: BatchOper
                     </div>
                     {result.preview && (
                       <div className="mt-2 text-xs">
-                        <div className="rounded bg-red-50 p-2 text-red-900">
+                        <div className="rounded bg-danger-bg p-2 text-danger">
                           <span className="font-medium">Line {result.preview.line}:</span>{' '}
                           {result.preview.old}
                         </div>
-                        <div className="mt-1 rounded bg-green-50 p-2 text-green-900">
+                        <div className="mt-1 rounded bg-success-bg p-2 text-success-text">
                           <span className="font-medium">Replace with:</span> {result.preview.new}
                         </div>
                       </div>
@@ -562,7 +562,7 @@ export function BatchOperationsPanel({ onExecute, onUndo, className }: BatchOper
         <h2 className="mb-4 text-lg font-semibold">Batch Operations</h2>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-2 border-b border-neutral-200 pb-2">
+        <div className="mb-4 flex gap-2 border-b border-neutral-200 pb-2 dark:border-neutral-700">
           <button
             onClick={() => setState((prev) => ({ ...prev, type: 'batch_edit' }))}
             className={`px-3 py-1 text-sm ${state.type === 'batch_edit' ? 'border-b-2 border-blue-500 font-medium' : 'text-neutral-500'}`}

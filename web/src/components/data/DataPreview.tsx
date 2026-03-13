@@ -48,25 +48,25 @@ interface DataPreviewProps {
 function getTypeColor(type: ColumnType): string {
   switch (type) {
     case 'number':
-      return 'bg-blue-100 text-blue-700'
+      return 'bg-primary-100 text-primary-700'
     case 'string':
-      return 'bg-green-100 text-green-700'
+      return 'bg-success-bg text-success-text'
     case 'boolean':
       return 'bg-purple-100 text-purple-700'
     case 'date':
       return 'bg-orange-100 text-orange-700'
     default:
-      return 'bg-gray-100 text-gray-700'
+      return 'bg-neutral-100 text-neutral-700'
   }
 }
 
 // Statistics panel
 function StatsPanel({ columns, stats }: { columns: ColumnInfo[]; stats: Map<string, DataStats> }) {
   return (
-    <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800">
+    <div className="mb-4 rounded-lg border border bg-card bg-muted p-4 dark:border-border dark:bg-muted">
       <div className="mb-3 flex items-center gap-2">
-        <Info className="h-4 w-4 text-neutral-600 dark:text-neutral-300" />
-        <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">Column Statistics</h4>
+        <Info className="h-4 w-4 text-secondary dark:text-muted" />
+        <h4 className="text-sm font-medium text-secondary dark:text-secondary-foreground">Column Statistics</h4>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -77,10 +77,10 @@ function StatsPanel({ columns, stats }: { columns: ColumnInfo[]; stats: Map<stri
           return (
             <div
               key={column.name}
-              className="rounded-md border border-neutral-200 bg-white p-3 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+              className="rounded-md border border bg-card p-3 text-xs dark:border-border dark:bg-card"
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-medium text-neutral-900 dark:text-neutral-100">{column.name}</span>
+                <span className="font-medium text-primary dark:text-primary-foreground">{column.name}</span>
                 <span
                   className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(column.type)}`}
                 >
@@ -88,49 +88,49 @@ function StatsPanel({ columns, stats }: { columns: ColumnInfo[]; stats: Map<stri
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-neutral-600 dark:text-neutral-300">
+              <div className="grid grid-cols-2 gap-2 text-secondary dark:text-muted">
                 <div>
-                  <span className="text-neutral-400">Count:</span>{' '}
-                  <span className="font-medium text-neutral-700 dark:text-neutral-200">{colStats.count}</span>
+                  <span className="text-tertiary">Count:</span>{' '}
+                  <span className="font-medium text-secondary dark:text-secondary-foreground">{colStats.count}</span>
                 </div>
                 <div>
-                  <span className="text-neutral-400">Unique:</span>{' '}
-                  <span className="font-medium text-neutral-700 dark:text-neutral-200">{colStats.unique}</span>
+                  <span className="text-tertiary">Unique:</span>{' '}
+                  <span className="font-medium text-secondary dark:text-secondary-foreground">{colStats.unique}</span>
                 </div>
 
                 {colStats.min !== undefined && (
                   <div>
-                    <span className="text-neutral-400">Min:</span>{' '}
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">
+                    <span className="text-tertiary">Min:</span>{' '}
+                    <span className="font-medium text-secondary dark:text-secondary-foreground">
                       {typeof colStats.min === 'number' ? colStats.min.toFixed(2) : colStats.min}
                     </span>
                   </div>
                 )}
                 {colStats.max !== undefined && (
                   <div>
-                    <span className="text-neutral-400">Max:</span>{' '}
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">
+                    <span className="text-tertiary">Max:</span>{' '}
+                    <span className="font-medium text-secondary dark:text-secondary-foreground">
                       {typeof colStats.max === 'number' ? colStats.max.toFixed(2) : colStats.max}
                     </span>
                   </div>
                 )}
                 {colStats.avg !== undefined && (
                   <div>
-                    <span className="text-neutral-400">Avg:</span>{' '}
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">{colStats.avg.toFixed(2)}</span>
+                    <span className="text-tertiary">Avg:</span>{' '}
+                    <span className="font-medium text-secondary dark:text-secondary-foreground">{colStats.avg.toFixed(2)}</span>
                   </div>
                 )}
                 {colStats.sum !== undefined && (
                   <div>
-                    <span className="text-neutral-400">Sum:</span>{' '}
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">{colStats.sum.toFixed(2)}</span>
+                    <span className="text-tertiary">Sum:</span>{' '}
+                    <span className="font-medium text-secondary dark:text-secondary-foreground">{colStats.sum.toFixed(2)}</span>
                   </div>
                 )}
               </div>
 
               {colStats.nullCount > 0 && (
-                <div className="mt-2 text-neutral-500 dark:text-neutral-400">
-                  <span className="text-neutral-400">Null:</span> {colStats.nullCount} values
+                <div className="mt-2 text-tertiary dark:text-muted">
+                  <span className="text-tertiary">Null:</span> {colStats.nullCount} values
                 </div>
               )}
             </div>
@@ -269,8 +269,8 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Data Preview</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          <h3 className="text-lg font-semibold text-primary dark:text-primary-foreground">Data Preview</h3>
+          <p className="text-sm text-tertiary dark:text-muted">
             {parsedData.rowCount} rows × {parsedData.columnCount} columns
           </p>
         </div>
@@ -278,7 +278,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowStats(!showStats)}
-            className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="flex items-center gap-2 rounded-lg border border bg-card px-3 py-2 text-sm font-medium text-secondary transition-colors hover:bg-muted dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
           >
             <Filter className="h-4 w-4" />
             {showStats ? 'Hide' : 'Show'} Stats
@@ -286,7 +286,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
 
           <button
             onClick={() => handleExport('csv')}
-            className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="flex items-center gap-2 rounded-lg border border bg-card px-3 py-2 text-sm font-medium text-secondary transition-colors hover:bg-muted dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
             title="Export as CSV"
           >
             <Download className="h-4 w-4" />
@@ -295,7 +295,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
 
           <button
             onClick={() => handleExport('json')}
-            className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="flex items-center gap-2 rounded-lg border border bg-card px-3 py-2 text-sm font-medium text-secondary transition-colors hover:bg-muted dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
             title="Export as JSON"
           >
             <Download className="h-4 w-4" />
@@ -310,7 +310,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
       {/* Search and Filter Controls */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
           <input
             type="text"
             value={searchQuery}
@@ -319,18 +319,18 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
               setCurrentPage(1)
             }}
             placeholder="Search data..."
-            className="focus:border-primary-300 w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
+            className="focus:border-primary-300 w-full rounded-lg border border bg-muted py-2 pl-10 pr-4 text-sm focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-border dark:bg-muted dark:text-primary-foreground dark:placeholder:text-muted dark:focus:bg-card"
           />
         </div>
-        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+        <span className="text-sm text-tertiary dark:text-muted">
           {filteredSortedData.length} row{filteredSortedData.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Data Table */}
-      <div className="max-h-[500px] overflow-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
+      <div className="max-h-[500px] overflow-auto rounded-lg border border dark:border-border">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-neutral-50 dark:bg-neutral-800">
+          <thead className="sticky top-0 bg-muted dark:bg-muted">
             <tr>
               {parsedData.headers.map((column) => {
                 const columnInfo = parsedData.columns.find((c) => c.name === column)
@@ -338,7 +338,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
                   <th
                     key={column}
                     onClick={() => handleSort(column)}
-                    className="cursor-pointer select-none px-4 py-3 text-left font-medium text-neutral-700 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                    className="cursor-pointer select-none px-4 py-3 text-left font-medium text-secondary transition-colors hover:bg-muted dark:text-muted dark:hover:bg-muted"
                   >
                     <div className="flex items-center gap-2">
                       <span>{column}</span>
@@ -356,7 +356,7 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
                           <ArrowUpDown className="h-4 w-4 rotate-180 text-primary-600" />
                         )
                       ) : (
-                        <ArrowUpDown className="h-4 w-4 text-neutral-400" />
+                        <ArrowUpDown className="h-4 w-4 text-tertiary" />
                       )}
                     </div>
                   </th>
@@ -364,11 +364,11 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+          <tbody className="divide-y divide-border dark:divide-border">
             {paginatedData.map((row, idx) => (
-              <tr key={idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
+              <tr key={idx} className="hover:bg-muted dark:hover:bg-muted">
                 {parsedData.headers.map((column) => (
-                  <td key={column} className="whitespace-nowrap px-4 py-3 text-neutral-700 dark:text-neutral-300">
+                  <td key={column} className="whitespace-nowrap px-4 py-3 text-secondary dark:text-muted">
                     {row[column] === null || row[column] === undefined ? '' : String(row[column])}
                   </td>
                 ))}
@@ -378,14 +378,14 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
         </table>
 
         {paginatedData.length === 0 && (
-          <div className="py-8 text-center text-neutral-500 dark:text-neutral-400">No data found</div>
+          <div className="py-8 text-center text-tertiary dark:text-muted">No data found</div>
         )}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-neutral-500 dark:text-neutral-400">
+          <div className="text-sm text-tertiary dark:text-muted">
             Showing {(currentPage - 1) * rowsPerPage + 1} to{' '}
             {Math.min(currentPage * rowsPerPage, filteredSortedData.length)} of{' '}
             {filteredSortedData.length}
@@ -395,19 +395,19 @@ export function DataPreview({ data, fileType, onError }: DataPreviewProps) {
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="rounded-lg border border-neutral-200 bg-white p-2 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className="rounded-lg border border bg-card p-2 text-secondary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
 
-            <span className="text-sm text-neutral-700 dark:text-neutral-300">
+            <span className="text-sm text-secondary dark:text-muted">
               Page {currentPage} of {totalPages}
             </span>
 
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="rounded-lg border border-neutral-200 bg-white p-2 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className="rounded-lg border border bg-card p-2 text-secondary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

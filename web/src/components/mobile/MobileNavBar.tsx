@@ -86,7 +86,7 @@ export function MobileNavBar({
     <header
       className={twMerge(
         'pt-safe sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 bg-background px-4',
-        showDivider && 'border-b border-gray-200',
+        showDivider && 'border-b border-neutral-200 dark:border-neutral-700',
         className
       )}
       role="banner"
@@ -97,7 +97,7 @@ export function MobileNavBar({
           <button
             type="button"
             onClick={leftAction.onClick}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-gray-100 hover:text-foreground active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-neutral-100 hover:text-foreground active:scale-95 dark:hover:bg-neutral-800"
             aria-label={leftAction.label}
           >
             {leftAction.icon}
@@ -122,7 +122,7 @@ export function MobileNavBar({
               'flex h-10 min-w-10 items-center justify-center rounded-full text-muted-foreground transition-colors',
               // Minimum 44x44px touch target
               'min-h-[44px] min-w-[44px]',
-              'hover:bg-gray-100 hover:text-foreground active:scale-95'
+              'hover:bg-neutral-100 hover:text-foreground active:scale-95 dark:hover:bg-neutral-800'
             )}
             aria-label={action.label}
           >

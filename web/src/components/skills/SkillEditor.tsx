@@ -45,7 +45,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/20 dark:text-yellow-300 dark:border-yellow-900/40',
   pink: 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/20 dark:text-pink-300 dark:border-pink-900/40',
   indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/20 dark:text-indigo-300 dark:border-indigo-900/40',
-  gray: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700',
+  gray: 'bg-neutral-50 text-neutral-700 border-neutral-200 dark:bg-muted dark:text-muted dark:border-border',
 }
 
 export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
@@ -200,18 +200,18 @@ export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
       }}
     >
       <BrandDialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-0">
-        {/* Gradient Header */}
-        <div className="border-b border-neutral-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-800">
+        {/* Header - subtle background */}
+        <div className="border-b border bg-muted/30 px-6 py-4 dark:border-border dark:bg-muted/30">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm dark:bg-neutral-800">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm dark:bg-muted">
                 <FileCode className="h-5 w-5 text-blue-500" />
               </div>
               <div className="min-w-0 flex-1">
-                <BrandDialogTitle className="px-0 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                <BrandDialogTitle className="px-0 text-base font-semibold text-primary dark:text-primary-foreground">
                   {skill ? '编辑技能' : '新建技能'}
                 </BrandDialogTitle>
-                <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                <p className="mt-1 text-xs text-secondary dark:text-muted">
                   {skill ? '修改现有技能的配置和内容' : '创建自定义技能，扩展 AI 能力'}
                 </p>
               </div>
@@ -221,12 +221,12 @@ export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowPreview(!showPreview)}
-                className="bg-white/80 backdrop-blur-sm hover:bg-white dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="bg-white/80 backdrop-blur-sm hover:bg-white dark:bg-muted dark:hover:bg-muted"
               >
                 {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 {showPreview ? '编辑' : '预览'}
               </Button>
-              <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-white/50 dark:hover:bg-neutral-700">
+              <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-white/50 dark:hover:bg-muted">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -269,15 +269,15 @@ export function SkillEditor({ skill, open, onClose }: SkillEditorProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50 px-6 py-3 dark:border-neutral-700 dark:bg-neutral-800">
+        <div className="flex items-center justify-between border-t border bg-muted px-6 py-3 dark:border-border dark:bg-muted">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className={cn('border-2', categoryColorClass)}>
               {currentCategory?.label || '未分类'}
             </Badge>
-            <span className="text-xs text-neutral-400 dark:text-neutral-500">{skill ? '编辑模式' : '新建模式'}</span>
+            <span className="text-xs text-tertiary dark:text-muted">{skill ? '编辑模式' : '新建模式'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onClose} className="bg-white hover:bg-neutral-100 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+            <Button variant="outline" onClick={onClose} className="bg-white hover:bg-muted dark:bg-card dark:hover:bg-muted">
               取消
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
@@ -339,7 +339,7 @@ function EditForm({
     <div className="space-y-6 p-6">
       {/* Basic Info Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">基本信息</h3>
+        <h3 className="text-sm font-semibold text-primary dark:text-primary-foreground">基本信息</h3>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="技能名称" required>
@@ -347,7 +347,7 @@ function EditForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如: code-reviewer"
-              className="bg-neutral-50 focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+              className="bg-muted focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
             />
           </FormField>
 
@@ -357,20 +357,20 @@ function EditForm({
                 type="button"
                 onClick={() => setCategoryOpen(!categoryOpen)}
                 className={cn(
-                  'flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm transition-colors dark:bg-neutral-900 dark:text-neutral-100',
-                  'border-neutral-300 hover:border-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:hover:border-neutral-500'
+                  'flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm transition-colors dark:bg-card dark:text-primary-foreground',
+                  'border hover:border focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-border dark:hover:border'
                 )}
               >
                 <span>{currentCategory?.label || '选择分类'}</span>
                 <ChevronDown
                   className={cn(
-                    'h-4 w-4 text-neutral-400 transition-transform',
+                    'h-4 w-4 text-tertiary transition-transform',
                     categoryOpen && 'rotate-180'
                   )}
                 />
               </button>
               {categoryOpen && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                <div className="absolute z-10 mt-1 w-full rounded-lg border border bg-card py-1 shadow-lg dark:border-border dark:bg-card">
                   {CATEGORY_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -383,7 +383,7 @@ function EditForm({
                         'flex w-full items-center justify-between px-3 py-2 text-sm transition-colors',
                         category === opt.value
                           ? 'bg-blue-50 text-blue-700'
-                          : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                          : 'text-secondary hover:bg-muted dark:text-muted dark:hover:bg-muted'
                       )}
                     >
                       <span>{opt.label}</span>
@@ -398,7 +398,7 @@ function EditForm({
                             'bg-yellow-500': opt.color === 'yellow',
                             'bg-pink-500': opt.color === 'pink',
                             'bg-indigo-500': opt.color === 'indigo',
-                            'bg-gray-500': opt.color === 'gray',
+                            'bg-neutral-500': opt.color === 'gray',
                           })}
                         />
                       )}
@@ -415,7 +415,7 @@ function EditForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="简短描述这个技能的功能"
-            className="bg-neutral-50 focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="bg-muted focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
           />
         </FormField>
 
@@ -425,9 +425,9 @@ function EditForm({
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               placeholder="review, quality"
-              className="bg-neutral-50 focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+              className="bg-muted focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
             />
-            <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">逗号分隔，用于分类和搜索</p>
+            <p className="mt-1 text-xs text-tertiary dark:text-muted">逗号分隔，用于分类和搜索</p>
           </FormField>
 
           <FormField label="触发关键词">
@@ -435,9 +435,9 @@ function EditForm({
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
               placeholder="审查, 检查"
-              className="bg-neutral-50 focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+              className="bg-muted focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
             />
-            <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">逗号分隔，匹配时自动激活</p>
+            <p className="mt-1 text-xs text-tertiary dark:text-muted">逗号分隔，匹配时自动激活</p>
           </FormField>
         </div>
 
@@ -446,15 +446,15 @@ function EditForm({
             value={fileExtensions}
             onChange={(e) => setFileExtensions(e.target.value)}
             placeholder=".ts, .tsx"
-            className="bg-neutral-50 focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="bg-muted focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
           />
-          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">可选，针对特定文件类型激活</p>
+          <p className="mt-1 text-xs text-tertiary dark:text-muted">可选，针对特定文件类型激活</p>
         </FormField>
       </div>
 
       {/* Content Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">技能内容</h3>
+        <h3 className="text-sm font-semibold text-primary dark:text-primary-foreground">技能内容</h3>
 
         <FormField label="指令" required>
           <Textarea
@@ -462,7 +462,7 @@ function EditForm({
             onChange={(e) => setInstruction(e.target.value)}
             placeholder="你是代码审查专家。当用户要求审查代码时：&#10;1. 分析类型安全性&#10;2. 检查性能问题&#10;3. 评估可读性"
             rows={8}
-            className="bg-neutral-50 font-mono text-sm focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="bg-muted font-mono text-sm focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
           />
         </FormField>
 
@@ -472,9 +472,9 @@ function EditForm({
             onChange={(e) => setExamples(e.target.value)}
             placeholder="用户: '帮我审查这个组件'&#10;AI: '让我检查一下...'"
             rows={5}
-            className="bg-neutral-50 font-mono text-sm focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="bg-muted font-mono text-sm focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
           />
-          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">可选，提供使用示例帮助 AI 理解</p>
+          <p className="mt-1 text-xs text-tertiary dark:text-muted">可选，提供使用示例帮助 AI 理解</p>
         </FormField>
 
         <FormField label="输出模板">
@@ -483,9 +483,9 @@ function EditForm({
             onChange={(e) => setTemplates(e.target.value)}
             placeholder="## 审查报告&#10;- 文件: {{filename}}&#10;- 问题: {{issues}}"
             rows={5}
-            className="bg-neutral-50 font-mono text-sm focus:bg-white dark:bg-neutral-800 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="bg-muted font-mono text-sm focus:bg-white dark:bg-muted dark:text-primary-foreground dark:focus:bg-card"
           />
-          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">可选，定义标准输出格式</p>
+          <p className="mt-1 text-xs text-tertiary dark:text-muted">可选，定义标准输出格式</p>
         </FormField>
       </div>
     </div>
@@ -501,7 +501,7 @@ function PreviewPanel({ content }: { content: string }) {
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileCode className="h-4 w-4 text-blue-500" />
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">SKILL.md 预览</h3>
+          <h3 className="text-sm font-semibold text-primary dark:text-primary-foreground">SKILL.md 预览</h3>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs">
@@ -514,11 +514,11 @@ function PreviewPanel({ content }: { content: string }) {
       </div>
 
       {/* Code Preview - Light Theme */}
-      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4 py-2 dark:border-neutral-700 dark:bg-neutral-800">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">SKILL.md</span>
+      <div className="overflow-hidden rounded-xl border border bg-card dark:border-border dark:bg-card">
+        <div className="flex items-center justify-between border-b border bg-muted px-4 py-2 dark:border-border dark:bg-muted">
+          <span className="text-xs font-medium text-secondary dark:text-muted">SKILL.md</span>
         </div>
-        <pre className="max-h-96 overflow-y-auto bg-white p-4 font-mono text-xs text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+        <pre className="max-h-96 overflow-y-auto bg-white p-4 font-mono text-xs text-secondary dark:bg-card dark:text-muted">
           {content}
         </pre>
       </div>
@@ -537,7 +537,7 @@ function FormField({
 }) {
   return (
     <div>
-      <label className="mb-1.5 flex items-center text-sm font-medium text-neutral-700 dark:text-neutral-300">
+      <label className="mb-1.5 flex items-center text-sm font-medium text-secondary dark:text-muted">
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
@@ -566,9 +566,9 @@ function Textarea({
       placeholder={placeholder}
       rows={rows}
       className={cn(
-        'w-full rounded-lg border border-neutral-300 px-4 py-3 text-sm transition-all',
+        'w-full rounded-lg border border-neutral-300 px-4 py-3 text-sm transition-all dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100',
         'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
-        'placeholder:text-neutral-400',
+        'placeholder:text-tertiary',
         className
       )}
     />

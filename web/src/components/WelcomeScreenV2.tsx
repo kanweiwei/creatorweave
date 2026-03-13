@@ -55,7 +55,7 @@ const PERSONAS: Persona[] = [
       { text: 'Find bugs in this code', textKey: 'welcome.personas.developer.examples.1' },
       { text: 'Refactor for better performance', textKey: 'welcome.personas.developer.examples.2' },
     ],
-    color: 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100',
+    color: 'bg-blue-50/50 text-blue-600 border-blue-200/50 hover:bg-blue-50',
   },
   {
     id: 'analyst',
@@ -69,7 +69,7 @@ const PERSONAS: Persona[] = [
       { text: 'Create charts from Excel', textKey: 'welcome.personas.analyst.examples.1' },
       { text: 'Summarize key metrics', textKey: 'welcome.personas.analyst.examples.2' },
     ],
-    color: 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100',
+    color: 'bg-green-50/50 text-green-600 border-green-200/50 hover:bg-green-50',
   },
   {
     id: 'researcher',
@@ -83,7 +83,7 @@ const PERSONAS: Persona[] = [
       { text: 'Explain technical concepts', textKey: 'welcome.personas.researcher.examples.1' },
       { text: 'Find information across files', textKey: 'welcome.personas.researcher.examples.2' },
     ],
-    color: 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100',
+    color: 'bg-purple-50/50 text-purple-600 border-purple-200/50 hover:bg-purple-50',
   },
   {
     id: 'office',
@@ -97,7 +97,7 @@ const PERSONAS: Persona[] = [
       { text: 'Format and organize documents', textKey: 'welcome.personas.office.examples.1' },
       { text: 'Process multiple files', textKey: 'welcome.personas.office.examples.2' },
     ],
-    color: 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100',
+    color: 'bg-orange-50/50 text-orange-600 border-orange-200/50 hover:bg-orange-50',
   },
 ]
 
@@ -225,8 +225,8 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
       <div className="w-full max-w-4xl">
         {/* Logo & Tagline */}
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 shadow-sm">
-            <Sparkles className="h-7 w-7 text-primary-600" />
+          <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50/80 shadow-sm">
+            <Sparkles className="h-6 w-6 text-primary-600" />
           </div>
           <h1 className="mb-2 text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{t('welcome.title')}</h1>
           <p className="text-base text-neutral-500 dark:text-neutral-400">{t('welcome.tagline')}</p>
@@ -262,7 +262,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
 
         {/* Example questions (based on selected persona) */}
         {selectedPersona && (
-          <div className="mb-6 rounded-xl bg-neutral-50 p-4 dark:bg-neutral-900">
+          <div className="mb-6 rounded-lg bg-neutral-50/80 p-4 dark:bg-neutral-900/60">
             <p className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300">Try asking:</p>
             <div className="flex flex-wrap gap-2">
               {PERSONAS.find((p) => p.id === selectedPersona)?.examples.map((example, idx) => (
@@ -284,7 +284,7 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
         <div className="relative mb-6">
           {/* Drag overlay */}
           {isDragging && (
-            <div className="border-primary-400 absolute inset-0 z-10 -m-2 flex flex-col items-center justify-center rounded-3xl border-2 border-dashed bg-primary-50/90">
+            <div className="border-primary-400 absolute inset-0 z-10 -m-2 flex flex-col items-center justify-center rounded-xl border-2 border-dashed bg-primary-50/70">
               <Upload className="mb-4 h-12 w-12 text-primary-500" />
               <p className="text-lg font-medium text-primary-700">Drop files here</p>
               <p className="text-sm text-primary-600">Supports CSV, Excel, PDF, images, and more</p>
@@ -296,8 +296,9 @@ export function WelcomeScreenV2({ onStartConversation }: WelcomeScreenProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={hasApiKey ? t('welcome.placeholder') : t('welcome.placeholderNoKey')}
+            aria-label="输入消息"
             rows={3}
-            className="focus:border-primary-300 focus:ring-primary-300 w-full resize-none rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
+            className="focus:border-primary-300 focus:ring-primary-300 w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all placeholder:text-neutral-400 focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
             disabled={!hasApiKey}
           />
 

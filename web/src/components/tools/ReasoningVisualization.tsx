@@ -207,26 +207,26 @@ export function ReasoningVisualization({
   // Compact mode
   if (compact) {
     return (
-      <div className="flex items-center gap-2 text-sm text-neutral-600">
+      <div className="flex items-center gap-2 text-sm text-secondary dark:text-muted">
         {status === 'thinking' || status === 'reasoning' ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
-            <span className="text-neutral-600">Thinking...</span>
+            <span className="text-secondary dark:text-muted">Thinking...</span>
           </>
         ) : status === 'tool_calling' && currentToolCall ? (
           <>
             <Settings className="h-4 w-4 animate-pulse text-primary-600" />
-            <span className="text-neutral-600">Using {currentToolCall.name}...</span>
+            <span className="text-secondary dark:text-muted">Using {currentToolCall.name}...</span>
           </>
         ) : status === 'complete' ? (
           <>
             <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <span className="text-neutral-600">Done</span>
+            <span className="text-secondary dark:text-muted">Done</span>
           </>
         ) : (
           <>
-            <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
-            <span className="text-neutral-600">Processing...</span>
+            <Loader2 className="h-4 w-4 animate-spin text-tertiary dark:text-muted" />
+            <span className="text-secondary dark:text-muted">Processing...</span>
           </>
         )}
       </div>
@@ -236,11 +236,11 @@ export function ReasoningVisualization({
   // Full mode
   return (
     <div
-      className="rounded-xl border border-neutral-200 bg-neutral-50"
+      className="rounded-xl border border-border bg-muted dark:border-border dark:bg-muted"
       style={{ maxHeight, overflow: 'auto' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-border">
         <div className="flex items-center gap-2">
           {status === 'thinking' || status === 'reasoning' ? (
             <Brain className="h-4 w-4 animate-pulse text-primary-600" />
@@ -251,7 +251,7 @@ export function ReasoningVisualization({
           ) : (
             <AlertCircle className="h-4 w-4 text-red-600" />
           )}
-          <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          <span className="text-sm font-medium text-primary dark:text-primary-foreground">
             {status === 'thinking' || status === 'reasoning'
               ? 'Thinking...'
               : status === 'tool_calling'
@@ -288,7 +288,7 @@ export function ReasoningVisualization({
               className={`rounded-lg border ${
                 step.status === 'in_progress'
                   ? 'border-primary-300 bg-primary-50'
-                  : 'border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900'
+                  : 'border border-border dark:border-border bg-white dark:border-border dark:bg-card'
               } transition-colors`}
             >
               <button
@@ -301,7 +301,7 @@ export function ReasoningVisualization({
                       ? 'bg-primary-100'
                       : step.status === 'complete'
                         ? 'bg-green-100'
-                        : 'bg-neutral-100'
+                        : 'bg-muted dark:bg-muted'
                   }`}
                 >
                   <Icon
@@ -310,28 +310,28 @@ export function ReasoningVisualization({
                         ? 'text-primary-600'
                         : step.status === 'complete'
                           ? 'text-green-600'
-                          : 'text-neutral-500'
+                          : 'text-tertiary dark:text-muted'
                     } ${step.status === 'in_progress' ? 'animate-pulse' : ''}`}
                   />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p
                     className={`text-sm font-medium ${
-                      step.status === 'in_progress' ? 'text-primary-900 dark:text-primary-200' : 'text-neutral-900 dark:text-neutral-100'
+                      step.status === 'in_progress' ? 'text-primary-900 dark:text-primary-200' : 'text-primary dark:text-primary-foreground'
                     }`}
                   >
                     {step.title}
                   </p>
                   {step.description && isExpanded && (
-                    <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">{step.description}</p>
+                    <p className="mt-1 text-xs text-secondary dark:text-muted">{step.description}</p>
                   )}
                 </div>
                 {step.details && (
                   <div className="flex-shrink-0">
                     {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-neutral-400" />
+                      <ChevronDown className="h-4 w-4 text-tertiary dark:text-muted" />
                     ) : (
-                      <ChevronRight className="h-4 w-4 text-neutral-400" />
+                      <ChevronRight className="h-4 w-4 text-tertiary dark:text-muted" />
                     )}
                   </div>
                 )}
@@ -339,8 +339,8 @@ export function ReasoningVisualization({
 
               {/* Expanded details */}
               {isExpanded && step.details && (
-                <div className="border-t border-neutral-100 px-3 pb-3 pt-2 dark:border-neutral-700">
-                  <p className="whitespace-pre-wrap text-xs text-neutral-600 dark:text-neutral-300">{step.details}</p>
+                <div className="border-t border border-border dark:border-border px-3 pb-3 pt-2 dark:border-border">
+                  <p className="whitespace-pre-wrap text-xs text-secondary dark:text-muted">{step.details}</p>
                 </div>
               )}
             </div>
@@ -363,7 +363,7 @@ export function ReasoningVisualization({
 
                 {/* Tool args preview */}
                 {(streamingToolArgs || Object.keys(currentToolCall.args).length > 0) && (
-                  <div className="mt-2 rounded bg-white/50 p-2 dark:bg-neutral-900/60">
+                  <div className="mt-2 rounded bg-white/50 p-2 dark:bg-card/60">
                     <p className="font-mono text-xs text-primary-800 dark:text-primary-300">
                       {streamingToolArgs || JSON.stringify(currentToolCall.args, null, 2)}
                     </p>
@@ -378,8 +378,8 @@ export function ReasoningVisualization({
         {/* Empty state */}
         {steps.length === 0 && !currentToolCallStep && status !== 'complete' && (
           <div className="py-8 text-center">
-            <Brain className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
-            <p className="text-sm text-neutral-500">
+            <Brain className="mx-auto mb-2 h-8 w-8 text-tertiary dark:text-muted" />
+            <p className="text-sm text-tertiary dark:text-muted">
               {status === 'thinking' || status === 'reasoning'
                 ? 'AI is thinking...'
                 : 'Processing your request...'}
@@ -407,23 +407,23 @@ export function InlineReasoning({ reasoning, isStreaming }: InlineReasoningProps
 
   return (
     <details
-      className={`group my-2 rounded-lg border ${isStreaming ? 'border-primary-300 bg-primary-50 dark:border-primary-900/40 dark:bg-primary-950/20' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900'}`}
+      className={`group my-2 rounded-lg border ${isStreaming ? 'border-primary-300 bg-primary-50 dark:border-primary-900/40 dark:bg-primary-950/20' : 'border border-border dark:border-border bg-muted dark:bg-muted dark:border-border dark:bg-card'}`}
       open={isExpanded}
       onToggle={(e) => setIsExpanded(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm">
         <Brain
-          className={`h-4 w-4 ${isStreaming ? 'animate-pulse text-primary-600' : 'text-neutral-500'}`}
+          className={`h-4 w-4 ${isStreaming ? 'animate-pulse text-primary-600' : 'text-tertiary dark:text-muted'}`}
         />
-        <span className={isStreaming ? 'text-primary-900 font-medium dark:text-primary-200' : 'text-neutral-700 dark:text-neutral-300'}>
+        <span className={isStreaming ? 'text-primary-900 font-medium dark:text-primary-200' : 'text-secondary dark:text-muted'}>
           {isStreaming ? 'Thinking...' : 'Thought Process'}
         </span>
         <ChevronRight
-          className={`ml-auto h-4 w-4 text-neutral-400 transition-transform group-open:rotate-90`}
+          className={`ml-auto h-4 w-4 text-tertiary dark:text-muted transition-transform group-open:rotate-90`}
         />
       </summary>
-      <div className="border-t border-neutral-200 px-3 py-2 dark:border-neutral-700">
-        <p className="whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{reasoning}</p>
+      <div className="border-t border border-border dark:border-border px-3 py-2 dark:border-border">
+        <p className="whitespace-pre-wrap text-sm text-secondary dark:text-muted">{reasoning}</p>
       </div>
     </details>
   )
@@ -450,7 +450,7 @@ export function ProgressBar({
 
   return (
     <div className="flex items-center gap-3">
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted dark:bg-muted">
         <div
           className={`h-full transition-all duration-500 ${
             status === 'complete'
@@ -462,7 +462,7 @@ export function ProgressBar({
           style={{ width: `${progress * 100}%` }}
         />
       </div>
-      {message && <span className="whitespace-nowrap text-xs text-neutral-600">{message}</span>}
+      {message && <span className="whitespace-nowrap text-xs text-secondary dark:text-muted">{message}</span>}
     </div>
   )
 }

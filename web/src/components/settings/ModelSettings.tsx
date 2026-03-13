@@ -171,8 +171,8 @@ function TokenStatsDisplay() {
 
   if (stats.requestCount === 0) {
     return (
-      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-800/50">
-        <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
+      <div className="rounded-lg border border bg-muted p-3 dark:border-border dark:bg-muted/50">
+        <div className="flex items-center gap-2 text-sm text-tertiary dark:text-muted">
           <Info className="h-4 w-4" />
           <span>暂无使用统计</span>
         </div>
@@ -183,29 +183,29 @@ function TokenStatsDisplay() {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">总 Tokens</p>
-          <p className="mt-1 text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+        <div className="rounded-lg border border p-3 dark:border-border">
+          <p className="text-xs text-tertiary dark:text-muted">总 Tokens</p>
+          <p className="mt-1 text-lg font-semibold text-secondary dark:text-muted">
             {stats.totalTokens.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">请求次数</p>
-          <p className="mt-1 text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+        <div className="rounded-lg border border p-3 dark:border-border">
+          <p className="text-xs text-tertiary dark:text-muted">请求次数</p>
+          <p className="mt-1 text-lg font-semibold text-secondary dark:text-muted">
             {stats.requestCount.toLocaleString()}
           </p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">输入 Tokens</p>
-          <p className="mt-1 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+        <div className="rounded-lg border border p-3 dark:border-border">
+          <p className="text-xs text-tertiary dark:text-muted">输入 Tokens</p>
+          <p className="mt-1 text-sm font-medium text-secondary dark:text-muted">
             {stats.promptTokens.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">输出 Tokens</p>
-          <p className="mt-1 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+        <div className="rounded-lg border border p-3 dark:border-border">
+          <p className="text-xs text-tertiary dark:text-muted">输出 Tokens</p>
+          <p className="mt-1 text-sm font-medium text-secondary dark:text-muted">
             {stats.completionTokens.toLocaleString()}
           </p>
         </div>
@@ -446,7 +446,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
               if (providers.length === 0) return null
               return (
                 <div key={category}>
-                  <div className="px-2 py-1.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-tertiary dark:text-muted">
                     {CATEGORY_LABELS[category]}
                   </div>
                   {providers.map(({ type, meta }) => (
@@ -476,7 +476,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
 
       {/* ── Custom Provider Management ── */}
       {providerType === 'custom' && (
-        <div className="space-y-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+        <div className="space-y-3 rounded-lg border border p-3 dark:border-border">
           <div className="space-y-2">
             <label className="text-sm font-medium text-primary">自定义服务商</label>
             {customProviders.length > 0 ? (
@@ -560,13 +560,13 @@ export function ModelSettings({ open }: ModelSettingsProps) {
                 {activeCustomProvider.models.map((item) => (
                   <span
                     key={item}
-                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs text-neutral-700"
+                    className="inline-flex items-center gap-1 rounded-full border border px-2 py-1 text-xs text-secondary"
                   >
                     {item}
                     {activeCustomProvider.models.length > 1 && (
                       <button
                         type="button"
-                        className="text-neutral-400 hover:text-red-500"
+                        className="text-tertiary hover:text-red-500"
                         onClick={() => removeCustomProviderModel(activeCustomProvider.id, item)}
                         aria-label={`移除模型 ${item}`}
                       >
@@ -594,7 +594,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
                 <BrandSelectItem key={model.id} value={model.id}>
                   <div className="flex items-center gap-2">
                     <span>{model.name}</span>
-                    <span className="text-[10px] text-neutral-400">
+                    <span className="text-[10px] text-tertiary">
                       {formatContextWindow(model.contextWindow)}
                     </span>
                   </div>
@@ -609,7 +609,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
               {selectedModel.capabilities.map((cap) => (
                 <CapabilityBadge key={cap} capability={cap} />
               ))}
-              <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-secondary dark:bg-muted dark:text-muted">
                 <Timer className="h-2.5 w-2.5" />
                 {formatContextWindow(selectedModel.contextWindow)} tokens
               </span>
@@ -658,7 +658,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={t('settings.apiKeyPlaceholder')}
-              className="flex w-full rounded-lg border border-gray-200 bg-transparent px-[14px] py-[10px] pr-10 text-sm focus-visible:border-primary-600 focus-visible:shadow-[0_0_6px_rgba(13,148,136,0.13)] focus-visible:outline-none dark:border-neutral-700"
+              className="flex w-full rounded-lg border border-neutral-200 bg-transparent px-[14px] py-[10px] pr-10 text-sm focus-visible:border-primary-600 focus-visible:shadow-[0_0_6px_rgba(13,148,136,0.13)] focus-visible:outline-none dark:border-border"
               style={{ WebkitTextSecurity: showKey ? 'none' : 'disc' } as React.CSSProperties}
               autoComplete="off"
               data-form-type="other"
@@ -685,7 +685,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex w-full items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+          className="flex w-full items-center gap-2 text-sm font-medium text-secondary hover:text-secondary dark:text-muted dark:hover:text-muted"
         >
           <ChevronDown
             className={`h-4 w-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
@@ -694,7 +694,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
         </button>
 
         {showAdvanced && (
-          <div className="space-y-4 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+          <div className="space-y-4 rounded-lg border border p-3 dark:border-border">
             {/* Temperature */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -709,7 +709,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
                 max={100}
                 step={1}
               />
-              <div className="flex justify-between text-[10px] text-neutral-400">
+              <div className="flex justify-between text-[10px] text-tertiary">
                 <span>精确</span>
                 <span>创意</span>
               </div>

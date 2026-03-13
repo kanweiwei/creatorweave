@@ -211,7 +211,7 @@ export function ExportPanel({
   }, [data, chartElement, selectedFormat, defaultFilename, options.addTimestamp, onExportComplete, t])
 
   return (
-    <div className="export-panel bg-card border rounded-lg shadow-lg w-96 max-h-[600px] overflow-hidden">
+    <div className="export-panel bg-card border rounded-lg shadow-md w-96 max-h-[600px] overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
         <div className="flex items-center gap-2">

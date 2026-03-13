@@ -268,7 +268,7 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
         className={`relative flex items-center justify-center rounded-xl border-2 border-dashed transition-colors ${
           isDragOver
             ? 'border-primary-500 bg-primary-50'
-            : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
+            : 'border-border dark:border-border bg-muted dark:bg-muted hover:border-border'
         } ${className || ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -276,8 +276,8 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
       >
         <input ref={inputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
         <div className="p-4 text-center">
-          <Upload className="mx-auto mb-2 h-6 w-6 text-neutral-400" />
-          <p className="text-sm text-neutral-600">
+          <Upload className="mx-auto mb-2 h-6 w-6 text-tertiary dark:text-muted" />
+          <p className="text-sm text-secondary dark:text-muted">
             {isDragOver ? 'Drop files here' : 'Drag files or click to upload'}
           </p>
         </div>
@@ -292,7 +292,7 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
         className={`relative rounded-xl border-2 border-dashed transition-all ${
           isDragOver
             ? 'scale-[1.02] border-primary-500 bg-primary-50'
-            : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
+            : 'border-border dark:border-border bg-muted dark:bg-muted hover:border-border'
         } ${droppedItems.length > 0 ? 'p-4' : 'p-8'}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -305,17 +305,17 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
           <div className="text-center">
             <div
               className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full ${
-                isDragOver ? 'bg-primary-200' : 'bg-neutral-200'
+                isDragOver ? 'bg-primary-200' : 'bg-muted dark:bg-muted'
               } transition-colors`}
             >
               <Upload
-                className={`h-6 w-6 ${isDragOver ? 'text-primary-600' : 'text-neutral-500'}`}
+                className={`h-6 w-6 ${isDragOver ? 'text-primary-600' : 'text-tertiary dark:text-muted'}`}
               />
             </div>
-            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            <p className="text-sm font-medium text-primary dark:text-primary-foreground">
               {isDragOver ? 'Drop files here' : 'Drag files or click to upload'}
             </p>
-            <p className="mt-1 text-xs text-neutral-500">Supports code, data, and document files</p>
+            <p className="mt-1 text-xs text-tertiary dark:text-muted">Supports code, data, and document files</p>
             <div className="mt-4 flex items-center justify-center gap-3">
               <button
                 type="button"
@@ -327,7 +327,7 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className="flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                className="flex items-center gap-2 rounded-lg border border-border dark:border-border bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-muted dark:bg-muted dark:border-border dark:bg-card dark:text-muted dark:hover:bg-muted"
               >
                 <Folder className="h-4 w-4" />
                 Select Folder
@@ -338,12 +338,12 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
           // Has items
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              <p className="text-sm font-medium text-primary dark:text-primary-foreground">
                 {droppedItems.length} file{droppedItems.length > 1 ? 's' : ''} selected
               </p>
               <button
                 onClick={handleClear}
-                className="rounded-lg p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600"
+                className="rounded-lg p-1 text-tertiary dark:text-muted transition-colors hover:bg-muted dark:bg-muted hover:text-secondary dark:text-muted"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -354,18 +354,18 @@ export function DropZone({ onFilesDrop, onPrompt, className, minimal }: DropZone
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm dark:bg-neutral-900"
+                    className="flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm dark:bg-card"
                   >
-                    <div className="rounded-lg bg-neutral-100 p-2">
-                      <Icon className="h-4 w-4 text-neutral-600" />
+                    <div className="rounded-lg bg-muted dark:bg-muted p-2">
+                      <Icon className="h-4 w-4 text-secondary dark:text-muted" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">{item.name}</p>
-                      <p className="text-xs text-neutral-500">{formatFileSize(item.size)}</p>
+                      <p className="truncate text-sm font-medium text-primary dark:text-primary-foreground">{item.name}</p>
+                      <p className="text-xs text-tertiary dark:text-muted">{formatFileSize(item.size)}</p>
                     </div>
                     <button
                       onClick={() => handleRemoveItem(item.id)}
-                      className="rounded-lg p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                      className="rounded-lg p-1 text-tertiary dark:text-muted transition-colors hover:bg-muted dark:bg-muted hover:text-secondary dark:text-muted"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -457,7 +457,7 @@ export function CompactDropZone({ onFilesDrop, onPrompt }: CompactDropZoneProps)
           ? 'border-primary-500 bg-primary-50'
           : hasDropped
             ? 'border-green-500 bg-green-50'
-            : 'border-neutral-300 bg-neutral-100'
+            : 'border-border dark:border-border bg-muted dark:bg-muted'
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -465,7 +465,7 @@ export function CompactDropZone({ onFilesDrop, onPrompt }: CompactDropZoneProps)
     >
       <Upload
         className={`h-5 w-5 ${
-          isDragOver ? 'text-primary-600' : hasDropped ? 'text-green-600' : 'text-neutral-400'
+          isDragOver ? 'text-primary-600' : hasDropped ? 'text-green-600' : 'text-tertiary dark:text-muted'
         }`}
       />
     </div>

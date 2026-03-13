@@ -560,7 +560,7 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
                 onMouseDown={handleDividerDragStart}
               />
               <div
-                className="overflow-hidden border-l border-neutral-200"
+                className="overflow-hidden border-l border-neutral-200 dark:border-neutral-700"
                 style={{ width: `${previewRatio}%` }}
               >
                 {showPreview ? (

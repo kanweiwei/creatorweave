@@ -46,7 +46,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
   // Not initialized yet
   if (!initialized) {
     return (
-      <div className="flex items-center gap-2 text-xs text-neutral-400">
+      <div className="flex items-center gap-2 text-xs text-tertiary dark:text-muted">
         <AlertCircle className="h-3.5 w-3.5" />
         <span>{t('session.initializing')}</span>
       </div>
@@ -56,7 +56,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
   // No active workspace
   if (!activeWorkspaceId || !currentWorkspace) {
     return (
-      <div className="flex items-center gap-2 text-xs text-neutral-400">
+      <div className="flex items-center gap-2 text-xs text-tertiary dark:text-muted">
         <AlertCircle className="h-3.5 w-3.5" />
         <span>{t('session.noSession')}</span>
       </div>
@@ -69,13 +69,13 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       <button
         type="button"
         onClick={handleClick}
-        className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs hover:bg-neutral-50"
+        className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs hover:bg-muted dark:hover:bg-muted"
         title={displayName}
       >
         <span className="max-w-[80px] truncate">{displayName}</span>
         {hasPending && (
           <span
-            className="flex h-5 items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700"
+            className="flex h-5 items-center gap-1 rounded-full bg-warning-bg px-1.5 text-warning"
             title={t('session.pendingCount', { count: currentPendingCount })}
           >
             <Clock className="h-3 w-3" />
@@ -84,7 +84,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
         )}
         {hasUndo && (
           <span
-            className="flex h-5 items-center gap-1 rounded-full bg-blue-100 px-1.5 text-blue-700"
+            className="flex h-5 items-center gap-1 rounded-full bg-primary-50 px-1.5 text-primary-700"
             title={t('session.undoCount', { count: currentUndoCount })}
           >
             <RotateCcw className="h-3 w-3" />
@@ -100,16 +100,16 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
     <button
       type="button"
       onClick={handleClick}
-      className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-50"
+      className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted dark:hover:bg-muted"
       title={`${t('session.current')}: ${displayName}`}
     >
       {/* Session name */}
-      <span className="max-w-[120px] truncate text-neutral-700">{displayName}</span>
+      <span className="max-w-[120px] truncate text-secondary dark:text-muted">{displayName}</span>
 
       {/* Pending count */}
       {hasPending && (
         <span
-          className="flex h-5 items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700"
+          className="flex h-5 items-center gap-1 rounded-full bg-warning-bg px-1.5 text-warning"
           title={t('session.pendingChanges', { count: currentPendingCount })}
         >
           <Clock className="h-3 w-3" />
@@ -120,7 +120,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
       {/* Undo count */}
       {hasUndo && (
         <span
-          className="flex h-5 items-center gap-1 rounded-full bg-blue-100 px-1.5 text-blue-700"
+          className="flex h-5 items-center gap-1 rounded-full bg-primary-50 px-1.5 text-primary-700"
           title={t('session.undoOperations', { count: currentUndoCount })}
         >
           <RotateCcw className="h-3 w-3" />
@@ -130,7 +130,7 @@ export const SessionBadge: React.FC<SessionBadgeProps> = ({ onClick, compact = f
 
       {/* No changes indicator */}
       {!hasPending && !hasUndo && (
-        <span className="text-xs text-neutral-400">{t('session.noChanges')}</span>
+        <span className="text-xs text-tertiary dark:text-muted">{t('session.noChanges')}</span>
       )}
     </button>
   )

@@ -284,7 +284,7 @@ export function FileComparison({
       <div
         className={cn(
           'flex shrink-0 select-none items-center justify-center pr-3 text-xs',
-          'w-12 border-r border-neutral-200 bg-neutral-50',
+          'w-12 border-r border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800',
           {
             'bg-red-50/50 text-red-700': type === 'removed',
             'bg-green-50/50 text-green-700': type === 'added',
@@ -304,8 +304,8 @@ export function FileComparison({
 
     return (
       <div className="flex flex-col">
-        <div className="flex border-b border-neutral-200 bg-neutral-50">
-          <div className="flex-1 border-r border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700">
+        <div className="flex border-b border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800">
+          <div className="flex-1 border-r border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:border-neutral-700 dark:text-neutral-300">
             Original
           </div>
           <div className="flex-1 px-3 py-1.5 text-xs font-medium text-neutral-700">Modified</div>
@@ -316,7 +316,7 @@ export function FileComparison({
           <div
             ref={beforeRef}
             onScroll={handleScroll('before')}
-            className="flex-1 overflow-auto border-r border-neutral-200"
+            className="flex-1 overflow-auto border-r border-neutral-200 dark:border-neutral-700"
           >
             {beforeLines.map((line, idx) => (
               <div
@@ -361,7 +361,7 @@ export function FileComparison({
   return (
     <div className={cn('flex h-full flex-col bg-white', className)}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-neutral-700">{filename}</span>
           <span className="text-xs text-neutral-400">{language}</span>

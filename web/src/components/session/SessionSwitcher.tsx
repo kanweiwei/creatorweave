@@ -85,14 +85,14 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
         type="button"
         onClick={() => setOpen(!open)}
         disabled={isLoading || workspaces.length === 0}
-        className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+        className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50 dark:border-border dark:bg-card dark:hover:bg-muted"
       >
-        <span className="max-w-[120px] truncate text-neutral-700 dark:text-neutral-300">{displayName}</span>
+        <span className="max-w-[120px] truncate text-secondary dark:text-muted">{displayName}</span>
         {workspaces.length > 0 && (
-          <span className="text-xs text-neutral-400">({workspaces.length})</span>
+          <span className="text-xs text-tertiary">({workspaces.length})</span>
         )}
         <ChevronDown
-          className={`h-4 w-4 text-neutral-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-tertiary transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -103,10 +103,10 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden="true" />
 
           {/* Menu */}
-          <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-md border bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+          <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-md border bg-white shadow-lg dark:border-border dark:bg-card">
             {/* Header */}
-            <div className="border-b border-neutral-100 px-3 py-2 dark:border-neutral-700">
-              <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            <div className="border-b border px-3 py-2 dark:border-border">
+              <span className="text-xs font-medium text-secondary dark:text-muted">
                 对话列表 ({workspaces.length})
               </span>
             </div>
@@ -114,7 +114,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
             {/* Workspace list */}
             <div className="custom-scrollbar max-h-80 overflow-y-auto">
               {sortedWorkspaces.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-neutral-400 dark:text-neutral-500">暂无对话</div>
+                <div className="px-3 py-4 text-center text-xs text-tertiary dark:text-muted">暂无对话</div>
               ) : (
                 <ul>
                   {sortedWorkspaces.map((workspace) => {
@@ -125,7 +125,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                     return (
                       <li
                         key={workspace.id}
-                        className={`flex items-center gap-2 px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                        className={`flex items-center gap-2 px-3 py-2 hover:bg-muted dark:hover:bg-muted ${
                           isActive ? 'bg-primary-50 dark:bg-primary-950/30' : ''
                         }`}
                       >
@@ -142,7 +142,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                           {/* Workspace info */}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                              <span className="truncate text-xs font-medium text-secondary dark:text-muted">
                                 {workspace.name || workspace.id.slice(0, 8)}
                               </span>
                             </div>
@@ -152,7 +152,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                               {/* Pending count */}
                               {hasPending && (
                                 <span
-                                  className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-700"
+                                  className="flex items-center gap-0.5 rounded-full bg-warning-bg px-1.5 text-[10px] text-warning"
                                   title={`${workspace.pendingCount} 个待同步`}
                                 >
                                   <Clock className="h-2.5 w-2.5" />
@@ -163,7 +163,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                               {/* Undo count */}
                               {hasUndo && (
                                 <span
-                                  className="flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 text-[10px] text-blue-700"
+                                  className="flex items-center gap-0.5 rounded-full bg-primary-50 px-1.5 text-[10px] text-primary-700"
                                   title={`${workspace.undoCount} 个可撤销`}
                                 >
                                   <RotateCcw className="h-2.5 w-2.5" />
@@ -173,7 +173,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
 
                               {/* No changes */}
                               {!hasPending && !hasUndo && (
-                                <span className="text-[10px] text-neutral-400">无变更</span>
+                                <span className="text-[10px] text-tertiary">无变更</span>
                               )}
                             </div>
                           </div>
@@ -184,7 +184,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                           <button
                             type="button"
                             onClick={(e) => handleDelete(e, workspace.id)}
-                            className="shrink-0 rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500"
+                            className="shrink-0 rounded p-1 text-tertiary hover:bg-red-50 hover:text-red-500"
                             title="删除对话缓存"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -199,10 +199,10 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
 
             {/* Footer - Create new session */}
             {showCreate && (
-              <div className="border-t border-neutral-100 p-2">
+              <div className="border-t border p-2">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-secondary hover:bg-muted"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   新建对话

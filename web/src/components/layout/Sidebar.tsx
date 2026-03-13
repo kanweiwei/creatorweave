@@ -193,7 +193,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   // Collapsed state
   if (collapsed) {
     return (
-      <div className="border-subtle flex shrink-0 flex-col border-r bg-white dark:bg-neutral-900">
+      <div className="border-subtle flex shrink-0 flex-col border-r bg-white dark:bg-card">
         <BrandButton
           iconButton
           variant="ghost"
@@ -216,7 +216,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
         style={{ width }}
       >
         {/* Collapse button */}
-        <div className="border-subtle flex items-center justify-between border-b bg-white px-2 py-1 dark:bg-neutral-900">
+        <div className="border-subtle flex items-center justify-between border-b bg-white px-2 py-1 dark:bg-card">
           <span className="text-xs font-semibold uppercase tracking-wider text-primary">对话</span>
           <BrandButton
             iconButton
@@ -288,19 +288,19 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
         {/* Vertical drag divider (only when resources are visible) */}
         {hasResources && (
           <div
-            className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-gray-50/50 transition-colors hover:bg-gray-100/80 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+            className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
             onMouseDown={handleVerticalDragStart}
             title="拖动调整高度"
           >
             {/* 中心圆点 */}
-            <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-gray-300 transition-colors" />
+            <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
           </div>
         )}
 
         {/* Resource tabs (only when folder is selected) */}
         {hasResources && (
           <div
-            className="border-subtle flex flex-1 flex-col overflow-hidden border-t bg-white dark:bg-neutral-900"
+            className="border-subtle flex flex-1 flex-col overflow-hidden border-t bg-white dark:bg-card"
             style={{ height: `${100 - conversationRatio}%` }}
           >
             {/* Tab buttons */}
@@ -365,12 +365,12 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
 
       {/* Horizontal drag divider (sidebar width) */}
       <div
-        className="group relative flex w-2 shrink-0 cursor-col-resize flex-col items-center justify-center bg-gray-50/50 transition-colors hover:bg-gray-100/80 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+        className="group relative flex w-2 shrink-0 cursor-col-resize flex-col items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
         onMouseDown={handleDragStart}
         title="拖动调整宽度"
       >
         {/* 中心圆点 */}
-        <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-gray-300 transition-colors" />
+        <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
       </div>
     </>
   )

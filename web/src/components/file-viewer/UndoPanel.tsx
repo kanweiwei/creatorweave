@@ -112,7 +112,7 @@ export function UndoPanel() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-1.5">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-1.5 dark:border-neutral-700">
         <span className="text-xs font-medium text-neutral-600">
           变更记录 ({activeCount}/{records.length})
         </span>

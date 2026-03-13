@@ -264,7 +264,7 @@ interface DialogContentProps {
 export function DialogContent({ className = '', children }: DialogContentProps) {
   return (
     <div
-      className={`relative w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-xl ${className}`}
+      className={`relative w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-xl dark:bg-card ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -277,7 +277,7 @@ interface DialogHeaderProps {
 }
 
 function DialogHeader({ children }: DialogHeaderProps) {
-  return <div className="border-b border-neutral-200 px-6 py-4">{children}</div>
+  return <div className="border-b border px-6 py-4">{children}</div>
 }
 
 interface DialogTitleProps {
@@ -286,7 +286,7 @@ interface DialogTitleProps {
 }
 
 function DialogTitle({ children, className = '' }: DialogTitleProps) {
-  return <h2 className={`text-lg font-semibold text-neutral-900 ${className}`}>{children}</h2>
+  return <h2 className={`text-lg font-semibold text-primary ${className}`}>{children}</h2>
 }
 
 interface DialogDescriptionProps {
@@ -295,7 +295,7 @@ interface DialogDescriptionProps {
 }
 
 function DialogDescription({ children, className = '' }: DialogDescriptionProps) {
-  return <p className={`mt-1 text-sm text-neutral-500 ${className}`}>{children}</p>
+  return <p className={`mt-1 text-sm text-tertiary ${className}`}>{children}</p>
 }
 
 interface DialogFooterProps {
@@ -305,7 +305,7 @@ interface DialogFooterProps {
 
 function DialogFooter({ children, className = '' }: DialogFooterProps) {
   return (
-    <div className={`flex justify-end gap-3 border-t border-neutral-200 px-6 py-4 ${className}`}>
+    <div className={`flex justify-end gap-3 border-t border px-6 py-4 ${className}`}>
       {children}
     </div>
   )
@@ -466,14 +466,14 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
         </DialogHeader>
 
         {/* Tabs */}
-        <div className="flex border-b border-neutral-200">
+        <div className="flex border-b border">
           <button
             type="button"
             onClick={() => setActiveTab('upload')}
             className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === 'upload'
                 ? 'border-b-2 border-primary-500 text-primary-600'
-                : 'text-neutral-500 hover:text-neutral-700'
+                : 'text-tertiary hover:text-secondary'
             }`}
           >
             <Upload className="mr-2 inline h-4 w-4" />
@@ -488,7 +488,7 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
             className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === 'list'
                 ? 'border-b-2 border-primary-500 text-primary-600'
-                : 'text-neutral-500 hover:text-neutral-700'
+                : 'text-tertiary hover:text-secondary'
             }`}
           >
             <Download className="mr-2 inline h-4 w-4" />
@@ -502,9 +502,9 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
           {activeTab === 'upload' && (
             <div className="space-y-4">
               {/* Security Notice */}
-              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <div className="text-sm text-amber-800">
+              <div className="flex items-start gap-3 rounded-lg border border-warning bg-warning-bg p-3">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                <div className="text-sm text-warning">
                   <p className="font-medium">端到端加密</p>
                   <p className="mt-1 text-xs">
                     您的会话数据在上传前会被加密。服务器仅存储加密数据，无法访问您的原始内容。
@@ -513,22 +513,22 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
               </div>
 
               {/* Device Info */}
-              <div className="rounded-lg border border-neutral-200 p-3">
+              <div className="rounded-lg border border p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Monitor className="h-4 w-4 text-neutral-500" />
-                    <span className="text-sm font-medium text-neutral-700">当前设备</span>
+                    <Monitor className="h-4 w-4 text-tertiary" />
+                    <span className="text-sm font-medium text-secondary">当前设备</span>
                   </div>
                   <Badge variant="neutral">{extractBrowserInfo(browserInfo)}</Badge>
                 </div>
-                <p className="mt-1 text-xs text-neutral-500">设备 ID: {deviceId}</p>
+                <p className="mt-1 text-xs text-tertiary">设备 ID: {deviceId}</p>
               </div>
 
               {/* Upload Progress */}
               {isUploading && (
                 <div className="space-y-2">
                   <Progress value={uploadProgress} className="h-2" />
-                  <p className="text-center text-sm text-neutral-500">
+                  <p className="text-center text-sm text-tertiary">
                     {uploadProgress < 50 ? '正在准备数据...' : '正在上传到云端...'}
                   </p>
                 </div>
@@ -544,13 +544,13 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
 
               {/* Success Message */}
               {success && (
-                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <span className="text-sm text-green-800">{success}</span>
+                <div className="flex items-center gap-2 rounded-lg border border-success bg-success-bg p-3">
+                  <CheckCircle className="h-4 w-4 text-success" />
+                  <span className="text-sm text-success-text">{success}</span>
                   <button
                     type="button"
                     onClick={() => setActiveTab('list')}
-                    className="ml-auto text-xs text-green-600 hover:underline"
+                    className="ml-auto text-xs text-success hover:underline"
                   >
                     查看全部
                   </button>
@@ -564,7 +564,7 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
             <div className="space-y-4">
               {/* Refresh Button */}
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-neutral-700">已同步的会话</h4>
+                <h4 className="text-sm font-medium text-secondary">已同步的会话</h4>
                 <Button variant="outline" size="sm" onClick={loadSessions} disabled={isLoading}>
                   <RefreshCw className={`mr-2 h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
                   刷新
@@ -585,21 +585,22 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
               {/* Session List */}
               <div className="custom-scrollbar max-h-80 overflow-y-auto">
                 {isLoading && sessions.length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+                  <div className="flex items-center justify-center py-8" role="status">
+                    <Loader2 className="h-6 w-6 animate-spin text-tertiary" aria-hidden="true" />
+                    <span className="sr-only">加载中...</span>
                   </div>
                 ) : sessions.length === 0 ? (
                   <div className="py-8 text-center">
-                    <CloudOff className="mx-auto h-8 w-8 text-neutral-300" />
-                    <p className="mt-2 text-sm text-neutral-500">暂无同步的会话</p>
-                    <p className="mt-1 text-xs text-neutral-400">上传会话后可以在这里管理</p>
+                    <CloudOff className="mx-auto h-8 w-8 text-tertiary" />
+                    <p className="mt-2 text-sm text-tertiary">暂无同步的会话</p>
+                    <p className="mt-1 text-xs text-tertiary">上传会话后可以在这里管理</p>
                   </div>
                 ) : (
                   <ul className="space-y-2">
                     {sessions.map((session) => (
                       <li
                         key={session.syncId}
-                        className="hover:border-primary-200 group flex items-center gap-3 rounded-lg border border-neutral-200 p-3 transition-colors hover:bg-primary-50/50"
+                        className="hover:border-primary-200 group flex items-center gap-3 rounded-lg border border p-3 transition-colors hover:bg-primary-50/50"
                       >
                         {/* Session Icon */}
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100">
@@ -609,12 +610,12 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
                         {/* Session Info */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-neutral-700">
+                            <span className="truncate text-sm font-medium text-secondary">
                               {session.title}
                             </span>
                             <Badge variant="outline">{formatSize(session.size)}</Badge>
                           </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-tertiary">
                             <span>{extractBrowserInfo(session.deviceInfo)}</span>
                             <span>-</span>
                             <span className="flex items-center gap-1">
@@ -622,7 +623,7 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
                               {formatDate(session.updatedAt)}
                             </span>
                           </div>
-                          <p className="mt-0.5 text-[10px] text-neutral-400">
+                          <p className="mt-0.5 text-[10px] text-tertiary">
                             过期时间: {formatExpiryDate(session.expiresAt)}
                           </p>
                         </div>
@@ -656,7 +657,7 @@ export const SessionSyncDialog: React.FC<SessionSyncDialogProps> = ({
               </div>
 
               {/* Server Info */}
-              <div className="flex items-center justify-between rounded-lg border border-neutral-100 bg-neutral-50 p-2 text-xs text-neutral-500">
+              <div className="flex items-center justify-between rounded-lg border border bg-muted p-2 text-xs text-tertiary">
                 <span>服务器: {relayUrl}</span>
                 <a
                   href={`${relayUrl}/health`}

@@ -240,7 +240,7 @@ export function SmartSuggestions({ onExecutePrompt, className }: SmartSuggestion
     >
       {/* Drag overlay */}
       {isDragOver && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary-500 bg-primary-50 transition-colors dark:border-primary-900/50 dark:bg-primary-950/20">
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-50/70 transition-colors dark:border-primary-900/50 dark:bg-primary-950/10">
           <div className="text-center">
             <Upload className="mx-auto mb-2 h-8 w-8 text-primary-600" />
             <p className="text-primary-900 text-sm font-medium dark:text-primary-200">Drop files to analyze</p>
@@ -252,11 +252,11 @@ export function SmartSuggestions({ onExecutePrompt, className }: SmartSuggestion
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary-600" />
-          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Smart Suggestions</h3>
+          <h3 className="text-sm font-medium text-secondary dark:text-muted">Smart Suggestions</h3>
         </div>
         <button
           onClick={generateSuggestions}
-          className="rounded-lg p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+          className="rounded-lg p-1 text-tertiary transition-colors hover:bg-muted hover:text-secondary dark:text-muted dark:bg-muted dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
           title="Refresh suggestions"
         >
           <TrendingUp className="h-3.5 w-3.5" />
@@ -271,39 +271,39 @@ export function SmartSuggestions({ onExecutePrompt, className }: SmartSuggestion
             <button
               key={item.id}
               onClick={() => handleSuggestionClick(item)}
-              className="hover:border-primary-300 group flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3 text-left transition-all hover:bg-primary-50/50 hover:shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+              className="hover:border-primary-300 group flex w-full items-center gap-3 rounded-xl border border-border bg-white p-3 text-left transition-all hover:bg-primary-50/50 hover:shadow-sm dark:border-border dark:bg-card dark:hover:bg-neutral-800"
             >
               <div
                 className={`rounded-lg p-2 ${
                   item.type === 'upload'
                     ? 'bg-primary-100 group-hover:bg-primary-200 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/40'
-                    : 'bg-neutral-100 group-hover:bg-primary-100 dark:bg-neutral-800 dark:group-hover:bg-primary-900/30'
+                    : 'bg-muted dark:bg-muted group-hover:bg-primary-100 dark:bg-muted dark:group-hover:bg-primary-900/30'
                 } transition-colors`}
               >
                 <Icon
                   className={`h-4 w-4 ${
                     item.type === 'upload'
                       ? 'text-primary-600'
-                      : 'text-neutral-600 group-hover:text-primary-600'
+                      : 'text-secondary dark:text-muted group-hover:text-primary-600'
                   } transition-colors`}
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="group-hover:text-primary-900 text-sm font-medium text-neutral-900 dark:text-neutral-100 dark:group-hover:text-primary-200">
+                <p className="group-hover:text-primary-900 text-sm font-medium text-primary dark:text-primary-foreground dark:group-hover:text-primary-200">
                   {item.title}
                 </p>
-                <p className="mt-0.5 line-clamp-1 text-xs text-neutral-500">{item.description}</p>
+                <p className="mt-0.5 line-clamp-1 text-xs text-tertiary dark:text-muted">{item.description}</p>
               </div>
-              <ChevronRight className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-primary-600" />
+              <ChevronRight className="h-4 w-4 text-tertiary dark:text-muted transition-colors group-hover:text-primary-600" />
             </button>
           )
         })}
 
         {/* Empty state */}
         {suggestions.length === 0 && (
-          <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center dark:border-neutral-700 dark:bg-neutral-900">
-            <Lightbulb className="mx-auto mb-2 h-8 w-8 text-neutral-400" />
-            <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          <div className="rounded-xl border border-dashed border border-border dark:border-border bg-muted dark:bg-muted p-6 text-center dark:border-border dark:bg-card">
+            <Lightbulb className="mx-auto mb-2 h-8 w-8 text-tertiary dark:text-muted" />
+            <p className="text-sm text-secondary dark:text-muted">
               {directoryHandle
                 ? 'Select a folder to get personalized suggestions'
                 : 'No suggestions available'}
@@ -368,14 +368,14 @@ export function InlineSuggestions({ userInput, onSelect, isVisible }: InlineSugg
   }
 
   return (
-    <div className="mb-2 rounded-xl border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-900">
-      <p className="mb-2 px-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">Suggestions</p>
+    <div className="mb-2 rounded-xl border border-border bg-muted p-2 dark:border-border dark:bg-card">
+      <p className="mb-2 px-2 text-xs font-medium text-tertiary dark:text-muted">Suggestions</p>
       <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion, idx) => (
           <button
             key={idx}
             onClick={() => onSelect(suggestion)}
-            className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-200"
+            className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-secondary dark:text-muted transition-colors hover:bg-primary-50 hover:text-primary-700 dark:bg-muted dark:text-muted dark:hover:bg-primary-900/30 dark:hover:text-primary-200"
           >
             {suggestion}
           </button>

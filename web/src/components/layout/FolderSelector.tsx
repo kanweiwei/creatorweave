@@ -207,16 +207,16 @@ export function FolderSelector() {
           onClick={handleRestorePermission}
           disabled={isSelecting}
           className={cn(
-            'flex h-8 items-center gap-1.5 rounded-md border-2 border-amber-500 bg-amber-50 px-3 py-1',
-            'text-xs font-medium text-amber-700',
-            'transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500',
+            'flex h-8 items-center gap-1.5 rounded-md border-2 border-warning bg-warning-bg px-3 py-1',
+            'text-xs font-medium text-warning',
+            'transition-colors hover:bg-warning focus:outline-none focus:ring-2 focus:ring-warning',
             isSelecting && 'cursor-wait opacity-70'
           )}
           title={`恢复文件夹访问权限 (${folderName || '未知'})`}
         >
-          <AlertCircle className="h-[14px] w-[14px] text-amber-600" />
+          <AlertCircle className="h-[14px] w-[14px] text-warning" />
           <span>恢复权限</span>
-          {folderName && <span className="text-amber-500">({folderName})</span>}
+          {folderName && <span className="text-warning">({folderName})</span>}
         </button>
       )}
 
@@ -227,9 +227,9 @@ export function FolderSelector() {
           onClick={handleToggle}
           disabled={isSelecting || isLoading}
           className={cn(
-            'flex h-8 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1',
+            'flex h-8 items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1',
             'text-xs font-normal text-secondary',
-            'transition-colors hover:bg-primary-50 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+            'transition-colors hover:bg-primary-50 focus:outline-none dark:border-border dark:bg-card dark:hover:bg-muted',
             (isSelecting || isLoading) && 'cursor-wait opacity-70'
           )}
           title={folderName ? t('folderSelector.switchFolder') : t('folderSelector.openFolder')}
@@ -240,7 +240,7 @@ export function FolderSelector() {
 
       {/* Dropdown menu */}
       {isMenuOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] whitespace-nowrap rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] whitespace-nowrap rounded-lg border border-border bg-white py-1 shadow-lg dark:border-border dark:bg-card">
           {/* Switch folder */}
           <button
             type="button"
@@ -248,7 +248,7 @@ export function FolderSelector() {
             disabled={isSelecting || isLoading}
             className={cn(
               'flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary',
-              'hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-50'
+              'hover:bg-muted dark:hover:bg-muted dark:hover:bg-muted disabled:cursor-wait disabled:opacity-50'
             )}
           >
             <RefreshCw className={cn('h-4 w-4', isSelecting && 'animate-spin')} />
@@ -272,7 +272,7 @@ export function FolderSelector() {
             <button
               type="button"
               onClick={handleCopyPath}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:bg-gray-50 dark:hover:bg-neutral-800"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:bg-muted dark:hover:bg-muted dark:hover:bg-muted"
             >
               <Copy className="h-4 w-4" />
               <span>{t('folderSelector.copyPath')}</span>

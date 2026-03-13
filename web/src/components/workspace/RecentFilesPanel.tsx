@@ -48,11 +48,11 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
   if (recentFiles.length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center py-12 text-center ${className}`}>
-        <Clock className="mb-3 h-12 w-12 text-neutral-300 dark:text-neutral-700" />
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+        <Clock className="mb-3 h-12 w-12 text-tertiary dark:text-secondary" />
+        <p className="text-sm text-tertiary dark:text-muted">
           {t('recentFiles.empty') || 'No recent files'}
         </p>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-xs text-tertiary">
           {t('recentFiles.emptyHint') || 'Files you open will appear here'}
         </p>
       </div>
@@ -63,13 +63,13 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
     <div className={`flex flex-col ${className}`}>
       {/* Header */}
       <div className="border-subtle flex items-center justify-between border-b px-3 py-2">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+        <h3 className="text-sm font-semibold text-primary dark:text-primary-foreground">
           {t('recentFiles.title') || 'Recent Files'}
         </h3>
         <BrandButton
           variant="ghost"
           onClick={handleClearAll}
-          className="h-7 px-2 text-xs text-neutral-400 hover:text-neutral-600"
+          className="h-7 px-2 text-xs text-tertiary hover:text-secondary"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </BrandButton>
@@ -82,14 +82,14 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
             <div
               key={file.path}
               onClick={() => handleFileClick(file)}
-              className="group flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              className="group flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-muted dark:hover:bg-muted"
             >
               {/* File info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {/* File icon */}
                   <svg
-                    className="h-4 w-4 flex-shrink-0 text-neutral-400"
+                    className="h-4 w-4 flex-shrink-0 text-tertiary"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -104,15 +104,15 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
 
                   {/* File name */}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-neutral-700 dark:text-neutral-300">
+                    <div className="truncate font-medium text-secondary dark:text-muted">
                       {file.path.split('/').pop()}
                     </div>
-                    <div className="truncate text-xs text-neutral-400">{file.path}</div>
+                    <div className="truncate text-xs text-tertiary">{file.path}</div>
                   </div>
                 </div>
 
                 {/* Timestamp */}
-                <div className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
+                <div className="mt-1 flex items-center gap-1 text-xs text-tertiary">
                   <Clock className="h-3 w-3" />
                   <span>
                     {formatDistanceToNow(new Date(file.timestamp), {
@@ -126,7 +126,7 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
               {/* Remove button */}
               <button
                 onClick={(e) => handleRemoveFile(e, file.path)}
-                className="flex-shrink-0 rounded p-1 text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+                className="flex-shrink-0 rounded p-1 text-tertiary opacity-0 transition-opacity hover:bg-muted hover:text-secondary group-hover:opacity-100 dark:hover:bg-muted dark:hover:text-tertiary"
                 title={t('recentFiles.remove') || 'Remove from recent'}
               >
                 <X className="h-3.5 w-3.5" />
@@ -138,7 +138,7 @@ export function RecentFilesPanel({ onFileSelect, className = '' }: RecentFilesPa
 
       {/* Footer */}
       <div className="border-subtle border-t px-3 py-2">
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-tertiary">
           {t('recentFiles.count', { count: recentFiles.length }) ||
             `${recentFiles.length} recent files`}
         </p>

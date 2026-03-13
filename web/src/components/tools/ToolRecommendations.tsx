@@ -72,7 +72,7 @@ export function ToolRecommendations({
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className={`inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-sm text-amber-700 transition-colors hover:bg-amber-100 ${className}`}
+        className={`inline-flex items-center gap-1.5 rounded-full bg-warning-bg px-3 py-1.5 text-sm text-warning transition-colors hover:bg-warning ${className}`}
       >
         <Sparkles className="h-3.5 w-3.5" />
         <span>
@@ -84,16 +84,16 @@ export function ToolRecommendations({
   }
 
   return (
-    <div className={`rounded-xl border border-amber-200 bg-amber-50/50 ${className}`}>
+    <div className={`rounded-xl border border-warning bg-warning-bg/50 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
-          <div className="rounded-lg bg-amber-100 p-1.5">
-            <Lightbulb className="h-4 w-4 text-amber-600" />
+          <div className="rounded-lg bg-warning-bg p-1.5">
+            <Lightbulb className="h-4 w-4 text-warning" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Recommended Tools</h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            <h3 className="text-sm font-medium text-primary dark:text-primary-foreground">Recommended Tools</h3>
+            <p className="text-xs text-tertiary dark:text-muted">
               Based on your message, these tools might help
             </p>
           </div>
@@ -101,7 +101,7 @@ export function ToolRecommendations({
         {compact && (
           <button
             onClick={() => setIsExpanded(false)}
-            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+            className="rounded-lg p-1.5 text-tertiary dark:text-muted transition-colors hover:bg-muted dark:hover:bg-muted hover:text-secondary dark:text-muted dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
           >
             <ChevronUp className="h-4 w-4" />
           </button>
@@ -109,14 +109,14 @@ export function ToolRecommendations({
       </div>
 
       {/* Recommendations */}
-      <div className="divide-y divide-amber-200/50 border-t border-amber-200/50">
+      <div className="divide-y divide-warning/50 border-t border-warning/50">
         {recommendations.map((rec, _index) => (
           <div key={rec.toolName} className="px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               {/* Tool Info */}
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  <span className="font-mono text-sm font-medium text-primary dark:text-primary-foreground">
                     {rec.displayName}
                   </span>
                   {/* Relevance indicator */}
@@ -130,19 +130,19 @@ export function ToolRecommendations({
                     ))}
                   </div>
                 </div>
-                <p className="mb-2 text-xs text-neutral-600 dark:text-neutral-300">{rec.reason}</p>
+                <p className="mb-2 text-xs text-secondary dark:text-muted">{rec.reason}</p>
 
                 {/* Example */}
                 <div className="group relative">
-                  <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900">
-                    <code className="block overflow-x-auto text-xs text-neutral-700 dark:text-neutral-300">
+                  <div className="rounded-lg border border-border bg-white px-3 py-2 dark:border-border dark:bg-card">
+                    <code className="block overflow-x-auto text-xs text-neutral-700 dark:text-muted">
                       {rec.example}
                     </code>
                   </div>
                   {/* Copy button */}
                   <button
                     onClick={() => copyExample(rec.example, rec.toolName)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-100 hover:text-neutral-600 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-tertiary dark:text-muted opacity-0 transition-opacity hover:bg-muted dark:hover:bg-muted hover:text-secondary dark:text-muted group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
                   >
                     {copiedTool === rec.toolName ? (
                       <Check className="h-4 w-4 text-green-500" />
@@ -154,7 +154,7 @@ export function ToolRecommendations({
               </div>
 
               {/* Category badge */}
-              <span className="flex-shrink-0 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+              <span className="flex-shrink-0 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-secondary dark:border-border dark:bg-card dark:text-muted">
                 {rec.category}
               </span>
             </div>
@@ -163,8 +163,8 @@ export function ToolRecommendations({
       </div>
 
       {/* Footer hint */}
-      <div className="border-t border-amber-200/50 bg-amber-100/30 px-4 py-2">
-        <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
+      <div className="border-t border-warning/50 bg-warning-bg/30 px-4 py-2">
+        <p className="text-center text-xs text-tertiary dark:text-muted">
           These tools are automatically suggested based on your intent
         </p>
       </div>
@@ -199,12 +199,12 @@ export function InlineToolSuggestion({ userMessage, onSelectExample }: InlineToo
 
   return (
     <div className="flex items-center gap-2 px-2 py-1">
-      <span className="text-xs text-neutral-400 dark:text-neutral-500">Try:</span>
+      <span className="text-xs text-tertiary dark:text-muted dark:text-neutral-500">Try:</span>
       {suggestions.map((rec) => (
         <button
           key={rec.toolName}
           onClick={() => onSelectExample(rec.example)}
-          className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600 transition-colors hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+          className="inline-flex items-center gap-1 rounded-md bg-muted dark:bg-muted px-2 py-1 text-xs text-secondary dark:text-muted transition-colors hover:bg-muted dark:hover:bg-muted dark:bg-muted dark:text-muted dark:hover:bg-neutral-700"
         >
           <Sparkles className="h-3 w-3 text-amber-500" />
           <code className="text-xs">{rec.toolName}</code>

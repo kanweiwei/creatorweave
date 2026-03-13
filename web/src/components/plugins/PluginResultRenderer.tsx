@@ -83,16 +83,16 @@ function formatCellValue(value: unknown, type: ColumnType = 'text', _format?: st
       const progress = typeof value === 'number' ? value : parseFloat(String(value)) || 0
       return `
         <div class="flex items-center gap-2">
-          <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div class="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
             <div class="h-full bg-blue-600 rounded-full" style="width: ${Math.min(100, Math.max(0, progress))}%"></div>
           </div>
-          <span class="text-xs text-gray-600">${progress.toFixed(0)}%</span>
+          <span class="text-xs text-neutral-600">${progress.toFixed(0)}%</span>
         </div>
       `
     }
 
     case 'code':
-      return `<code class="px-2 py-1 bg-gray-100 rounded text-sm font-mono">${escapeHtml(String(value))}</code>`
+      return `<code class="px-2 py-1 bg-neutral-100 rounded text-sm font-mono">${escapeHtml(String(value))}</code>`
 
     default:
       return escapeHtml(String(value))
@@ -111,7 +111,7 @@ function getBadgeColor(value: string): string {
     pending: 'bg-yellow-100 text-yellow-700',
     info: 'bg-blue-100 text-blue-700',
     processing: 'bg-blue-100 text-blue-700',
-    default: 'bg-gray-100 text-gray-700',
+    default: 'bg-neutral-100 text-neutral-700',
   }
   const lower = value.toLowerCase()
   return colors[lower] || colors.default
@@ -187,16 +187,16 @@ function AutoRenderer({ pluginResult, fileResults }: PluginResultRendererProps) 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b">
-              <th className="py-2 text-left font-medium text-gray-700 dark:text-neutral-300">File</th>
-              <th className="py-2 text-right font-medium text-gray-700 dark:text-neutral-300">Size</th>
-              <th className="py-2 text-center font-medium text-gray-700 dark:text-neutral-300">Status</th>
+              <th className="py-2 text-left font-medium text-neutral-700 dark:text-neutral-300">File</th>
+              <th className="py-2 text-right font-medium text-neutral-700 dark:text-neutral-300">Size</th>
+              <th className="py-2 text-center font-medium text-neutral-700 dark:text-neutral-300">Status</th>
             </tr>
           </thead>
           <tbody>
             {fileResults.map((file, i) => (
               <tr key={i} className="border-b last:border-0">
-                <td className="py-2 text-gray-900 dark:text-neutral-100">{file.name}</td>
-                <td className="py-2 text-right text-gray-600 dark:text-neutral-300">
+                <td className="py-2 text-neutral-900 dark:text-neutral-100">{file.name}</td>
+                <td className="py-2 text-right text-neutral-600 dark:text-neutral-300">
                   {formatCellValue(file.size, 'bytes')}
                 </td>
                 <td className="py-2 text-center">
@@ -230,7 +230,7 @@ function TableRenderer({
   fileResults?: FileResultRow[]
 }) {
   if (!fileResults || fileResults.length === 0) {
-    return <p className="text-sm text-gray-500 dark:text-neutral-400">No file results to display</p>
+    return <p className="text-sm text-neutral-500 dark:text-neutral-400">No file results to display</p>
   }
 
   const getNestedValue = (obj: unknown, key: string): unknown => {
@@ -245,12 +245,12 @@ function TableRenderer({
   return (
     <div className="overflow-x-auto rounded-lg border dark:border-neutral-700">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 dark:bg-neutral-800">
+        <thead className="bg-neutral-50 dark:bg-neutral-800">
           <tr>
             {schema.columns.map((col) => (
               <th
                 key={col.key}
-                className="px-4 py-3 text-left font-medium text-gray-700 dark:text-neutral-300"
+                className="px-4 py-3 text-left font-medium text-neutral-700 dark:text-neutral-300"
                 style={{ width: col.width }}
               >
                 {col.label}
@@ -260,11 +260,11 @@ function TableRenderer({
         </thead>
         <tbody>
           {fileResults.map((file, i) => (
-            <tr key={i} className="border-t hover:bg-gray-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+            <tr key={i} className="border-t hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
               {schema.columns.map((col) => {
                 const value = getNestedValue(file, col.key)
                 return (
-                  <td key={col.key} className="px-4 py-3 text-gray-900 dark:text-neutral-100">
+                  <td key={col.key} className="px-4 py-3 text-neutral-900 dark:text-neutral-100">
                     {col.type === 'badge' ? (
                       <span
                         dangerouslySetInnerHTML={{ __html: formatCellValue(value, col.type) }}
@@ -299,7 +299,7 @@ function CardsRenderer({
   fileResults?: FileResultRow[]
 }) {
   if (!fileResults || fileResults.length === 0) {
-    return <p className="text-sm text-gray-500 dark:text-neutral-400">No file results to display</p>
+    return <p className="text-sm text-neutral-500 dark:text-neutral-400">No file results to display</p>
   }
 
   return (
@@ -313,16 +313,16 @@ function CardsRenderer({
 
         return (
           <div key={i} className="rounded-lg border bg-white p-4 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
-            <h4 className="truncate font-medium text-gray-900 dark:text-neutral-100" title={title}>
+            <h4 className="truncate font-medium text-neutral-900 dark:text-neutral-100" title={title}>
               {title}
             </h4>
             {subtitle.length > 0 && (
-              <p className="truncate text-sm text-gray-500 dark:text-neutral-400" title={subtitle}>
+              <p className="truncate text-sm text-neutral-500 dark:text-neutral-400" title={subtitle}>
                 {subtitle}
               </p>
             )}
             {metric !== null && (
-              <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-neutral-100">{toDisplayString(metric)}</p>
+              <p className="mt-2 text-lg font-semibold text-neutral-900 dark:text-neutral-100">{toDisplayString(metric)}</p>
             )}
           </div>
         )
@@ -343,7 +343,7 @@ function KeyValueRenderer({
   data?: unknown
 }) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return <p className="text-sm text-gray-500 dark:text-neutral-400">No metrics available</p>
+    return <p className="text-sm text-neutral-500 dark:text-neutral-400">No metrics available</p>
   }
   const metrics = data as Record<string, unknown>
 
@@ -354,8 +354,8 @@ function KeyValueRenderer({
         return (
           <div key={key} className="flex items-center gap-3 rounded-lg border bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
             <div className="flex-1">
-              <p className="text-xs text-gray-600 dark:text-neutral-400">{label}</p>
-              <p className="text-sm font-semibold text-gray-900 dark:text-neutral-100">{formatCellValue(value, type)}</p>
+              <p className="text-xs text-neutral-600 dark:text-neutral-400">{label}</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{formatCellValue(value, type)}</p>
             </div>
           </div>
         )
@@ -372,8 +372,8 @@ function CodeRenderer({ data }: { data: unknown }) {
   const code = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
 
   return (
-    <pre className="overflow-x-auto rounded-lg bg-gray-900 p-4">
-      <code className="text-sm text-gray-100">{code}</code>
+    <pre className="overflow-x-auto rounded-lg bg-neutral-900 p-4">
+      <code className="text-sm text-neutral-100 dark:text-neutral-200">{code}</code>
     </pre>
   )
 }
@@ -387,11 +387,11 @@ function JsonRenderer({ data, collapsible = true }: { data: unknown; collapsible
 
   return (
     <details open={!collapsible} className="group">
-      <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-neutral-100">
+      <summary className="cursor-pointer text-sm font-medium text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
         Raw JSON
       </summary>
-      <pre className="mt-3 overflow-x-auto rounded-lg bg-gray-100 p-4 text-xs dark:bg-neutral-800">
-        <code className="text-gray-800 dark:text-neutral-200">{json}</code>
+      <pre className="mt-3 overflow-x-auto rounded-lg bg-neutral-100 p-4 text-xs dark:bg-neutral-800">
+        <code className="text-neutral-800 dark:text-neutral-200">{json}</code>
       </pre>
     </details>
   )
@@ -409,7 +409,7 @@ function ChartRenderer({
   fileResults?: FileResultRow[]
 }) {
   if (!fileResults || fileResults.length === 0) {
-    return <p className="text-sm text-gray-500 dark:text-neutral-400">No data to display</p>
+    return <p className="text-sm text-neutral-500 dark:text-neutral-400">No data to display</p>
   }
 
   const maxValue = Math.max(
@@ -429,16 +429,16 @@ function ChartRenderer({
 
         return (
           <div key={i} className="flex items-center gap-3">
-            <div className="w-32 flex-shrink-0 truncate text-sm text-gray-700 dark:text-neutral-300" title={label}>
+            <div className="w-32 flex-shrink-0 truncate text-sm text-neutral-700 dark:text-neutral-300" title={label}>
               {label}
             </div>
-            <div className="h-6 flex-1 overflow-hidden rounded bg-gray-100 dark:bg-neutral-800">
+            <div className="h-6 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
               <div
                 className="h-full rounded bg-blue-600 transition-all"
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <div className="w-16 flex-shrink-0 text-right text-sm font-medium text-gray-900 dark:text-neutral-100">
+            <div className="w-16 flex-shrink-0 text-right text-sm font-medium text-neutral-900 dark:text-neutral-100">
               {typeof rawValue === 'number' ? rawValue.toLocaleString() : toDisplayString(rawValue)}
             </div>
           </div>
