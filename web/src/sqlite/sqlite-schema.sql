@@ -1,5 +1,5 @@
 -- ============================================================================
--- CreatorWeave - Unified SQLite Schema
+-- Application - Unified SQLite Schema
 -- ============================================================================
 -- This schema unifies storage for:
 -- - Conversations (chat history)

@@ -1,6 +1,6 @@
 /**
  * @creatorweave/ui - Brand Components
- * Design system components based on CreatorWeave design specifications
+ * Design system components based on application design specifications
  */
 
 // ========== Buttons ==========

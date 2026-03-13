@@ -1,7 +1,7 @@
 /**
  * Design Tokens - Colors
  *
- * Color palette for the CreatorWeave design system.
+ * Color palette for the application design system.
  * Uses HSL format for consistency with CSS variables.
  *
  * @typedef {Object} Colors

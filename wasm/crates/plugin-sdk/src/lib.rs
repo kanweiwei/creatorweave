@@ -1,7 +1,7 @@
-//! CreatorWeave Plugin SDK — Template for building plugins and Agent tools.
+//! Plugin SDK — Template for building plugins and Agent tools.
 //!
 //! This crate provides a complete template for creating WASM plugins
-//! that work with the CreatorWeave.
+//! that work with the host app.
 //!
 //! # Features
 //!
@@ -66,8 +66,8 @@ pub fn get_plugin_info() -> String {
         "name": "Plugin SDK Template",
         "version": "0.1.0",
         "api_version": "2.0.0",
-        "description": "A template plugin built with the CreatorWeave Plugin SDK",
-        "author": "CreatorWeave Team",
+        "description": "A template plugin built with the Plugin SDK",
+        "author": "Core Team",
         "capabilities": {
             "metadata_only": false,
             "requires_content": true,
@@ -178,7 +178,7 @@ pub fn cleanup() {
 pub fn get_tool_schema() -> String {
     let schema = api::ToolSchemaBuilder::new(
         "sdk_template_tool",
-        "A template tool that demonstrates the CreatorWeave Tool ABI",
+        "A template tool that demonstrates the Tool ABI",
     )
     .string_param("message", "A message to echo back", true)
     .boolean_param("uppercase", "Convert to uppercase", false)

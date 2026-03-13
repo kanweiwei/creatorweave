@@ -1,5 +1,5 @@
 /**
- * @creatorweave/ui - CreatorWeave Brand Components
+ * @creatorweave/ui - Brand Components
  *
  * Public API: Only brand components are exposed.
  * Internal shadcn/ui components are not exported.

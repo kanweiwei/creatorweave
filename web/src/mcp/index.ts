@@ -1,7 +1,7 @@
 /**
  * MCP Module Index
  *
- * Exports MCP client functionality for creatorweave.
+ * Exports MCP client functionality for the app.
  */
 
 // Type definitions

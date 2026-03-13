@@ -1,4 +1,4 @@
-//! CreatorWeave - WASM Bindings
+//! WASM Bindings
 //!
 //! Entry point for the WASM module, exporting Rust functionality to JavaScript.
 

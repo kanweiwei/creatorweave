@@ -1,7 +1,7 @@
 /**
  * Tailwind CSS Configuration
  *
- * Base Tailwind configuration for CreatorWeave design system.
+ * Base Tailwind configuration for application design system.
  * Import and extend this in your project's tailwind.config.js
  *
  * @module tailwind
@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url)
 const tailwindcssAnimate = require('tailwindcss-animate')
 
 /**
- * Create base Tailwind configuration with CreatorWeave design tokens
+ * Create base Tailwind configuration with application design tokens
  *
  * @param {import('tailwindcss').Config & {content?: import('tailwindcss').Config['content'], prefix?: string}} [options={}]
  * @returns {import('tailwindcss').Config}

@@ -1,4 +1,4 @@
-//! Host function wrappers for convenient access to CreatorWeave host imports.
+//! Host function wrappers for convenient access to host imports.
 //!
 //! These functions wrap the raw host imports (bfosa_log, etc.)
 //! into ergonomic Rust APIs.

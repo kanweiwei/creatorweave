@@ -1,7 +1,7 @@
 /**
  * Storage Module
  *
- * Unified SQLite-based storage for CreatorWeave.
+ * Unified SQLite-based storage for the app.
  *
  * @module storage
  */
