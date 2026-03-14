@@ -292,6 +292,9 @@ export function ConversationView({
                 ? activeConversation?.streamingToolArgs
                 : undefined
             }
+            streamingToolArgsByCallId={
+              isProcessing ? activeConversation?.streamingToolArgsByCallId : undefined
+            }
           />
 
           {conversationError && (
@@ -391,6 +394,11 @@ export function ConversationView({
                           ? activeConversation?.streamingToolArgs
                           : undefined
                       }
+                      streamingToolArgsByCallId={
+                        isProcessing && idx === turns.length - 1
+                          ? activeConversation?.streamingToolArgsByCallId
+                          : undefined
+                      }
                       runtimeToolCalls={
                         isProcessing && idx === turns.length - 1
                           ? activeConversation?.draftAssistant?.toolCalls
@@ -422,6 +430,7 @@ export function ConversationView({
                     streamingContent={streamingContentMessage}
                     currentToolCall={status === 'tool_calling' ? activeConversation?.currentToolCall : undefined}
                     streamingToolArgs={status === 'tool_calling' ? activeConversation?.streamingToolArgs : undefined}
+                    streamingToolArgsByCallId={activeConversation?.streamingToolArgsByCallId}
                     runtimeToolCalls={activeConversation?.draftAssistant?.toolCalls}
                     runtimeSteps={activeConversation?.draftAssistant?.steps}
                   />

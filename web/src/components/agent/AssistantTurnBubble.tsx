@@ -44,6 +44,8 @@ interface AssistantTurnBubbleProps {
   currentToolCall?: ToolCall | null
   /** Streaming tool arguments (only for last turn when tool_calling) */
   streamingToolArgs?: string | null
+  /** Streaming tool args keyed by tool call id */
+  streamingToolArgsByCallId?: Record<string, string>
   /** Runtime tool calls captured during this run (for providers that don't emit tool_calls in assistant messages) */
   runtimeToolCalls?: ToolCall[]
   /** Runtime ordered streaming timeline (reasoning/content/tool calls) */
@@ -59,6 +61,7 @@ export function AssistantTurnBubble({
   streamingContent,
   currentToolCall,
   streamingToolArgs,
+  streamingToolArgsByCallId,
   runtimeToolCalls,
   runtimeSteps,
 }: AssistantTurnBubbleProps) {
@@ -164,7 +167,12 @@ export function AssistantTurnBubble({
                 key={step.id}
                 toolCall={step.toolCall}
                 result={step.result ?? toolResults.get(step.toolCall.id)}
-                streamingArgs={step.streaming ? step.args || streamingToolArgs || undefined : undefined}
+                isExecuting={step.streaming && !(step.result ?? toolResults.get(step.toolCall.id))}
+                streamingArgs={
+                  step.streaming
+                    ? step.args || streamingToolArgsByCallId?.[step.toolCall.id] || streamingToolArgs || undefined
+                    : undefined
+                }
               />
             )
           })}
@@ -177,7 +185,8 @@ export function AssistantTurnBubble({
               key={tc.id}
               toolCall={tc}
               result={toolResults.get(tc.id)}
-              streamingArgs={currentToolCall?.id === tc.id ? (streamingToolArgs || undefined) : undefined}
+              isExecuting={true}
+              streamingArgs={streamingToolArgsByCallId?.[tc.id] || (currentToolCall?.id === tc.id ? (streamingToolArgs || undefined) : undefined)}
             />
           ))}
 
@@ -197,7 +206,8 @@ export function AssistantTurnBubble({
         {isProcessing && currentToolCall && !hasCurrentToolCallInDraft && !committedToolCallIds.has(currentToolCall.id) && (
           <ToolCallDisplay
             toolCall={currentToolCall}
-            streamingArgs={streamingToolArgs || undefined}
+            isExecuting={true}
+            streamingArgs={streamingToolArgsByCallId?.[currentToolCall.id] || streamingToolArgs || undefined}
           />
         )}
 

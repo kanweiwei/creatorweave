@@ -205,7 +205,9 @@ export function deserializeConversation(data: SerializedConversation): Conversat
     isContentStreaming: false,
     completedContent: null,
     currentToolCall: null,
+    activeToolCalls: [],
     streamingToolArgs: '',
+    streamingToolArgsByCallId: {},
     error: null,
   }
 }

@@ -64,7 +64,7 @@ export interface AgentCallbacks {
   /** Called when the LLM requests a tool call */
   onToolCallStart?: (toolCall: ToolCall) => void
   /** Called with streaming tool call argument deltas (tool_stream mode) */
-  onToolCallDelta?: (index: number, argsDelta: string) => void
+  onToolCallDelta?: (index: number, argsDelta: string, toolCallId?: string) => void
   /** Called when a tool execution completes */
   onToolCallComplete?: (toolCall: ToolCall, result: string) => void
   /** Called when messages are updated mid-loop (e.g. after assistant msg or tool result) */
@@ -284,14 +284,64 @@ export class AgentLoop {
     args: Record<string, unknown>,
     timeoutMs: number
   ): Promise<string> {
-    return Promise.race([
-      this.toolRegistry.execute(toolName, args, this.toolContext),
-      new Promise<string>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Tool "${toolName}" timed out after ${timeoutMs}ms`))
-        }, timeoutMs)
-      }),
-    ])
+    const timeoutController = new AbortController()
+    const runAbortSignal = this.abortController?.signal
+    const externalAbortSignal = this.toolContext.abortSignal
+    const cleanupListeners: Array<() => void> = []
+
+    const attachAbort = (signal: AbortSignal | undefined) => {
+      if (!signal) return
+      const onAbort = () => timeoutController.abort()
+      signal.addEventListener('abort', onAbort)
+      cleanupListeners.push(() => signal.removeEventListener('abort', onAbort))
+      if (signal.aborted) timeoutController.abort()
+    }
+
+    attachAbort(runAbortSignal)
+    attachAbort(externalAbortSignal)
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let didTimeout = false
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        didTimeout = true
+        reject(new Error(`Tool "${toolName}" timed out after ${timeoutMs}ms`))
+        timeoutController.abort()
+      }, timeoutMs)
+    })
+
+    const abortPromise = new Promise<string>((_, reject) => {
+      if (timeoutController.signal.aborted) {
+        reject(
+          new Error(
+            didTimeout ? `Tool "${toolName}" timed out after ${timeoutMs}ms` : `Tool "${toolName}" was aborted`
+          )
+        )
+        return
+      }
+      const onAbort = () =>
+        reject(
+          new Error(
+            didTimeout ? `Tool "${toolName}" timed out after ${timeoutMs}ms` : `Tool "${toolName}" was aborted`
+          )
+        )
+      timeoutController.signal.addEventListener('abort', onAbort, { once: true })
+      cleanupListeners.push(() => timeoutController.signal.removeEventListener('abort', onAbort))
+    })
+
+    try {
+      return await Promise.race([
+        this.toolRegistry.execute(toolName, args, {
+          ...this.toolContext,
+          abortSignal: timeoutController.signal,
+        }),
+        timeoutPromise,
+        abortPromise,
+      ])
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
+      for (const cleanup of cleanupListeners) cleanup()
+    }
   }
 
   private parseToolArgs(args: string): Record<string, unknown> {
@@ -455,7 +505,8 @@ export class AgentLoop {
   private applyPiAssistantUpdate(
     event: PiAssistantMessageEvent,
     callbacks?: AgentCallbacks,
-    onToolCallStart?: (toolCall: ToolCall) => void
+    onToolCallStart?: (toolCall: ToolCall) => void,
+    toolCallIdByIndex?: Map<number, string>
   ): void {
     if (event.type === 'thinking_start') callbacks?.onReasoningStart?.()
     if (event.type === 'thinking_delta') callbacks?.onReasoningDelta?.(event.delta)
@@ -467,6 +518,7 @@ export class AgentLoop {
     if (event.type === 'toolcall_start') {
       const partial = event.partial.content[event.contentIndex]
       if (partial?.type === 'toolCall') {
+        toolCallIdByIndex?.set(event.contentIndex, partial.id)
         onToolCallStart?.({
           id: partial.id,
           type: 'function',
@@ -475,7 +527,7 @@ export class AgentLoop {
       }
     }
     if (event.type === 'toolcall_delta') {
-      callbacks?.onToolCallDelta?.(event.contentIndex, event.delta)
+      callbacks?.onToolCallDelta?.(event.contentIndex, event.delta, toolCallIdByIndex?.get(event.contentIndex))
     }
   }
 
@@ -492,6 +544,7 @@ export class AgentLoop {
     let reachedMaxIterations = false
     let assistantMessageStarted = false
     const startedToolCalls = new Set<string>()
+    const toolCallIdByIndex = new Map<number, string>()
     const toolCallArgsById = new Map<string, Record<string, unknown>>()
     const pendingToolCompletions = new Map<string, { toolCall: ToolCall; resultText: string }>()
     const model = this.provider.getModel()
@@ -620,11 +673,16 @@ export class AgentLoop {
             assistantMessageStarted = true
             callbacks?.onMessageStart?.()
           }
-          this.applyPiAssistantUpdate(typedEvent.assistantMessageEvent, callbacks, (toolCall) => {
-            if (startedToolCalls.has(toolCall.id)) return
-            startedToolCalls.add(toolCall.id)
-            callbacks?.onToolCallStart?.(toolCall)
-          })
+          this.applyPiAssistantUpdate(
+            typedEvent.assistantMessageEvent,
+            callbacks,
+            (toolCall) => {
+              if (startedToolCalls.has(toolCall.id)) return
+              startedToolCalls.add(toolCall.id)
+              callbacks?.onToolCallStart?.(toolCall)
+            },
+            toolCallIdByIndex
+          )
         }
 
         if (typedEvent.type === 'tool_execution_start') {

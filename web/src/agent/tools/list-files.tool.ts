@@ -3,14 +3,21 @@
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { traverseDirectory } from '@/services/traversal.service'
+import {
+  normalizeSubPath,
+  parseBoundedInt,
+  parseStringList,
+  readDirectoryEntriesSorted,
+  resolveDirectoryHandle,
+  shouldSkipDirectory,
+} from './file-discovery.helpers'
 
 export const listFilesDefinition: ToolDefinition = {
   type: 'function',
   function: {
     name: 'list_files',
     description:
-      'List files and directories in a tree format. Shows the directory structure with file sizes. Useful for understanding project layout.',
+      'List files and directories in a tree format. Useful for understanding project layout. File sizes are optional for faster scans.',
     parameters: {
       type: 'object',
       properties: {
@@ -20,11 +27,53 @@ export const listFilesDefinition: ToolDefinition = {
         },
         max_depth: {
           type: 'number',
-          description: 'Maximum depth to traverse (default: 3)',
+          description: 'Maximum depth to traverse (default: 2)',
         },
         maxDepth: {
           type: 'number',
           description: 'Alias of max_depth',
+        },
+        max_entries: {
+          type: 'number',
+          description: 'Maximum entries to return (default: 200)',
+        },
+        maxEntries: {
+          type: 'number',
+          description: 'Alias of max_entries',
+        },
+        include_sizes: {
+          type: 'boolean',
+          description: 'Include file sizes (default: false for faster scans)',
+        },
+        includeSizes: {
+          type: 'boolean',
+          description: 'Alias of include_sizes',
+        },
+        include_ignored: {
+          type: 'boolean',
+          description: 'Include large ignored directories like node_modules/.git (default: false)',
+        },
+        includeIgnored: {
+          type: 'boolean',
+          description: 'Alias of include_ignored',
+        },
+        exclude_dirs: {
+          type: 'array',
+          description: 'Extra directory names to skip while traversing',
+          items: { type: 'string' },
+        },
+        excludeDirs: {
+          type: 'array',
+          description: 'Alias of exclude_dirs',
+          items: { type: 'string' },
+        },
+        deadline_ms: {
+          type: 'number',
+          description: 'Soft time budget in milliseconds (default: 25000)',
+        },
+        deadlineMs: {
+          type: 'number',
+          description: 'Alias of deadline_ms',
         },
       },
     },
@@ -39,50 +88,92 @@ function formatSize(bytes: number): string {
 }
 
 export const listFilesExecutor: ToolExecutor = async (args, context) => {
-  const rawPath = typeof args.path === 'string' ? args.path : ''
-  const normalizedPath = rawPath.trim()
-  // Treat ".", "./", "/" as project root for better LLM compatibility.
-  const subPath =
-    normalizedPath === '' ||
-    normalizedPath === '.' ||
-    normalizedPath === './' ||
-    normalizedPath === '/'
-      ? ''
-      : normalizedPath.replace(/^\.?\//, '').replace(/\/+$/, '')
+  const abortSignal = context.abortSignal
+  let subPath = ''
+  try {
+    subPath = normalizeSubPath(args.path)
+  } catch {
+    return JSON.stringify({ error: 'List failed: path cannot include ".."' })
+  }
 
   const rawMaxDepth = args.max_depth ?? args.maxDepth
-  const maxDepth =
-    typeof rawMaxDepth === 'number' && Number.isFinite(rawMaxDepth)
-      ? Math.max(1, Math.min(10, Math.floor(rawMaxDepth)))
-      : 3
+  const maxDepth = parseBoundedInt(rawMaxDepth, 2, 1, 10)
+  const maxEntries = parseBoundedInt(args.max_entries ?? args.maxEntries, 200, 20, 2000)
+  const deadlineMs = parseBoundedInt(args.deadline_ms ?? args.deadlineMs, 25000, 1000, 28000)
+  const includeSizes = args.include_sizes === true || args.includeSizes === true
+  const includeIgnored = args.include_ignored === true || args.includeIgnored === true
+  const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
   if (!context.directoryHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
   }
 
   try {
-    let searchHandle = context.directoryHandle
-    if (subPath) {
-      const parts = subPath.split('/').filter(Boolean)
-      if (parts.some((p) => p === '..')) {
-        return JSON.stringify({ error: 'List failed: path cannot include ".."' })
+    const { handle: searchHandle } = await resolveDirectoryHandle(context.directoryHandle, subPath)
+    const startedAt = Date.now()
+    const deadlineAt = startedAt + deadlineMs
+    const entries: Array<{ path: string; type: 'file' | 'directory'; size: number; depth: number }> = []
+    const queue: Array<{ handle: FileSystemDirectoryHandle; path: string; depth: number }> = [
+      { handle: searchHandle, path: '', depth: 0 },
+    ]
+
+    let isTruncated = false
+    let timedOut = false
+
+    while (queue.length > 0) {
+      if (abortSignal?.aborted) {
+        return JSON.stringify({ error: 'List failed: operation aborted' })
       }
-      for (const part of parts) {
-        if (part === '.') continue
-        searchHandle = await searchHandle.getDirectoryHandle(part)
+      const current = queue.shift()!
+      if (Date.now() > deadlineAt) {
+        timedOut = true
+        break
       }
-    }
 
-    const entries: Array<{ path: string; type: string; size: number }> = []
-    const MAX_ENTRIES = 500
+      const handles = await readDirectoryEntriesSorted(current.handle)
+      for (const handle of handles) {
+        if (abortSignal?.aborted) {
+          return JSON.stringify({ error: 'List failed: operation aborted' })
+        }
+        if (Date.now() > deadlineAt) {
+          timedOut = true
+          break
+        }
 
-    for await (const entry of traverseDirectory(searchHandle)) {
-      // Check depth
-      const depth = entry.path.split('/').length
-      if (depth > maxDepth) continue
+        const childDepth = current.depth + 1
+        if (childDepth > maxDepth) continue
 
-      entries.push({ path: entry.path, type: entry.type, size: entry.size })
-      if (entries.length >= MAX_ENTRIES) break
+        const relPath = current.path ? `${current.path}/${handle.name}` : handle.name
+        if (handle.kind === 'directory') {
+          if (shouldSkipDirectory(handle.name, includeIgnored, extraExcludes)) continue
+          entries.push({ path: relPath, type: 'directory', size: 0, depth: childDepth })
+          queue.push({
+            handle: handle as FileSystemDirectoryHandle,
+            path: relPath,
+            depth: childDepth,
+          })
+        } else {
+          let size = 0
+          if (includeSizes) {
+            try {
+              if (abortSignal?.aborted) {
+                return JSON.stringify({ error: 'List failed: operation aborted' })
+              }
+              const file = await (handle as FileSystemFileHandle).getFile()
+              size = file.size
+            } catch {
+              size = 0
+            }
+          }
+          entries.push({ path: relPath, type: 'file', size, depth: childDepth })
+        }
+
+        if (entries.length >= maxEntries) {
+          isTruncated = true
+          break
+        }
+      }
+      if (isTruncated || timedOut) break
     }
 
     if (entries.length === 0) {
@@ -93,8 +184,7 @@ export const listFilesExecutor: ToolExecutor = async (args, context) => {
     const lines: string[] = []
 
     for (const entry of entries) {
-      const depth = entry.path.split('/').length
-      const indent = '  '.repeat(depth)
+      const indent = '  '.repeat(entry.depth)
       const name = entry.path.split('/').pop() || entry.path
       if (entry.type === 'directory') {
         lines.push(`${indent}${name}/`)
@@ -104,9 +194,14 @@ export const listFilesExecutor: ToolExecutor = async (args, context) => {
       }
     }
 
-    const truncated =
-      entries.length >= MAX_ENTRIES ? `\n... (limited to ${MAX_ENTRIES} entries)` : ''
-    return lines.join('\n') + truncated
+    const suffixes: string[] = []
+    if (isTruncated) {
+      suffixes.push(`... (limited to ${maxEntries} entries)`)
+    }
+    if (timedOut) {
+      suffixes.push(`... (scan budget reached at ${Date.now() - startedAt}ms)`)
+    }
+    return lines.join('\n') + (suffixes.length > 0 ? `\n${suffixes.join('\n')}` : '')
   } catch (error) {
     return JSON.stringify({
       error: `List failed: ${error instanceof Error ? error.message : String(error)}`,

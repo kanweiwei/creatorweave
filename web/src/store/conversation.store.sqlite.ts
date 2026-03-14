@@ -84,7 +84,9 @@ async function loadConversations(): Promise<Conversation[]> {
     isContentStreaming: false,
     completedContent: null,
     currentToolCall: null,
+    activeToolCalls: [],
     streamingToolArgs: '',
+    streamingToolArgsByCallId: {},
     error: null,
     activeRunId: null,
     runEpoch: 0,
@@ -339,7 +341,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             isContentStreaming: false,
             completedContent: null,
             currentToolCall: null,
+            activeToolCalls: [],
             streamingToolArgs: '',
+            streamingToolArgsByCallId: {},
             error: null,
             activeRunId: null,
             runEpoch: 0,
@@ -538,7 +542,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.status = 'pending'
           c.error = null
           c.currentToolCall = null
+          c.activeToolCalls = []
           c.streamingToolArgs = ''
+          c.streamingToolArgsByCallId = {}
           c.streamingContent = ''
           c.streamingReasoning = ''
           c.completedContent = null
@@ -574,7 +580,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             c.activeRunId = null
             c.draftAssistant = null
             c.currentToolCall = null
+            c.activeToolCalls = []
             c.streamingToolArgs = ''
+            c.streamingToolArgsByCallId = {}
             c.streamingContent = ''
             c.streamingReasoning = ''
           })
@@ -654,7 +662,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             c.status = status
             c.error = error || null
             c.currentToolCall = null
+            c.activeToolCalls = []
             c.streamingToolArgs = ''
+            c.streamingToolArgsByCallId = {}
             c.streamingContent = ''
             c.streamingReasoning = ''
             c.completedContent = null
@@ -914,6 +924,14 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                 c.status = 'tool_calling'
                 const isSameTool = c.currentToolCall?.id === tc.id
                 c.currentToolCall = tc
+                c.activeToolCalls = c.activeToolCalls || []
+                if (!c.activeToolCalls.some((x) => x.id === tc.id)) {
+                  c.activeToolCalls.push(tc)
+                }
+                c.streamingToolArgsByCallId = c.streamingToolArgsByCallId || {}
+                if (!c.streamingToolArgsByCallId[tc.id]) {
+                  c.streamingToolArgsByCallId[tc.id] = ''
+                }
                 if (c.draftAssistant) {
                   c.draftAssistant.toolCall = tc
                   if (!c.draftAssistant.toolCalls.some((x) => x.id === tc.id)) {
@@ -951,15 +969,24 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               id: tc.id,
             })
           },
-          onToolCallDelta: (_index: number, argsDelta: string) => {
+          onToolCallDelta: (_index: number, argsDelta: string, toolCallId?: string) => {
             if (!isCurrentRun()) return
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c && c.activeRunId === runId) {
-                c.streamingToolArgs += argsDelta
                 if (c.draftAssistant) {
-                  c.draftAssistant.toolArgs += argsDelta
-                  const stepId = c.draftAssistant.activeToolStepId
+                  const isCurrentToolDelta = !toolCallId || c.currentToolCall?.id === toolCallId
+                  if (isCurrentToolDelta) {
+                    c.streamingToolArgs += argsDelta
+                    c.draftAssistant.toolArgs += argsDelta
+                  }
+                  if (toolCallId) {
+                    c.streamingToolArgsByCallId = c.streamingToolArgsByCallId || {}
+                    c.streamingToolArgsByCallId[toolCallId] =
+                      (c.streamingToolArgsByCallId[toolCallId] || '') + argsDelta
+                  }
+
+                  const stepId = toolCallId ? `tool-${toolCallId}` : c.draftAssistant.activeToolStepId
                   if (stepId) {
                     const step = c.draftAssistant.steps.find((s) => s.id === stepId)
                     if (step && step.type === 'tool_call') {
@@ -974,23 +1001,45 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             if (!isCurrentRun()) return
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
-              if (c && c.activeRunId === runId && c.currentToolCall?.id === tc.id) {
-                c.currentToolCall = null
-                c.streamingToolArgs = ''
+              if (c && c.activeRunId === runId) {
+                const completedStepId = `tool-${tc.id}`
+                const isCurrentTool = c.currentToolCall?.id === tc.id
+
+                if (isCurrentTool) {
+                  c.currentToolCall = null
+                  c.streamingToolArgs = ''
+                }
+                c.activeToolCalls = (c.activeToolCalls || []).filter((x) => x.id !== tc.id)
+                if ((c.activeToolCalls || []).length > 0) {
+                  c.currentToolCall = c.activeToolCalls[c.activeToolCalls.length - 1]
+                  c.streamingToolArgs = (c.streamingToolArgsByCallId || {})[c.currentToolCall.id] || ''
+                }
+                c.streamingToolArgsByCallId = c.streamingToolArgsByCallId || {}
+
                 if (c.draftAssistant) {
-                  c.draftAssistant.toolCall = null
                   c.draftAssistant.toolResults[tc.id] = _result || ''
-                  c.draftAssistant.toolArgs = ''
-                  const stepId = c.draftAssistant.activeToolStepId
-                  if (stepId) {
-                    const step = c.draftAssistant.steps.find((s) => s.id === stepId)
-                    if (step && step.type === 'tool_call') {
-                      step.result = _result || ''
-                      step.streaming = false
+
+                  const completedStep = c.draftAssistant.steps.find((s) => s.id === completedStepId)
+                  if (completedStep && completedStep.type === 'tool_call') {
+                    completedStep.result = _result || ''
+                    completedStep.streaming = false
+                  }
+
+                  if (isCurrentTool) {
+                    c.draftAssistant.toolCall = null
+                    c.draftAssistant.toolArgs = ''
+                    if (c.draftAssistant.activeToolStepId === completedStepId) {
+                      c.draftAssistant.activeToolStepId = null
+                    }
+                    if (c.currentToolCall) {
+                      c.draftAssistant.toolCall = c.currentToolCall
+                      c.draftAssistant.toolArgs = (c.streamingToolArgsByCallId || {})[c.currentToolCall.id] || ''
+                      c.draftAssistant.activeToolStepId = `tool-${c.currentToolCall.id}`
                     }
                   }
-                  c.draftAssistant.activeToolStepId = null
                 }
+
+                delete c.streamingToolArgsByCallId[tc.id]
               }
             })
           },
@@ -1203,7 +1252,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             c.activeRunId = null
             c.draftAssistant = null
             c.currentToolCall = null
+            c.activeToolCalls = []
             c.streamingToolArgs = ''
+            c.streamingToolArgsByCallId = {}
             c.streamingContent = ''
             c.streamingReasoning = ''
             c.isContentStreaming = false
@@ -1280,7 +1331,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
     setCurrentToolCall: (id: string, tc: ToolCall | null) => {
       set((state) => {
         const c = state.conversations.find((c) => c.id === id)
-        if (c) c.currentToolCall = tc
+        if (c) {
+          c.currentToolCall = tc
+          c.activeToolCalls = c.activeToolCalls || []
+          if (tc && !c.activeToolCalls.some((x) => x.id === tc.id)) {
+            c.activeToolCalls.push(tc)
+          }
+        }
       })
     },
 
@@ -1294,7 +1351,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
     resetStreamingToolArgs: (id: string) => {
       set((state) => {
         const c = state.conversations.find((c) => c.id === id)
-        if (c) c.streamingToolArgs = ''
+        if (c) {
+          c.streamingToolArgs = ''
+          c.streamingToolArgsByCallId = {}
+        }
       })
     },
 
@@ -1320,7 +1380,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.isContentStreaming = false
           c.completedContent = null
           c.currentToolCall = null
+          c.activeToolCalls = []
           c.streamingToolArgs = ''
+          c.streamingToolArgsByCallId = {}
           c.error = null
           c.activeRunId = null
           c.draftAssistant = null

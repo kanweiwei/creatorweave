@@ -7,7 +7,7 @@
  * - 进度指示器
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Brain,
   Loader2,
@@ -43,8 +43,12 @@ interface ReasoningVisualizationProps {
   reasoning?: string
   /** Current tool call being executed */
   currentToolCall?: { name: string; args: Record<string, unknown> }
+  /** All current tool calls being executed */
+  activeToolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>
   /** Streaming tool args */
   streamingToolArgs?: string
+  /** Streaming tool args keyed by tool call id */
+  streamingToolArgsByCallId?: Record<string, string>
   /** Overall status */
   status?: 'thinking' | 'reasoning' | 'tool_calling' | 'complete' | 'error'
   /** Compact mode for inline display */
@@ -151,14 +155,34 @@ function getToolIcon(toolName: string): React.ElementType {
 export function ReasoningVisualization({
   reasoning,
   currentToolCall,
+  activeToolCalls,
   streamingToolArgs,
+  streamingToolArgsByCallId,
   status = 'thinking',
   compact = false,
   maxHeight = '300px',
 }: ReasoningVisualizationProps) {
   const [steps, setSteps] = useState<ReasoningStep[]>([])
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
-  const [currentToolCallStep, setCurrentToolCallStep] = useState<ReasoningStep | null>(null)
+
+  const effectiveToolCalls = useMemo(() => {
+    if (activeToolCalls && activeToolCalls.length > 0) return activeToolCalls
+    if (currentToolCall) {
+      return [{ id: 'current', name: currentToolCall.name, args: currentToolCall.args }]
+    }
+    return []
+  }, [activeToolCalls, currentToolCall])
+
+  const toolCallSteps = useMemo<ReasoningStep[]>(() => {
+    return effectiveToolCalls.map((tool, idx) => ({
+      id: `tool-call-${tool.id || idx}`,
+      type: 'tool_call',
+      title: `Using ${tool.name}`,
+      description: 'Executing tool...',
+      status: 'in_progress',
+      icon: getToolIcon(tool.name),
+    }))
+  }, [effectiveToolCalls])
 
   // Parse reasoning content
   useEffect(() => {
@@ -172,24 +196,6 @@ export function ReasoningVisualization({
       }
     }
   }, [reasoning])
-
-  // Update current tool call step
-  useEffect(() => {
-    if (currentToolCall) {
-      const toolStep: ReasoningStep = {
-        id: 'tool-call-current',
-        type: 'tool_call',
-        title: `Using ${currentToolCall.name}`,
-        description: 'Executing tool...',
-        status: 'in_progress',
-        icon: getToolIcon(currentToolCall.name),
-      }
-
-      setCurrentToolCallStep(toolStep)
-    } else {
-      setCurrentToolCallStep(null)
-    }
-  }, [currentToolCall])
 
   // Toggle step expansion
   const toggleStep = (stepId: string) => {
@@ -213,10 +219,14 @@ export function ReasoningVisualization({
             <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
             <span className="text-secondary dark:text-muted">Thinking...</span>
           </>
-        ) : status === 'tool_calling' && currentToolCall ? (
+        ) : status === 'tool_calling' && effectiveToolCalls.length > 0 ? (
           <>
             <Settings className="h-4 w-4 animate-pulse text-primary-600" />
-            <span className="text-secondary dark:text-muted">Using {currentToolCall.name}...</span>
+            <span className="text-secondary dark:text-muted">
+              {effectiveToolCalls.length > 1
+                ? `Using ${effectiveToolCalls.length} tools...`
+                : `Using ${effectiveToolCalls[0].name}...`}
+            </span>
           </>
         ) : status === 'complete' ? (
           <>
@@ -347,25 +357,35 @@ export function ReasoningVisualization({
           )
         })}
 
-        {/* Current tool call */}
-        {currentToolCallStep && currentToolCall && (
-          <div className="border-primary-300 rounded-lg border bg-primary-50 p-3 dark:border-primary-900/40 dark:bg-primary-950/20">
+        {/* Current tool calls */}
+        {toolCallSteps.map((toolCallStep, idx) => {
+          const tool = effectiveToolCalls[idx]
+          const argsText =
+            (tool.id ? streamingToolArgsByCallId?.[tool.id] : undefined) ||
+            (effectiveToolCalls.length === 1 ? streamingToolArgs : undefined) ||
+            (Object.keys(tool.args || {}).length > 0 ? JSON.stringify(tool.args, null, 2) : '')
+
+          return (
+            <div
+              key={toolCallStep.id}
+              className="border-primary-300 rounded-lg border bg-primary-50 p-3 dark:border-primary-900/40 dark:bg-primary-950/20"
+            >
             <div className="flex items-start gap-3">
               <div className="rounded-full bg-primary-100 p-1 dark:bg-primary-900/30">
                 {(() => {
-                  const Icon = getToolIcon(currentToolCall.name)
+                  const Icon = getToolIcon(tool.name)
                   return <Icon className="h-3.5 w-3.5 animate-pulse text-primary-600" />
                 })()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-primary-900 text-sm font-medium dark:text-primary-200">{currentToolCallStep.title}</p>
-                <p className="mt-1 text-xs text-primary-700 dark:text-primary-300">{currentToolCallStep.description}</p>
+                <p className="text-primary-900 text-sm font-medium dark:text-primary-200">{toolCallStep.title}</p>
+                <p className="mt-1 text-xs text-primary-700 dark:text-primary-300">{toolCallStep.description}</p>
 
                 {/* Tool args preview */}
-                {(streamingToolArgs || Object.keys(currentToolCall.args).length > 0) && (
+                {argsText && (
                   <div className="mt-2 rounded bg-white/50 p-2 dark:bg-card/60">
                     <p className="font-mono text-xs text-primary-800 dark:text-primary-300">
-                      {streamingToolArgs || JSON.stringify(currentToolCall.args, null, 2)}
+                      {argsText}
                     </p>
                   </div>
                 )}
@@ -373,10 +393,11 @@ export function ReasoningVisualization({
               <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
             </div>
           </div>
-        )}
+          )
+        })}
 
         {/* Empty state */}
-        {steps.length === 0 && !currentToolCallStep && status !== 'complete' && (
+        {steps.length === 0 && toolCallSteps.length === 0 && status !== 'complete' && (
           <div className="py-8 text-center">
             <Brain className="mx-auto mb-2 h-8 w-8 text-tertiary dark:text-muted" />
             <p className="text-sm text-tertiary dark:text-muted">

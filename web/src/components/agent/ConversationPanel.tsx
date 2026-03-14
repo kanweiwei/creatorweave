@@ -19,7 +19,7 @@ import {
   MessageSquarePlus,
 } from 'lucide-react'
 import { useConversationStore } from '@/store/conversation.store'
-import type { Message } from '@/agent/message-types'
+import type { Message, ToolCall } from '@/agent/message-types'
 import { getThreadStats } from '@/agent/thread-utils'
 import { MessageBubble } from './MessageBubble'
 import { AssistantTurnBubble } from './AssistantTurnBubble'
@@ -47,9 +47,11 @@ interface ConversationPanelProps {
     content?: string
   }
   /** Current tool call */
-  currentToolCall?: any
+  currentToolCall?: ToolCall | null
   /** Streaming tool arguments */
   streamingToolArgs?: string
+  /** Streaming tool args keyed by tool call id */
+  streamingToolArgsByCallId?: Record<string, string>
 }
 
 export function ConversationPanel({
@@ -61,6 +63,7 @@ export function ConversationPanel({
   streamingContent,
   currentToolCall,
   streamingToolArgs,
+  streamingToolArgsByCallId,
 }: ConversationPanelProps) {
   const conversations = useConversationStore((s) => s.conversations)
   const conversation = conversations.find((c) => c.id === conversationId)
@@ -321,6 +324,11 @@ export function ConversationPanel({
                                   ? streamingToolArgs
                                   : undefined
                               }
+                              streamingToolArgsByCallId={
+                                isProcessing && idx === filteredTurns.length - 1
+                                  ? streamingToolArgsByCallId
+                                  : undefined
+                              }
                               runtimeToolCalls={
                                 isProcessing && idx === filteredTurns.length - 1
                                   ? conversation.draftAssistant?.toolCalls
@@ -357,6 +365,7 @@ export function ConversationPanel({
                 streamingContent={streamingContent}
                 currentToolCall={status === 'tool_calling' ? currentToolCall : undefined}
                 streamingToolArgs={status === 'tool_calling' ? streamingToolArgs : undefined}
+                streamingToolArgsByCallId={conversation.streamingToolArgsByCallId}
                 runtimeToolCalls={conversation.draftAssistant?.toolCalls}
                 runtimeSteps={conversation.draftAssistant?.steps}
               />

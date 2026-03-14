@@ -315,7 +315,11 @@ describe('AgentLoop', () => {
       })
 
       const result = await loop.run([createUserMessage('list files')])
-      expect(mockTools.execute).toHaveBeenCalledWith('list_files', {}, createMockToolContext())
+      expect(mockTools.execute).toHaveBeenCalledWith(
+        'list_files',
+        {},
+        expect.objectContaining({ directoryHandle: null, abortSignal: expect.any(AbortSignal) })
+      )
       expect(result.some((m) => m.role === 'tool')).toBe(true)
       expect(result[result.length - 1].content).toBe('Done!')
     })
@@ -500,10 +504,10 @@ describe('AgentLoop', () => {
       })
 
       await loop.run([createUserMessage('test')], {
-        onToolCallDelta: (index, delta) => toolDeltas.push(`${index}:${delta}`),
+        onToolCallDelta: (index, delta, toolCallId) => toolDeltas.push(`${index}:${toolCallId || 'none'}:${delta}`),
       })
 
-      expect(toolDeltas).toEqual(['0:{"path":', '0: "src"}'])
+      expect(toolDeltas).toEqual(['0:call_1:{"path":', '0:call_1: "src"}'])
     })
   })
 

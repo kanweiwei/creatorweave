@@ -112,8 +112,12 @@ export interface Conversation {
   completedContent: string | null
   /** Currently executing tool call (not persisted) */
   currentToolCall: ToolCall | null
+  /** All currently executing tool calls (not persisted) */
+  activeToolCalls?: ToolCall[]
   /** Streaming tool call arguments (not persisted) */
   streamingToolArgs: string
+  /** Streaming args keyed by tool call id (not persisted) */
+  streamingToolArgsByCallId?: Record<string, string>
   /** Error message (not persisted) */
   error: string | null
   /** Active run id for guarding stale callbacks (not persisted) */
@@ -201,7 +205,9 @@ export function createConversation(title?: string): Conversation {
     isContentStreaming: false,
     completedContent: null,
     currentToolCall: null,
+    activeToolCalls: [],
     streamingToolArgs: '',
+    streamingToolArgsByCallId: {},
     error: null,
     activeRunId: null,
     runEpoch: 0,

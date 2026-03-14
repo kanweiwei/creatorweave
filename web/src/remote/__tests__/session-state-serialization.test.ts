@@ -159,6 +159,8 @@ describe('Session State Serialization', () => {
       expect(deserialized.title).toBe(conversation.title)
       expect(deserialized.messages).toHaveLength(2)
       expect(deserialized.status).toBe('idle')
+      expect(deserialized.activeToolCalls).toEqual([])
+      expect(deserialized.streamingToolArgsByCallId).toEqual({})
     })
 
     it('should handle conversation with tool calls and results', () => {
@@ -218,6 +220,8 @@ describe('Session State Serialization', () => {
       expect(deserialized.messages).toHaveLength(3)
       expect(deserialized.messages[1].toolCalls).toHaveLength(1)
       expect(deserialized.messages[2].toolCallId).toBe('tc-1')
+      expect(deserialized.activeToolCalls).toEqual([])
+      expect(deserialized.streamingToolArgsByCallId).toEqual({})
     })
   })
 })
