@@ -136,6 +136,23 @@ wasm-pack build --target web --out-dir ../web/public/wasm crates/wasm-bindings
 pnpm run build:wasm
 ```
 
+### Reset Local SQLite/OPFS Data (Development)
+
+When storage schema changes during local development, reset local browser data before retesting.
+
+Option 1: Console reset (recommended)
+
+```js
+await window.__resetSQLiteDB()
+location.reload()
+```
+
+Option 2: Browser storage reset
+
+1. Open DevTools -> Application -> Storage.
+2. Clear site data for `http://localhost:5173`.
+3. Reload the app.
+
 ---
 
 ## Project Structure
