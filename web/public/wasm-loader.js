@@ -9,9 +9,9 @@
   script.type = 'module'
   script.textContent = `
     // Load the WASM module
-    import('/wasm/browser_fs_analyzer_wasm.js').then(module => {
+    import('/wasm/file_stats_wasm.js').then(module => {
       // Expose it globally
-      window.BrowserFsAnalyzerWasm = module;
+      window.FileStatsWasm = module;
       // Dispatch ready event
       window.dispatchEvent(new CustomEvent('wasm-ready'));
     }).catch(err => {

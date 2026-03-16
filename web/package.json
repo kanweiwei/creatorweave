@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm run build:wasm && vite build && pnpm run copy:pyodide",
-    "build:wasm": "cd ../wasm && bash scripts/build-wasm.sh && cd ../web && cp public/wasm/line_counter.js src/wasm/ && cp public/wasm/md5_calculator.js src/wasm/",
+    "build:wasm": "cd ../wasm && bash scripts/build-wasm.sh",
     "copy:pyodide": "mkdir -p dist/assets/pyodide && cp -r node_modules/pyodide/* dist/assets/pyodide/",
     "preview": "vite preview",
     "test": "vitest",

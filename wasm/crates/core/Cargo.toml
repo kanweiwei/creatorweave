@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [lib]
+name = "file_stats_core"
 crate-type = ["rlib"]
 
 [dependencies]

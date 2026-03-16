@@ -21,7 +21,7 @@ const mockModule = {
 describe('wasm-loader', () => {
   beforeAll(() => {
     // Set up global mock
-    Object.defineProperty(window, 'BrowserFsAnalyzerWasm', {
+    Object.defineProperty(window, 'FileStatsWasm', {
       value: mockModule,
       writable: true,
       configurable: true,

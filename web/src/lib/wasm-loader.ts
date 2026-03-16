@@ -35,8 +35,8 @@ function waitForWasmModule(): Promise<any> {
 
   wasmLoadPromise = new Promise((resolve, reject) => {
     // Check if already loaded
-    if ((window as any).BrowserFsAnalyzerWasm) {
-      resolve((window as any).BrowserFsAnalyzerWasm)
+    if ((window as any).FileStatsWasm) {
+      resolve((window as any).FileStatsWasm)
       return
     }
 
@@ -45,7 +45,7 @@ function waitForWasmModule(): Promise<any> {
       'wasm-ready',
       () => {
         console.log('[WASM] Module loaded successfully')
-        resolve((window as any).BrowserFsAnalyzerWasm)
+        resolve((window as any).FileStatsWasm)
       },
       { once: true }
     )
@@ -62,7 +62,7 @@ function waitForWasmModule(): Promise<any> {
 
     // Timeout after 10 seconds
     setTimeout(() => {
-      if (!(window as any).BrowserFsAnalyzerWasm) {
+      if (!(window as any).FileStatsWasm) {
         reject(new Error('WASM module load timeout'))
       }
     }, 10000)
@@ -92,7 +92,7 @@ export async function loadAnalyzer(): Promise<FileAnalyzerInstance> {
 
     // Initialize WASM module
     // The WASM JS file uses import.meta.url to locate the .wasm file
-    // By default it will look for browser_fs_analyzer_wasm_bg.wasm relative to the JS file
+    // By default it will look for file_stats_wasm_bg.wasm relative to the JS file
     await mod.default()
 
     console.log('[WASM] Initialized, creating FileAnalyzer...')

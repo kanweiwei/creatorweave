@@ -32,7 +32,7 @@ declare global {
 
   // WASM module loaded via script tag in index.html
   interface Window {
-    BrowserFsAnalyzerWasm: {
+    FileStatsWasm: {
       FileAnalyzer: new () => import('../lib/wasm-loader').FileAnalyzerInstance
       default: (module_or_path?: string) => Promise<void>
       initSync: (module?: { module: WebAssembly.Module }) => any

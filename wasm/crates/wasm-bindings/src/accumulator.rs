@@ -2,7 +2,7 @@
 //!
 //! Exports file analyzer interface to JavaScript
 
-use browser_fs_analyzer_core::Accumulator;
+use file_stats_core::Accumulator;
 use wasm_bindgen::prelude::*;
 
 /// File analyzer

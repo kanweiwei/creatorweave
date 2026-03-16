@@ -60,7 +60,7 @@ export function PluginManager({
         // Filter out plugins that don't have WASM implementations
         const validPlugins = savedPlugins.filter((p) => {
           const wasmId = p.metadata.id.replace(/-/g, '_')
-          const builtinPlugins = ['line_counter', 'md5_calculator', 'browser_fs_analyzer_wasm']
+          const builtinPlugins = ['line_counter', 'md5_calculator', 'file_stats_wasm']
           return builtinPlugins.includes(wasmId)
         })
 
