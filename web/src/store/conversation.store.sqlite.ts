@@ -18,6 +18,7 @@ import { createAssistantMessage, createConversation } from '@/agent/message-type
 import {
   emitThinkingStart,
   emitThinkingDelta,
+  emitCompressionEvent,
   emitToolStart,
   emitComplete,
   emitError,
@@ -1138,8 +1139,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               }
             })
           },
-          onContextCompressionStart: () => {
+          onContextCompressionStart: (payload) => {
             if (!isCurrentRun()) return
+            emitCompressionEvent({
+              phase: 'start',
+              droppedGroups: payload.droppedGroups,
+              droppedContentChars: payload.droppedContentChars,
+            })
             set((state) => {
               const c = state.conversations.find((x) => x.id === conversationId)
               if (!c || c.activeRunId !== runId || !c.draftAssistant) return
@@ -1153,8 +1159,16 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               c.draftAssistant.activeCompressionStepId = stepId
             })
           },
-          onContextCompressionComplete: (summary: string | null) => {
+          onContextCompressionComplete: (payload) => {
             if (!isCurrentRun()) return
+            emitCompressionEvent({
+              phase: 'complete',
+              mode: payload.mode,
+              droppedGroups: payload.droppedGroups,
+              droppedContentChars: payload.droppedContentChars,
+              summaryChars: payload.summaryChars,
+              latencyMs: payload.latencyMs,
+            })
             set((state) => {
               const c = state.conversations.find((x) => x.id === conversationId)
               if (!c || c.activeRunId !== runId || !c.draftAssistant) return
@@ -1162,16 +1176,19 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               if (stepId) {
                 const step = c.draftAssistant.steps.find((s) => s.id === stepId)
                 if (step && step.type === 'compression') {
-                  step.content = summary ? '上下文已压缩并生成摘要' : '上下文压缩完成'
+                  step.content =
+                    payload.mode === 'skip'
+                      ? '上下文压缩评估完成（跳过摘要）'
+                      : '上下文已压缩并生成摘要'
                   step.streaming = false
                 }
               }
               c.draftAssistant.activeCompressionStepId = null
             })
-            if (summary) {
+            if (payload.summary) {
               compressionSummaryMessages.push(
                 createAssistantMessage(
-                  summary,
+                  payload.summary,
                   undefined,
                   undefined,
                   null,

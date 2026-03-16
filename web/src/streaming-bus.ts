@@ -10,6 +10,7 @@ type StreamingEventType =
   | 'thinking:start'
   | 'thinking:delta'
   | 'thinking:complete'
+  | 'compression:event'
   | 'tool:start'
   | 'tool:delta'
   | 'tool:complete'
@@ -71,6 +72,14 @@ export const emitThinkingStart = () => streamingBus.emit('thinking:start')
 export const emitThinkingDelta = (delta: string) => streamingBus.emit('thinking:delta', delta)
 export const emitThinkingComplete = (reasoning: string) =>
   streamingBus.emit('thinking:complete', reasoning)
+export const emitCompressionEvent = (event: {
+  phase: 'start' | 'complete'
+  mode?: 'llm' | 'fallback' | 'skip'
+  droppedGroups?: number
+  droppedContentChars?: number
+  summaryChars?: number
+  latencyMs?: number
+}) => streamingBus.emit('compression:event', event)
 export const emitToolStart = (toolCall: { name: string; args: string; id: string }) =>
   streamingBus.emit('tool:start', toolCall)
 export const emitToolDelta = (delta: string) => streamingBus.emit('tool:delta', delta)

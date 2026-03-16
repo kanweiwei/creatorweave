@@ -51,6 +51,7 @@ const SUMMARY_MIN_INTERVAL_CONVERT_CALLS = 3
 const CONTEXT_SUMMARY_SYSTEM_PROMPT =
   'You are compressing earlier conversation context for another model call. Keep only durable facts, decisions, constraints, file paths, tool findings, and unresolved tasks. Output plain text only.'
 const COMPRESSED_MEMORY_PREFIX = 'Compressed memory of earlier conversation:'
+type CompressionSummaryMode = 'llm' | 'fallback' | 'skip'
 
 export interface AgentCallbacks {
   /** Called when a new assistant message starts */
@@ -97,9 +98,16 @@ export interface AgentCallbacks {
   /** Called when agent stops due to maxIterations limit */
   onIterationLimitReached?: (limit: number) => void
   /** Called when context compression starts */
-  onContextCompressionStart?: () => void
-  /** Called when context compression completes (summary text may be null on fallback) */
-  onContextCompressionComplete?: (summary: string | null) => void
+  onContextCompressionStart?: (payload: { droppedGroups: number; droppedContentChars: number }) => void
+  /** Called when context compression completes */
+  onContextCompressionComplete?: (payload: {
+    mode: CompressionSummaryMode
+    summary: string | null
+    droppedGroups: number
+    droppedContentChars: number
+    summaryChars: number
+    latencyMs: number
+  }) => void
 }
 
 export interface AgentLoopConfig {
@@ -293,7 +301,7 @@ export class AgentLoop {
   private async generateContextSummaryWithLLM(
     droppedContent: string,
     maxSummaryTokens: number
-  ): Promise<string | null> {
+  ): Promise<{ summary: string | null; mode: CompressionSummaryMode }> {
     try {
       const response = await this.provider.chat({
         messages: [
@@ -310,10 +318,10 @@ export class AgentLoop {
       })
 
       const summary = response.choices[0]?.message?.content?.trim()
-      return summary || null
+      return { summary: summary || null, mode: 'llm' }
     } catch (error) {
       console.warn('[AgentLoop] LLM context summary failed, falling back to heuristic summary:', error)
-      return this.createHeuristicSummary(droppedContent, maxSummaryTokens)
+      return { summary: this.createHeuristicSummary(droppedContent, maxSummaryTokens), mode: 'fallback' }
     }
   }
 
@@ -760,22 +768,42 @@ export class AgentLoop {
             }
           )
           let trimmed = trimmedResult.messages
-          if (
-            trimmedResult.droppedContent &&
-            this.shouldCallLLMSummary(trimmedResult.droppedGroups, trimmedResult.droppedContent)
-          ) {
-            callbacks?.onContextCompressionStart?.()
-            const llmSummary = await this.generateContextSummaryWithLLM(
-              trimmedResult.droppedContent,
-              summaryTokenBudget
-            )
-            if (llmSummary) {
-              this.lastSummaryConvertCall = this.convertCallCount
-              trimmed = this.injectSummaryMessage(trimmed, llmSummary)
-              // Final safety pass: summary injection must still fit the context budget.
-              trimmed = this.contextManager.trimMessages(trimmed, { createSummary: false }).messages
+          if (trimmedResult.droppedContent) {
+            const droppedContent = trimmedResult.droppedContent
+            const droppedGroups = trimmedResult.droppedGroups
+            const droppedContentChars = droppedContent.length
+            if (this.shouldCallLLMSummary(droppedGroups, droppedContent)) {
+              callbacks?.onContextCompressionStart?.({ droppedGroups, droppedContentChars })
+              const startedAt = Date.now()
+              const { summary, mode } = await this.generateContextSummaryWithLLM(
+                droppedContent,
+                summaryTokenBudget
+              )
+              const latencyMs = Date.now() - startedAt
+              if (summary) {
+                this.lastSummaryConvertCall = this.convertCallCount
+                trimmed = this.injectSummaryMessage(trimmed, summary)
+                // Final safety pass: summary injection must still fit the context budget.
+                trimmed = this.contextManager.trimMessages(trimmed, { createSummary: false }).messages
+              }
+              callbacks?.onContextCompressionComplete?.({
+                mode,
+                summary,
+                droppedGroups,
+                droppedContentChars,
+                summaryChars: summary?.length || 0,
+                latencyMs,
+              })
+            } else {
+              callbacks?.onContextCompressionComplete?.({
+                mode: 'skip',
+                summary: null,
+                droppedGroups,
+                droppedContentChars,
+                summaryChars: 0,
+                latencyMs: 0,
+              })
             }
-            callbacks?.onContextCompressionComplete?.(llmSummary)
           }
           return this.internalToPiMessages(
             trimmed.map((msg) => ({
