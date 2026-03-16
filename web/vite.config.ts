@@ -19,6 +19,8 @@ export default defineConfig({
       includeAssets: ['wasm/**/*.wasm', 'icon-*.png', 'icon.svg'],
       // Disable in dev to avoid COOP/COEP conflicts
       disable: process.env.NODE_ENV === 'development',
+      // Silent auto-update without notification
+      injectRegister: 'inline',
       manifest: {
         name: 'AI Workspace',
         short_name: 'CWeave',
@@ -53,6 +55,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Silent auto-update
+        skipWaiting: true,
+        clientsClaim: true,
         // Only precache static assets
         globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
         // Disable navigateFallback - don't intercept SPA navigation
