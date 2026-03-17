@@ -7,7 +7,7 @@
  */
 
 import type { PendingChange, SyncResult } from '../types/opfs-types'
-import { generateId } from '../utils/opfs-utils'
+import { getFSOverlayRepository } from '@/sqlite/repositories/fs-overlay.repository'
 
 const PENDING_FILE = 'pending.json'
 const FILES_DIR = 'files'
@@ -22,11 +22,13 @@ const FILES_DIR = 'files'
  * - Persist queue to OPFS
  */
 export class SessionPendingManager {
+  private readonly workspaceId: string
   private readonly sessionDir: FileSystemDirectoryHandle
   private pendingChanges: Map<string, PendingChange> = new Map()
   private initialized = false
 
-  constructor(sessionDir: FileSystemDirectoryHandle) {
+  constructor(workspaceId: string, sessionDir: FileSystemDirectoryHandle) {
+    this.workspaceId = workspaceId
     this.sessionDir = sessionDir
   }
 
@@ -44,29 +46,29 @@ export class SessionPendingManager {
    * Load pending queue from OPFS
    */
   private async loadPending(): Promise<void> {
+    const repo = getFSOverlayRepository()
+    const sqlitePending = await repo.listPendingOps(this.workspaceId)
+    if (sqlitePending.length > 0) {
+      this.pendingChanges = new Map(sqlitePending.map((c) => [c.path, c]))
+      return
+    }
+
+    // One-time compatibility import from legacy OPFS pending.json.
     try {
       const pendingFile = await this.sessionDir.getFileHandle(PENDING_FILE)
       const file = await pendingFile.getFile()
       const text = await file.text()
-      const data: PendingChange[] = JSON.parse(text)
+      const legacyPending = JSON.parse(text) as PendingChange[]
 
-      this.pendingChanges = new Map(data.map((c) => [c.id, c]))
+      for (const pending of legacyPending) {
+        await repo.upsertPendingOp(this.workspaceId, pending.path, pending.type)
+      }
     } catch {
-      // File doesn't exist yet
-      this.pendingChanges = new Map()
+      // No legacy pending file, ignore.
     }
-  }
 
-  /**
-   * Save pending queue to OPFS
-   */
-  private async savePending(): Promise<void> {
-    const pendingFile = await this.sessionDir.getFileHandle(PENDING_FILE, { create: true })
-    const writable = await pendingFile.createWritable()
-
-    const data = Array.from(this.pendingChanges.values())
-    await writable.write(JSON.stringify(data, null, 2))
-    await writable.close()
+    const imported = await repo.listPendingOps(this.workspaceId)
+    this.pendingChanges = new Map(imported.map((c) => [c.path, c]))
   }
 
   /**
@@ -76,28 +78,20 @@ export class SessionPendingManager {
   async add(path: string): Promise<void> {
     if (!this.initialized) await this.initialize()
 
-    const existingEntry = this.findPendingEntryByPath(path)
-    const now = Date.now()
-
-    if (existingEntry) {
-      const [id, existing] = existingEntry
-      // Replace with a new object (avoid mutating potentially frozen records).
-      this.pendingChanges.set(id, {
-        ...existing,
-        timestamp: now,
-      })
-    } else {
-      // Create new record
-      this.pendingChanges.set(generateId('pending'), {
-        id: generateId('pending'),
-        path,
-        type: 'modify',
-        fsMtime: 0, // Will be detected during sync
-        timestamp: now,
-      })
-    }
-
-    await this.savePending()
+    const repo = getFSOverlayRepository()
+    const existing = this.pendingChanges.get(path)
+    const nextType = existing?.type === 'create' ? 'create' : 'modify'
+    const op = await repo.upsertPendingOp(this.workspaceId, path, nextType)
+    this.pendingChanges.set(path, {
+      id: op.id,
+      path: op.path,
+      type: op.type,
+      fsMtime: op.fsMtime,
+      timestamp: op.timestamp,
+      checkpointId: op.checkpointId,
+      checkpointStatus: op.checkpointStatus,
+      checkpointSummary: op.checkpointSummary,
+    })
   }
 
   /**
@@ -107,29 +101,27 @@ export class SessionPendingManager {
   async markForDeletion(path: string): Promise<void> {
     if (!this.initialized) await this.initialize()
 
-    const existingEntry = this.findPendingEntryByPath(path)
-    const now = Date.now()
+    const repo = getFSOverlayRepository()
+    const existing = this.pendingChanges.get(path)
 
-    if (existingEntry) {
-      const [id, existing] = existingEntry
-      // Replace with a new object (avoid mutating potentially frozen records).
-      this.pendingChanges.set(id, {
-        ...existing,
-        type: 'delete',
-        timestamp: now,
-      })
-    } else {
-      // Create delete record
-      this.pendingChanges.set(generateId('pending'), {
-        id: generateId('pending'),
-        path,
-        type: 'delete',
-        fsMtime: 0,
-        timestamp: now,
-      })
+    // create -> delete cancels out in pending view.
+    if (existing?.type === 'create') {
+      await repo.discardPendingPath(this.workspaceId, path)
+      this.pendingChanges.delete(path)
+      return
     }
 
-    await this.savePending()
+    const op = await repo.upsertPendingOp(this.workspaceId, path, 'delete')
+    this.pendingChanges.set(path, {
+      id: op.id,
+      path: op.path,
+      type: op.type,
+      fsMtime: op.fsMtime,
+      timestamp: op.timestamp,
+      checkpointId: op.checkpointId,
+      checkpointStatus: op.checkpointStatus,
+      checkpointSummary: op.checkpointSummary,
+    })
   }
 
   /**
@@ -139,19 +131,18 @@ export class SessionPendingManager {
   async markAsCreated(path: string): Promise<void> {
     if (!this.initialized) await this.initialize()
 
-    // Only add if not already pending
-    if (!this.findPendingByPath(path)) {
-      const now = Date.now()
-      this.pendingChanges.set(generateId('pending'), {
-        id: generateId('pending'),
-        path,
-        type: 'create',
-        fsMtime: 0,
-        timestamp: now,
-      })
-
-      await this.savePending()
-    }
+    const repo = getFSOverlayRepository()
+    const op = await repo.upsertPendingOp(this.workspaceId, path, 'create')
+    this.pendingChanges.set(path, {
+      id: op.id,
+      path: op.path,
+      type: op.type,
+      fsMtime: op.fsMtime,
+      timestamp: op.timestamp,
+      checkpointId: op.checkpointId,
+      checkpointStatus: op.checkpointStatus,
+      checkpointSummary: op.checkpointSummary,
+    })
   }
 
   /**
@@ -173,11 +164,28 @@ export class SessionPendingManager {
   }
 
   /**
+   * Check whether a path currently has pending overlay operations.
+   */
+  hasPendingPath(path: string): boolean {
+    if (this.pendingChanges.has(path)) return true
+    const normalized = this.normalizeComparePath(path)
+    for (const pendingPath of this.pendingChanges.keys()) {
+      if (this.normalizeComparePath(pendingPath) === normalized) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
    * Clear pending queue
    */
   async clear(): Promise<void> {
+    const repo = getFSOverlayRepository()
+    for (const pending of this.pendingChanges.values()) {
+      await repo.discardPendingPath(this.workspaceId, pending.path)
+    }
     this.pendingChanges.clear()
-    await this.savePending()
   }
 
   /**
@@ -185,8 +193,11 @@ export class SessionPendingManager {
    * @param id Record ID
    */
   async remove(id: string): Promise<void> {
-    this.pendingChanges.delete(id)
-    await this.savePending()
+    const target = Array.from(this.pendingChanges.values()).find((c) => c.id === id)
+    if (!target) return
+    const repo = getFSOverlayRepository()
+    await repo.discardPendingPath(this.workspaceId, target.path)
+    this.pendingChanges.delete(target.path)
   }
 
   /**
@@ -194,10 +205,11 @@ export class SessionPendingManager {
    * @param path File path
    */
   async removeByPath(path: string): Promise<void> {
-    const entry = this.findPendingEntryByPath(path)
-    if (!entry) return
-    this.pendingChanges.delete(entry[0])
-    await this.savePending()
+    const existing = this.pendingChanges.get(path)
+    if (!existing) return
+    const repo = getFSOverlayRepository()
+    await repo.discardPendingPath(this.workspaceId, path)
+    this.pendingChanges.delete(path)
   }
 
   /**
@@ -217,7 +229,8 @@ export class SessionPendingManager {
       conflicts: [],
     }
 
-    const toRemove: string[] = []
+    const repo = getFSOverlayRepository()
+    const batchId = await repo.createSyncBatch(this.workspaceId, this.pendingChanges.size)
     const normalizeComparePath = (p: string): string => {
       let normalized = p.replace(/\\/g, '/')
       if (normalized.startsWith('/mnt/')) {
@@ -232,6 +245,7 @@ export class SessionPendingManager {
     for (const change of this.getAll()) {
       if (allowedPaths && !allowedPaths.has(normalizeComparePath(change.path))) {
         result.skipped++
+        await repo.recordSyncItem(batchId, change.id, change.path, 'skipped')
         continue
       }
 
@@ -239,16 +253,22 @@ export class SessionPendingManager {
         if (change.type === 'delete') {
           await this.deleteFile(directoryHandle, change.path)
           result.success++
-          toRemove.push(change.id)
+          await repo.markOpSynced(change.id)
+          await repo.recordSyncItem(batchId, change.id, change.path, 'success')
+          this.pendingChanges.delete(change.path)
         } else {
           // Read from OPFS cache and write to filesystem
           const content = await this.readCacheContent(change.path, cacheManager)
           if (content) {
             await this.writeFile(directoryHandle, change.path, content)
             result.success++
-            toRemove.push(change.id)
+            await repo.markOpSynced(change.id)
+            await repo.recordSyncItem(batchId, change.id, change.path, 'success')
+            this.pendingChanges.delete(change.path)
           } else {
             result.failed++
+            await repo.keepOpPending(change.id, 'No cached content found')
+            await repo.recordSyncItem(batchId, change.id, change.path, 'failed', 'No cached content')
           }
         }
       } catch (err: any) {
@@ -256,28 +276,44 @@ export class SessionPendingManager {
           if (change.type === 'delete') {
             // Idempotent delete: target already gone, treat as success.
             result.success++
-            toRemove.push(change.id)
+            await repo.markOpSynced(change.id)
+            await repo.recordSyncItem(batchId, change.id, change.path, 'success')
+            this.pendingChanges.delete(change.path)
             continue
           }
           if (change.type === 'create') {
             // New file, this is expected
             result.success++
-            toRemove.push(change.id)
+            await repo.markOpSynced(change.id)
+            await repo.recordSyncItem(batchId, change.id, change.path, 'success')
+            this.pendingChanges.delete(change.path)
           } else {
             result.failed++
+            await repo.keepOpPending(change.id, err.message || 'NotFoundError')
+            await repo.recordSyncItem(
+              batchId,
+              change.id,
+              change.path,
+              'failed',
+              err.message || 'NotFoundError'
+            )
           }
         } else {
           result.failed++
+          const msg = err?.message || String(err)
+          await repo.keepOpPending(change.id, msg)
+          await repo.recordSyncItem(batchId, change.id, change.path, 'failed', msg)
         }
       }
     }
 
-    // Remove synced records
-    for (const id of toRemove) {
-      this.pendingChanges.delete(id)
-    }
-
-    await this.savePending()
+    await repo.finalizeSyncBatch(
+      batchId,
+      result.failed === 0 ? 'success' : result.success > 0 ? 'partial' : 'failed',
+      result.success,
+      result.failed,
+      result.skipped
+    )
     return result
   }
 
@@ -383,27 +419,14 @@ export class SessionPendingManager {
     }
   }
 
-  /**
-   * Find pending record by path
-   */
-  private findPendingByPath(path: string): PendingChange | undefined {
-    for (const change of this.pendingChanges.values()) {
-      if (change.path === path) {
-        return change
-      }
+  private normalizeComparePath(p: string): string {
+    let normalized = p.replace(/\\/g, '/')
+    if (normalized.startsWith('/mnt/')) {
+      normalized = normalized.slice(5)
+    } else if (normalized.startsWith('/')) {
+      normalized = normalized.slice(1)
     }
-    return undefined
+    return normalized
   }
 
-  /**
-   * Find pending record entry [id, change] by path
-   */
-  private findPendingEntryByPath(path: string): [string, PendingChange] | undefined {
-    for (const entry of this.pendingChanges.entries()) {
-      if (entry[1].path === path) {
-        return entry
-      }
-    }
-    return undefined
-  }
 }

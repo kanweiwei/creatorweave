@@ -67,10 +67,6 @@ export const deleteExecutor: ToolExecutor = async (args, context) => {
   const paths = args.paths as string[] | undefined
   const dryRun = args.dry_run === true
 
-  if (!context.directoryHandle) {
-    return JSON.stringify({ error: 'No directory selected. Please select a project folder first.' })
-  }
-
   const requestedTargets = paths && Array.isArray(paths) && paths.length > 0 ? paths : path ? [path] : []
 
   if (requestedTargets.length === 0) {

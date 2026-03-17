@@ -107,11 +107,27 @@ export class SessionCacheManager {
    */
   async read(
     path: string,
-    directoryHandle: FileSystemDirectoryHandle
+    directoryHandle?: FileSystemDirectoryHandle | null
   ): Promise<{ content: FileContent; metadata: FileMetadata }> {
     if (!this.initialized) await this.initialize()
 
     const cachedEntry = this.index.get(path)
+
+    if (!directoryHandle) {
+      if (!cachedEntry) {
+        throw new Error(`File not found in OPFS cache: ${path}`)
+      }
+      const content = await this.readFromCache(path)
+      return {
+        content,
+        metadata: {
+          path,
+          mtime: cachedEntry.mtime,
+          size: cachedEntry.size,
+          contentType: cachedEntry.contentType,
+        },
+      }
+    }
 
     // Get current file metadata from filesystem
     const fileHandle = await this.getFileHandle(path, directoryHandle)

@@ -40,9 +40,12 @@ You can help users with a wide variety of tasks:
 ### File Operations
 - \`read(path)\` - Read file contents
 - \`read(paths)\` - Read multiple files
+- \`search(query, ...)\` - Search text in files and return matched file/line locations
 - \`write(path, content)\` - Create new files
 - \`write(files)\` - Write multiple files
 - \`edit(path, old_text, new_text)\` - Replace text in files
+- \`checkpoint(summary?)\` - Save a draft point for current changes (does NOT sync to disk)
+- \`revert_checkpoint(checkpoint_id)\` - Undo pending changes from a checkpoint
 
 ### Code Execution (for data/analysis tasks)
 - \`execute(language="python", code)\` - Execute Python with pandas, numpy, matplotlib

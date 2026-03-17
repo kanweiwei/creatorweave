@@ -32,7 +32,23 @@ export function ToolCallDisplay({
     // Incomplete JSON during streaming — ignore parse error
   }
 
-  const isError = result ? result.includes('"error"') : false
+  let parsedResult: Record<string, unknown> | null = null
+  if (result) {
+    try {
+      parsedResult = JSON.parse(result) as Record<string, unknown>
+    } catch {
+      parsedResult = null
+    }
+  }
+
+  const hasToolError =
+    parsedResult && Object.prototype.hasOwnProperty.call(parsedResult, 'error')
+      ? true
+      : result
+        ? result.includes('"error"')
+        : false
+  const hasExplicitFailure = parsedResult?.success === false
+  const isError = hasToolError || hasExplicitFailure
   const isStreaming = streamingArgs !== undefined && !result
 
   // Extract path for summary display
@@ -86,12 +102,10 @@ export function ToolCallDisplay({
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">结果</span>
-                <CopyIconButton
-                  content={result.length > 2000 ? result + '\n...(truncated)' : result}
-                />
+                <CopyIconButton content={result} />
               </div>
               <pre className="max-h-60 overflow-auto rounded bg-white p-2 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
-                {result.length > 2000 ? result.slice(0, 2000) + '\n...(truncated)' : result}
+                {result}
               </pre>
             </div>
           )}

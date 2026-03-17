@@ -10,16 +10,17 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react'
-import { type ChangeDetectionResult, type FileChange, type ChangeType } from '@/opfs/types/opfs-types'
+import { type ChangeDetectionResult, type FileChange } from '@/opfs/types/opfs-types'
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
 import { BrandButton, BrandCheckbox } from '@creatorweave/ui'
 import { Badge } from '@/components/ui/badge'
 import { Download, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
-/** 分组类型定义 */
-type ChangeGroup = {
-  type: ChangeType
-  label: string
+type CheckpointGroup = {
+  key: string
+  title: string
+  status: 'draft' | 'committed'
+  summary?: string
   count: number
   changes: FileChange[]
   expanded: boolean
@@ -60,61 +61,44 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
   // Internal state for uncontrolled mode (backward compatibility)
   const [internalSelectAll, setInternalSelectAll] = useState(false)
   const [internalSelectedItems, setInternalSelectedItems] = useState<Set<string>>(new Set())
-  // 展开/折叠状态
-  const [groupExpanded, setGroupExpanded] = useState<Record<ChangeType, boolean>>({
-    add: true,
-    modify: true,
-    delete: true,
+  // checkpoint 分组展开/折叠状态
+  const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({
+    draft: true,
   })
 
-  // 按变更类型分组
+  // 按 checkpoint 分组
   const groupedChanges = useMemo(() => {
-    const groups: ChangeGroup[] = []
-    
-    // 新增文件组
-    const addedChanges = changes.changes.filter(c => c.type === 'add')
-    if (addedChanges.length > 0) {
-      groups.push({
-        type: 'add',
-        label: '新增',
-        count: addedChanges.length,
-        changes: addedChanges,
-        expanded: groupExpanded.add,
+    const groupsMap = new Map<string, Omit<CheckpointGroup, 'expanded'>>()
+    for (const change of changes.changes) {
+      const key = change.checkpointId || 'draft'
+      const status = change.checkpointStatus || 'draft'
+      const existing = groupsMap.get(key)
+      if (existing) {
+        existing.changes.push(change)
+        existing.count += 1
+        continue
+      }
+      groupsMap.set(key, {
+        key,
+        title: key === 'draft' ? '当前草稿' : `Checkpoint ${key.slice(-8)}`,
+        status,
+        summary: change.checkpointSummary,
+        count: 1,
+        changes: [change],
       })
     }
-    
-    // 修改文件组
-    const modifiedChanges = changes.changes.filter(c => c.type === 'modify')
-    if (modifiedChanges.length > 0) {
-      groups.push({
-        type: 'modify',
-        label: '修改',
-        count: modifiedChanges.length,
-        changes: modifiedChanges,
-        expanded: groupExpanded.modify,
-      })
-    }
-    
-    // 删除文件组
-    const deletedChanges = changes.changes.filter(c => c.type === 'delete')
-    if (deletedChanges.length > 0) {
-      groups.push({
-        type: 'delete',
-        label: '删除',
-        count: deletedChanges.length,
-        changes: deletedChanges,
-        expanded: groupExpanded.delete,
-      })
-    }
-    
-    return groups
+
+    return Array.from(groupsMap.values()).map((group) => ({
+      ...group,
+      expanded: groupExpanded[group.key] ?? true,
+    }))
   }, [changes.changes, groupExpanded])
 
-  // 切换分组展开/折叠
-  const toggleGroup = useCallback((type: ChangeType) => {
-    setGroupExpanded(prev => ({
+  // 切换 checkpoint 分组展开/折叠
+  const toggleGroup = useCallback((key: string) => {
+    setGroupExpanded((prev) => ({
       ...prev,
-      [type]: !prev[type],
+      [key]: !(prev[key] ?? true),
     }))
   }, [])
 
@@ -207,14 +191,12 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="divide-y divide-subtle/50">
           {groupedChanges.map((group) => {
-            const typeInfo = getChangeTypeInfo(group.type)
-            
             return (
-              <div key={group.type}>
+              <div key={group.key}>
                 {/* 分组标题 */}
                 <div
                   className="flex items-center gap-2 px-3 py-2 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => toggleGroup(group.type)}
+                  onClick={() => toggleGroup(group.key)}
                 >
                   {/* 展开/折叠图标 */}
                   {group.expanded ? (
@@ -224,14 +206,24 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                   )}
                   
                   {/* 分组标签 */}
-                  <Badge className={`${typeInfo.bg} ${typeInfo.color} flex-shrink-0`}>
-                    {typeInfo.label}
+                  <Badge
+                    className={`flex-shrink-0 ${
+                      group.status === 'committed' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {group.status === 'committed' ? '已保存' : '草稿'}
                   </Badge>
                   
                   {/* 分组标题 */}
                   <span className="text-sm font-medium text-primary">
-                    {group.label}
+                    {group.title}
                   </span>
+
+                  {group.summary && (
+                    <span className="text-xs text-secondary truncate max-w-[220px]" title={group.summary}>
+                      {group.summary}
+                    </span>
+                  )}
                   
                   {/* 文件数量 */}
                   <span className="text-xs text-secondary">
@@ -242,6 +234,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                 {/* 分组内的文件列表 */}
                 {group.expanded && group.changes.map((change, index) => {
                   const isSelected = selectedItems.has(change.path) || change.path === selectedPath
+                  const typeInfo = getChangeTypeInfo(change.type)
 
                   return (
                     <div
@@ -275,6 +268,11 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                       <span className="text-xs text-tertiary flex-shrink-0 w-16 text-right">
                         {formatFileSize(change.size)}
                       </span>
+
+                      {/* 变更类型 */}
+                      <Badge className={`${typeInfo.bg} ${typeInfo.color} flex-shrink-0`}>
+                        {typeInfo.label}
+                      </Badge>
 
                       {/* 删除按钮 */}
                       <BrandButton

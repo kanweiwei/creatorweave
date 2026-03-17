@@ -71,28 +71,28 @@ export const executeExecutor: ToolExecutor = async (args, _context) => {
 // Python Execution
 //=============================================================================
 
-let pendingChangesRefreshTimer: ReturnType<typeof setTimeout> | null = null
-
 async function executePython(code: string, timeout: number): Promise<string> {
-  const workspace = getActiveWorkspace()
-  if (!workspace) {
+  const active = await getActiveWorkspace()
+  if (!active) {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
   try {
+    const beforeSnapshot = await active.workspace.scanFilesWithCache()
+
     // Execute Python code
     const result = await pythonExecutor.execute({
       code,
       timeout,
     })
 
-    // Debounced refresh of pending changes
-    if (pendingChangesRefreshTimer) {
-      clearTimeout(pendingChangesRefreshTimer)
+    // Register OPFS delta into overlay ledger for pending/review/sync.
+    await active.workspace.scanFilesWithCache()
+    const detected = active.workspace.detectChanges(beforeSnapshot)
+    if (detected.changes.length > 0) {
+      await active.workspace.registerDetectedChanges(detected.changes)
     }
-    pendingChangesRefreshTimer = setTimeout(() => {
-      useWorkspaceStore.getState().refreshPendingChanges()
-    }, 1000)
+    await useWorkspaceStore.getState().refreshPendingChanges(true)
 
     // Format result as string
     let output = ''
@@ -107,6 +107,9 @@ async function executePython(code: string, timeout: number): Promise<string> {
     }
     if (result.result !== undefined) {
       output += '\n' + String(result.result)
+    }
+    if (detected.changes.length > 0) {
+      output += `\n[workspace] detected ${detected.changes.length} file change(s)`
     }
 
     return output.trim() || 'Execution completed'

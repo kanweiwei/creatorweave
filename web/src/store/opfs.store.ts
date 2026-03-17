@@ -65,17 +65,17 @@ interface OPFSState {
   initialize: () => Promise<void>
 
   /** Read file from current session (cache first, then filesystem) */
-  readFile: (path: string, directoryHandle: FileSystemDirectoryHandle) => Promise<FileReadResult>
+  readFile: (path: string, directoryHandle?: FileSystemDirectoryHandle | null) => Promise<FileReadResult>
 
   /** Write file to current session (cache + pending + undo) */
   writeFile: (
     path: string,
     content: FileContent,
-    directoryHandle: FileSystemDirectoryHandle
+    directoryHandle?: FileSystemDirectoryHandle | null
   ) => Promise<void>
 
   /** Delete file from current session */
-  deleteFile: (path: string, directoryHandle: FileSystemDirectoryHandle) => Promise<void>
+  deleteFile: (path: string, directoryHandle?: FileSystemDirectoryHandle | null) => Promise<void>
 
   /** Get pending changes for current session */
   getPendingChanges: () => PendingChange[]

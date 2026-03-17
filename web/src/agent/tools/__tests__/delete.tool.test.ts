@@ -3,12 +3,12 @@ import type { ToolContext } from '../tool-types'
 import { deleteExecutor } from '../delete.tool'
 
 const deleteFileMock = vi.fn<
-  (path: string, directoryHandle: FileSystemDirectoryHandle) => Promise<void>
+  (path: string, directoryHandle: FileSystemDirectoryHandle | null) => Promise<void>
 >()
 const readFileMock = vi.fn<
   (
     path: string,
-    directoryHandle: FileSystemDirectoryHandle
+    directoryHandle: FileSystemDirectoryHandle | null
   ) => Promise<{ content: string | ArrayBuffer; metadata: { size: number; contentType: string } }>
 >()
 const getPendingChangesMock = vi.fn<() => Array<{ id: string }>>()
@@ -62,11 +62,13 @@ describe('delete tool', () => {
     deleteFileMock.mockResolvedValue(undefined)
   })
 
-  it('returns error when no directory selected', async () => {
+  it('works in opfs-only mode when no directory is selected', async () => {
     const result = await deleteExecutor({ path: 'src/a.ts' }, { directoryHandle: null })
     const parsed = JSON.parse(result)
 
-    expect(parsed.error).toContain('No directory selected')
+    expect(parsed.success).toBe(true)
+    expect(parsed.deleted).toEqual(['src/a.ts'])
+    expect(deleteFileMock).toHaveBeenCalledWith('src/a.ts', null)
   })
 
   it('supports dry_run without mutating state', async () => {

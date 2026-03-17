@@ -90,7 +90,7 @@ export function Sidebar({ onFileSelect, selectedFilePath }: SidebarProps) {
   // Sidebar state
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(260)
-  const [resourceTab, setResourceTab] = useState<ResourceTab>('pending')
+  const [resourceTab, setResourceTab] = useState<ResourceTab>('files')
   const [conversationRatio, _setConversationRatio] = useState(loadConversationRatio)
 
   // Drag sidebar width (horizontal)
