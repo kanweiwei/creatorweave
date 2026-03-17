@@ -62,6 +62,12 @@ export const zhCN = {
     copyPath: '复制文件夹名称',
     permissionDenied: '权限被拒绝',
     selectionFailed: '选择失败',
+    // 持久化存储
+    storageWarning: '缓存',
+    storageTooltip: '浏览器未授予持久化存储，点击重试。刷新页面时缓存可能被清理。',
+    storageSuccess: '存储已持久化',
+    storageFailed: '无法获取持久化存储',
+    storageRequestFailed: '请求失败',
   },
 
   // 设置对话框

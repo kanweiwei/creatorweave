@@ -33,6 +33,12 @@ export const koKR = {
     skillsManagement: '스킬 관리',
     projectLabel: '프로젝트: {name}',
     workspaceLabel: '워크스페이스: {name}',
+    // 영구 저장소
+    storageWarning: '캐시',
+    storageTooltip: '영구 저장소가 허용되지 않았습니다. 클릭하여 재시도. 새로고침 시 캐시가 삭제될 수 있습니다.',
+    storageSuccess: '저장소가 영구화되었습니다',
+    storageFailed: '영구 저장소를 가져올 수 없습니다',
+    storageRequestFailed: '요청 실패',
     tooltips: {
       backToProjects: '프로젝트 목록으로 돌아가기',
       menu: '메뉴',

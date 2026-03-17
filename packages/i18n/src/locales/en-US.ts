@@ -60,6 +60,12 @@ export const enUS = {
     copyPath: 'Copy Folder Name',
     permissionDenied: 'Permission denied',
     selectionFailed: 'Selection failed',
+    // Persistent storage
+    storageWarning: 'Cache',
+    storageTooltip: 'Persistent storage not granted. Click to retry. Cache may be cleared on refresh.',
+    storageSuccess: 'Storage persisted',
+    storageFailed: 'Cannot get persistent storage',
+    storageRequestFailed: 'Request failed',
   },
 
   settings: {

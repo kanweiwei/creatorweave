@@ -33,6 +33,12 @@ export const jaJP = {
     skillsManagement: 'スキル管理',
     projectLabel: 'プロジェクト: {name}',
     workspaceLabel: 'ワークスペース: {name}',
+    // 永続化ストレージ
+    storageWarning: 'キャッシュ',
+    storageTooltip: '永続化ストレージが許可されていません。クリックして再試行。キャッシュは更新時にクリアされる可能性があります。',
+    storageSuccess: 'ストレージが永続化されました',
+    storageFailed: '永続化ストレージを取得できません',
+    storageRequestFailed: 'リクエスト失敗',
     tooltips: {
       backToProjects: 'プロジェクト一覧に戻る',
       menu: 'メニュー',

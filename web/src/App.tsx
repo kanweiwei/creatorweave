@@ -12,7 +12,6 @@ import { useWorkspaceStore } from '@/store/workspace.store'
 import { useProjectStore } from '@/store/project.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { initStorage, setupAutoSave } from '@/storage'
-import { requestPersistentStorage } from '@/opfs'
 import { useT } from '@/i18n'
 import { PWAUpdateBanner } from '@/pwa/PWAUpdateBanner'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
@@ -103,7 +102,6 @@ function App() {
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute(window.location.pathname))
-  const persistentStorageToastShownRef = useRef(false)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const createProject = useProjectStore((s) => s.createProject)
   const renameProject = useProjectStore((s) => s.renameProject)
@@ -386,64 +384,52 @@ function App() {
   }, [])
 
   // Request persistent storage and restore directory handle on first user interaction
+  // Note: requestPersistentStorage() must be called directly in event handler, not in async function
   useEffect(() => {
     console.log('[Storage] Setting up persistent storage listener...')
 
-    const handleFirstInteraction = async () => {
+    const handleFirstInteraction = async (_e: Event) => {
+      // Directly call requestPersistentStorage in the event handler (synchronous call)
       console.log('[Storage] User interaction detected, requesting persistent storage...')
-      const persisted = await requestPersistentStorage()
-      console.log('[Storage] Persistent storage result:', persisted ? 'GRANTED ✅' : 'DENIED ❌')
+      let persisted = false
 
-      if (!persisted && !persistentStorageToastShownRef.current) {
-        persistentStorageToastShownRef.current = true
-        toast.warning('浏览器未授予持久化存储，缓存可能在空间紧张时被清理。', {
-          action: {
-            label: '重试',
-            onClick: async () => {
-              const granted = await requestPersistentStorage()
-              // Retry folder-handle permission restore if needed.
-              const { useFolderAccessStore } = await import('@/store/folder-access.store')
-              const folderState = useFolderAccessStore.getState()
-              const folderRecord = folderState.getRecord()
-              let handleGranted = false
-
-              if (folderRecord?.status === 'needs_user_activation' && folderRecord.projectId) {
-                handleGranted = await folderState.requestPermission(folderRecord.projectId)
-              }
-
-              if (granted || handleGranted) {
-                toast.success('权限已恢复。')
-              } else {
-                toast.warning('仍未授予权限，请检查浏览器站点权限设置。')
-              }
-            },
-          },
-          duration: 7000,
-        })
+      try {
+        if ('storage' in navigator && 'persist' in navigator.storage) {
+          persisted = await navigator.storage.persist()
+        }
+      } catch (err) {
+        console.error('[Storage] Error requesting persistent storage:', err)
       }
 
-      // Also try to restore directory handle permission if pending (from folder-access.store)
-      const { useFolderAccessStore } = await import('@/store/folder-access.store')
-      const folderState = useFolderAccessStore.getState()
-      const folderRecord = folderState.getRecord()
+      console.log('[Storage] Persistent storage result:', persisted ? 'GRANTED ✅' : 'DENIED ❌')
 
-      if (folderRecord?.status === 'needs_user_activation' && folderRecord.projectId) {
-        console.log('[Storage] Folder needs activation, requesting permission...')
-        const granted = await folderState.requestPermission(folderRecord.projectId)
-        console.log('[Storage] Handle permission result:', granted ? 'GRANTED ✅' : 'DENIED ❌')
+      // Note: Storage status is now shown in FolderSelector component
 
-        // Sync to agent.store after permission is restored
-        if (granted) {
-          const { useAgentStore } = await import('@/store/agent.store')
-          const updatedRecord = folderState.getRecord()
-          if (updatedRecord) {
-            useAgentStore.setState({
-              directoryHandle: updatedRecord.handle,
-              directoryName: updatedRecord.folderName,
-              pendingHandle: updatedRecord.persistedHandle,
-            })
+      // Handle folder permission restore (can be async)
+      try {
+        const { useFolderAccessStore } = await import('@/store/folder-access.store')
+        const folderState = useFolderAccessStore.getState()
+        const folderRecord = folderState.getRecord()
+
+        if (folderRecord?.status === 'needs_user_activation' && folderRecord.projectId) {
+          console.log('[Storage] Folder needs activation, requesting permission...')
+          const granted = await folderState.requestPermission(folderRecord.projectId)
+          console.log('[Storage] Handle permission result:', granted ? 'GRANTED ✅' : 'DENIED ❌')
+
+          if (granted) {
+            const { useAgentStore } = await import('@/store/agent.store')
+            const updatedRecord = folderState.getRecord()
+            if (updatedRecord) {
+              useAgentStore.setState({
+                directoryHandle: updatedRecord.handle,
+                directoryName: updatedRecord.folderName,
+                pendingHandle: updatedRecord.persistedHandle,
+              })
+            }
           }
         }
+      } catch (err) {
+        console.error('[Storage] Error handling folder permission:', err)
       }
     }
 

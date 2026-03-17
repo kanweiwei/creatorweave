@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
 import { FolderOpen, ChevronDown, Copy, RefreshCw, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentFolderAccess, useFolderAccessStore } from '@/store/folder-access.store'
 import { useAgentStore } from '@/store/agent.store'
@@ -25,6 +26,40 @@ export function FolderSelector() {
 
   const [menuState, setMenuState] = useState<MenuState>('closed')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [showStorageWarning, setShowStorageWarning] = useState(false)
+  const [isRetryingStorage, setIsRetryingStorage] = useState(false)
+
+  // Request persistent storage on first interaction
+  useEffect(() => {
+    let requested = false
+
+    const requestStorage = async () => {
+      if (requested) return
+      requested = true
+
+      try {
+        if ('storage' in navigator && 'persist' in navigator.storage) {
+          const persisted = await navigator.storage.persist()
+          if (!persisted) {
+            setShowStorageWarning(true)
+          }
+        }
+      } catch (e) {
+        console.error('[Storage] Error:', e)
+      }
+    }
+
+    const handleInteraction = () => requestStorage()
+    window.addEventListener('click', handleInteraction, { once: true })
+    window.addEventListener('keydown', handleInteraction, { once: true })
+    window.addEventListener('touchstart', handleInteraction, { once: true })
+
+    return () => {
+      window.removeEventListener('click', handleInteraction)
+      window.removeEventListener('keydown', handleInteraction)
+      window.removeEventListener('touchstart', handleInteraction)
+    }
+  }, [])
 
   const isMenuOpen = menuState === 'open'
   const isSelecting = folderAccess.isRequesting
@@ -199,7 +234,38 @@ export function FolderSelector() {
   }
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative flex items-center gap-2" ref={containerRef}>
+      {/* Storage warning - shown on the left of folder button */}
+      {showStorageWarning && (
+        <button
+          type="button"
+          onClick={async () => {
+            setIsRetryingStorage(true)
+            try {
+              if ('storage' in navigator && 'persist' in navigator.storage) {
+                const persisted = await navigator.storage.persist()
+                if (persisted) {
+                  setShowStorageWarning(false)
+                  toast.success(t('folderSelector.storageSuccess') || 'Storage persisted')
+                } else {
+                  toast.warning(t('folderSelector.storageFailed') || 'Cannot get persistent storage')
+                }
+              }
+            } catch (e) {
+              toast.error(t('folderSelector.storageRequestFailed') || 'Request failed')
+            } finally {
+              setIsRetryingStorage(false)
+            }
+          }}
+          disabled={isRetryingStorage}
+          className="flex items-center gap-1 rounded bg-yellow-50 px-1.5 py-0.5 text-[10px] text-yellow-600 hover:bg-yellow-100 dark:bg-yellow-950 dark:text-yellow-400 dark:hover:bg-yellow-900"
+          title={t('folderSelector.storageTooltip') || 'Persistent storage not granted. Click to retry.'}
+        >
+          <RefreshCw className={cn('h-2.5 w-2.5', isRetryingStorage && 'animate-spin')} />
+          <span>{t('folderSelector.storageWarning') || 'Cache'}</span>
+        </button>
+      )}
+
       {/* Restore permission button when needs activation */}
       {folderAccess.isNeedsActivation && (
         <button
