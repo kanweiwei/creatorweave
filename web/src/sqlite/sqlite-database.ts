@@ -28,6 +28,7 @@ export interface ConversationRow {
   title: string
   title_mode?: string
   messages_json: string
+  context_usage_json?: string | null
   created_at: number
   updated_at: number
 }

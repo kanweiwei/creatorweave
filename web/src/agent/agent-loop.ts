@@ -134,6 +134,13 @@ export interface AgentCallbacks {
     summaryChars: number
     latencyMs: number
   }) => void
+  /** Called before each model turn with estimated context usage */
+  onContextUsageUpdate?: (payload: {
+    usedTokens: number
+    maxTokens: number
+    reserveTokens: number
+    usagePercent: number
+  }) => void
 }
 
 export interface AgentLoopConfig {
@@ -916,6 +923,18 @@ export class AgentLoop {
               })
             }
           }
+          const contextConfig = this.contextManager.getConfig()
+          const maxContextTokens = contextConfig.maxContextTokens
+          const reserveTokens = contextConfig.reserveTokens ?? 0
+          const usedTokens = this.provider.estimateTokens(trimmed)
+          const usagePercent = Math.max(0, Math.min(100, (usedTokens / Math.max(1, maxContextTokens)) * 100))
+          callbacks?.onContextUsageUpdate?.({
+            usedTokens,
+            maxTokens: maxContextTokens,
+            reserveTokens,
+            usagePercent,
+          })
+
           return this.internalToPiMessages(
             trimmed.map((msg) => ({
               id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,

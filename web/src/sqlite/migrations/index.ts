@@ -29,6 +29,23 @@ export interface Migration {
   up: string
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+/**
+ * Treat known idempotent DDL conflicts as recoverable.
+ * Example: column already exists because a previous run partially applied DDL
+ * before user_version was updated.
+ */
+function canRecoverMigrationError(migration: Migration, error: unknown): boolean {
+  const msg = getErrorMessage(error).toLowerCase()
+  if (msg.includes('duplicate column name')) return true
+  // Keep this scoped to schema-upgrade style migrations only.
+  return migration.up.toLowerCase().includes('add column') && msg.includes('already exists')
+}
+
 
 // Base schema version
 export const BASE_SCHEMA_VERSION = 3
@@ -43,8 +60,14 @@ export const BASE_SCHEMA_VERSION = 3
 // ============================================================================
 
 export const migrations: Migration[] = [
-  // No incremental migrations in current dev phase.
-  // Schema changes are applied directly via sqlite-schema.sql.
+  {
+    version: 4,
+    name: 'add_context_usage_to_conversations',
+    up: `
+      ALTER TABLE conversations ADD COLUMN context_usage_json TEXT;
+      PRAGMA user_version = 4;
+    `,
+  },
 ]
 
 // ============================================================================
@@ -137,6 +160,15 @@ export async function runPendingMigrations(
       }
       console.log(`[SQLite Migration] Completed v${migration.version}`)
     } catch (error) {
+      if (canRecoverMigrationError(migration, error)) {
+        console.warn(
+          `[SQLite Migration] Recoverable migration conflict in v${migration.version}, forcing version update:`,
+          error
+        )
+        await db.exec(`PRAGMA user_version = ${migration.version}`)
+        executed++
+        continue
+      }
       console.error(`[SQLite Migration] Failed v${migration.version}:`, error)
       onProgress?.({
         step: 'error',
@@ -171,6 +203,8 @@ export async function initializeSchema(
   db: any,
   onProgress?: MigrationProgressCallback
 ): Promise<void> {
+  const existingVersion = await getCurrentVersion(db)
+
   // Report schema initialization start
   onProgress?.({
     step: 'init',
@@ -182,6 +216,12 @@ export async function initializeSchema(
   // Execute base schema (CREATE TABLE IF NOT EXISTS)
   // This is safe to run on existing databases
   db.exec(schemaSQL)
+
+  // schemaSQL sets PRAGMA user_version to BASE_SCHEMA_VERSION.
+  // Preserve previously migrated versions to avoid re-running old migrations
+  // on every app start.
+  const targetVersion = Math.max(existingVersion, BASE_SCHEMA_VERSION)
+  db.exec(`PRAGMA user_version = ${targetVersion}`)
 
   // Run any pending migrations
   await runPendingMigrations(db, onProgress)

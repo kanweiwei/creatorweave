@@ -99,6 +99,13 @@ export type DraftAssistantStep =
 export type ConversationStatus = 'idle' | 'pending' | 'streaming' | 'tool_calling' | 'error'
 export type ConversationTitleMode = 'auto' | 'manual'
 
+export interface ContextWindowUsage {
+  usedTokens: number
+  maxTokens: number
+  reserveTokens: number
+  usagePercent: number
+}
+
 export interface Conversation {
   id: string
   title: string
@@ -149,6 +156,10 @@ export interface Conversation {
     activeToolStepId?: string | null
     activeCompressionStepId?: string | null
   } | null
+  /** Runtime context window usage for the active model call (not persisted) */
+  contextWindowUsage?: ContextWindowUsage | null
+  /** Last persisted context window usage snapshot */
+  lastContextWindowUsage?: ContextWindowUsage | null
   /** Number of mounted views consuming this conversation (not persisted) */
   mountRefCount?: number
 }
@@ -227,6 +238,8 @@ export function createConversation(title?: string): Conversation {
     activeRunId: null,
     runEpoch: 0,
     draftAssistant: null,
+    contextWindowUsage: null,
+    lastContextWindowUsage: null,
     mountRefCount: 0,
   }
 }

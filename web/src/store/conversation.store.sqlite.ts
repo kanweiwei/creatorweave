@@ -57,15 +57,15 @@ const ENABLE_FOLLOW_UP_LLM = import.meta.env.VITE_ENABLE_FOLLOW_UP_LLM === 'true
 // Persistence Functions (SQLite)
 //=============================================================================
 
-/** Persist a conversation to SQLite (excludes runtime state) */
+/** Persist a conversation to SQLite */
 async function persistConversation(conversation: Conversation): Promise<void> {
   const repo = getConversationRepository()
-  // Create a clean copy without runtime state for persistence
   await repo.save({
     id: conversation.id,
     title: conversation.title,
     titleMode: conversation.titleMode || 'manual',
     messages: conversation.messages,
+    lastContextWindowUsage: conversation.lastContextWindowUsage || null,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   })
@@ -95,6 +95,8 @@ async function loadConversations(): Promise<Conversation[]> {
     activeRunId: null,
     runEpoch: 0,
     draftAssistant: null,
+    contextWindowUsage: conv.lastContextWindowUsage || null,
+    lastContextWindowUsage: conv.lastContextWindowUsage || null,
     mountRefCount: 0,
   }))
 }
@@ -361,6 +363,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             activeRunId: null,
             runEpoch: 0,
             draftAssistant: null,
+            contextWindowUsage: conv.lastContextWindowUsage || null,
+            lastContextWindowUsage: conv.lastContextWindowUsage || null,
             mountRefCount: 0,
           }))
           state.activeConversationId = activeId
@@ -644,6 +648,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.completedReasoning = null
           c.isContentStreaming = false
           c.isReasoningStreaming = false
+          c.contextWindowUsage = null
           c.draftAssistant = {
             reasoning: '',
             content: '',
@@ -1142,6 +1147,20 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               }
             })
           },
+          onContextUsageUpdate: (payload) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId) return
+              c.contextWindowUsage = {
+                usedTokens: payload.usedTokens,
+                maxTokens: payload.maxTokens,
+                reserveTokens: payload.reserveTokens,
+                usagePercent: payload.usagePercent,
+              }
+              c.lastContextWindowUsage = c.contextWindowUsage
+            })
+          },
           onContextCompressionStart: (payload) => {
             if (!isCurrentRun()) return
             emitCompressionEvent({
@@ -1543,6 +1562,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.error = null
           c.activeRunId = null
           c.draftAssistant = null
+          c.contextWindowUsage = null
         }
       })
     },

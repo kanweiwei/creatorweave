@@ -271,6 +271,49 @@ export function ConversationView({
   // Use threaded view if enabled and conversation has threads
   const shouldUseThreadedView = enableThreading && hasThreads
 
+  // Context window usage
+  const contextWindowUsage =
+    activeConversation?.contextWindowUsage || activeConversation?.lastContextWindowUsage || null
+
+  const getUsageToneClass = (usagePercent: number): { text: string; label: string } => {
+    if (usagePercent >= 90) {
+      return { text: 'text-red-600 dark:text-red-400', label: '高风险' }
+    }
+    if (usagePercent >= 75) {
+      return { text: 'text-amber-600 dark:text-amber-400', label: '接近上限' }
+    }
+    return { text: 'text-emerald-600 dark:text-emerald-400', label: '宽裕' }
+  }
+
+  const usageTone = contextWindowUsage ? getUsageToneClass(contextWindowUsage.usagePercent) : null
+
+  const formatTokenCompact = (value: number): string => {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)}k`
+    }
+    return `${value}`
+  }
+
+  const renderContextUsage = () => {
+    if (!contextWindowUsage || !usageTone) return null
+    const remaining = Math.max(0, contextWindowUsage.maxTokens - contextWindowUsage.usedTokens)
+
+    return (
+      <div className="mt-2 flex items-center justify-end gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+        <span className={`font-medium ${usageTone.text}`}>
+          {contextWindowUsage.usagePercent.toFixed(0)}%
+        </span>
+        <span className="opacity-40">·</span>
+        <span className="tabular-nums">{formatTokenCompact(contextWindowUsage.usedTokens)}</span>
+        <span className="opacity-40">/</span>
+        <span className="tabular-nums opacity-60">{formatTokenCompact(remaining)}</span>
+        {isProcessing && (
+          <span className="ml-1 h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-400 dark:bg-neutral-500" />
+        )}
+      </div>
+    )
+  }
+
   return (
     <ErrorBoundary
       onError={(error) => {
@@ -318,42 +361,45 @@ export function ConversationView({
 
           {/* Input area */}
           <div className="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  suggestedFollowUp ||
-                  (hasApiKey ? '输入消息... (Shift+Enter 换行)' : '请先在设置中配置 API Key')
-                }
-                aria-label="输入消息"
-                style={{ height: '38px', maxHeight: '96px' }}
-                className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
-                disabled={isProcessing || !hasApiKey}
-              />
-              {isProcessing ? (
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600"
-                  title="停止"
-                >
-                  <StopCircle className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={(!input.trim() && !suggestedFollowUp) || !hasApiKey}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-30"
-                  title="发送"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              )}
+            <div className="mx-auto flex max-w-3xl flex-col">
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    suggestedFollowUp ||
+                    (hasApiKey ? '输入消息... (Shift+Enter 换行)' : '请先在设置中配置 API Key')
+                  }
+                  aria-label="输入消息"
+                  style={{ height: '38px', maxHeight: '96px' }}
+                  className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
+                  disabled={isProcessing || !hasApiKey}
+                />
+                {isProcessing ? (
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600"
+                    title="停止"
+                  >
+                    <StopCircle className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={(!input.trim() && !suggestedFollowUp) || !hasApiKey}
+                    className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-30"
+                    title="发送"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
+            {renderContextUsage()}
           </div>
         </div>
       ) : (
@@ -467,42 +513,45 @@ export function ConversationView({
 
           {/* Input area */}
           <div className="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  suggestedFollowUp ||
-                  (hasApiKey ? '输入消息... (Shift+Enter 换行)' : '请先在设置中配置 API Key')
-                }
-                aria-label="输入消息"
-                style={{ height: '38px', maxHeight: '96px' }}
-                className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
-                disabled={isProcessing || !hasApiKey}
-              />
-              {isProcessing ? (
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600"
-                  title="停止"
-                >
-                  <StopCircle className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={(!input.trim() && !suggestedFollowUp) || !hasApiKey}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-30"
-                  title="发送"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              )}
+            <div className="mx-auto flex max-w-3xl flex-col">
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    suggestedFollowUp ||
+                    (hasApiKey ? '输入消息... (Shift+Enter 换行)' : '请先在设置中配置 API Key')
+                  }
+                  aria-label="输入消息"
+                  style={{ height: '38px', maxHeight: '96px' }}
+                  className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
+                  disabled={isProcessing || !hasApiKey}
+                />
+                {isProcessing ? (
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600"
+                    title="停止"
+                  >
+                    <StopCircle className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={(!input.trim() && !suggestedFollowUp) || !hasApiKey}
+                    className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-30"
+                    title="发送"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
+            {renderContextUsage()}
           </div>
         </div>
       )}
