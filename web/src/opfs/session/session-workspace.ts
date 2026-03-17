@@ -24,6 +24,7 @@ import { SessionPendingManager } from './session-pending'
 import { SessionUndoStorage } from './session-undo'
 import { scanFilesInWorker } from '@/workers/diff-worker-manager'
 import { getRuntimeDirectoryHandle } from '@/native-fs'
+import { getFSOverlayRepository } from '@/sqlite/repositories/fs-overlay.repository'
 
 const SESSION_METADATA_FILE = 'session.json'
 const FILES_DIR = 'files'
@@ -65,7 +66,7 @@ export class SessionWorkspace {
 
     // Initialize managers
     this.cacheManager = new SessionCacheManager(sessionDir)
-    this.pendingManager = new SessionPendingManager(sessionDir)
+    this.pendingManager = new SessionPendingManager(sessionId, sessionDir)
     this.undoStorage = new SessionUndoStorage(sessionDir)
 
     // Initial metadata
@@ -143,11 +144,36 @@ export class SessionWorkspace {
    */
   async readFile(
     path: string,
-    directoryHandle: FileSystemDirectoryHandle
+    directoryHandle?: FileSystemDirectoryHandle | null
   ): Promise<{ content: FileContent; metadata: FileMetadata }> {
     if (!this.initialized) await this.initialize()
+    if (directoryHandle) {
+      return await this.cacheManager.read(path, directoryHandle)
+    }
 
-    return await this.cacheManager.read(path, directoryHandle)
+    const cached = await this.cacheManager.readCached(path)
+    if (cached !== null) {
+      return {
+        content: cached,
+        metadata: this.buildVirtualMetadata(path, cached),
+      }
+    }
+
+    const fromFilesDir = await this.readFromFilesDir(path)
+    if (fromFilesDir) {
+      await this.cacheManager.write(path, fromFilesDir.content)
+      return {
+        content: fromFilesDir.content,
+        metadata: {
+          path,
+          mtime: fromFilesDir.mtime,
+          size: fromFilesDir.size,
+          contentType: fromFilesDir.contentType,
+        },
+      }
+    }
+
+    throw new Error(`File not found in OPFS workspace: ${path}`)
   }
 
   /**
@@ -159,15 +185,20 @@ export class SessionWorkspace {
   async writeFile(
     path: string,
     content: FileContent,
-    directoryHandle: FileSystemDirectoryHandle
+    directoryHandle?: FileSystemDirectoryHandle | null
   ): Promise<void> {
     if (!this.initialized) await this.initialize()
 
     // Get old content for undo
     let oldContent: FileContent | undefined
     try {
-      const oldData = await this.cacheManager.read(path, directoryHandle)
-      oldContent = oldData.content
+      if (directoryHandle) {
+        const oldData = await this.cacheManager.read(path, directoryHandle)
+        oldContent = oldData.content
+      } else {
+        const cached = await this.cacheManager.readCached(path)
+        if (cached !== null) oldContent = cached
+      }
     } catch {
       // File doesn't exist, oldContent stays undefined
     }
@@ -191,14 +222,19 @@ export class SessionWorkspace {
    * @param path File path
    * @param directoryHandle Real filesystem directory handle (for old content)
    */
-  async deleteFile(path: string, directoryHandle: FileSystemDirectoryHandle): Promise<void> {
+  async deleteFile(path: string, directoryHandle?: FileSystemDirectoryHandle | null): Promise<void> {
     if (!this.initialized) await this.initialize()
 
     // Get old content for undo
     let oldContent: FileContent | undefined
     try {
-      const oldData = await this.cacheManager.read(path, directoryHandle)
-      oldContent = oldData.content
+      if (directoryHandle) {
+        const oldData = await this.cacheManager.read(path, directoryHandle)
+        oldContent = oldData.content
+      } else {
+        const cached = await this.cacheManager.readCached(path)
+        if (cached !== null) oldContent = cached
+      }
     } catch {
       // File doesn't exist in cache
     }
@@ -364,6 +400,121 @@ export class SessionWorkspace {
   async readCachedFile(path: string): Promise<FileContent | null> {
     if (!this.initialized) await this.initialize()
     return await this.cacheManager.readCached(path)
+  }
+
+  async commitDraftChangeset(summary?: string): Promise<{ changesetId: string; opCount: number } | null> {
+    if (!this.initialized) await this.initialize()
+    const repo = getFSOverlayRepository()
+    return await repo.commitLatestDraftChangeset(this.sessionId, summary)
+  }
+
+  async rollbackChangeset(
+    changesetId: string,
+    directoryHandle?: FileSystemDirectoryHandle | null
+  ): Promise<{ reverted: number; unresolved: string[] }> {
+    if (!this.initialized) await this.initialize()
+    const repo = getFSOverlayRepository()
+    const ops = await repo.listChangesetPendingOps(this.sessionId, changesetId)
+    let reverted = 0
+    const unresolved: string[] = []
+
+    for (const op of ops) {
+      if (op.type === 'create') {
+        await this.cacheManager.delete(op.path)
+        await this.deleteFromFilesDirIfExists(op.path)
+        await this.pendingManager.removeByPath(op.path)
+        reverted++
+        continue
+      }
+
+      if (!directoryHandle) {
+        unresolved.push(op.path)
+        continue
+      }
+
+      try {
+        // Hydrate the latest on-disk version back into cache as rollback target.
+        await this.cacheManager.read(op.path, directoryHandle)
+        await this.pendingManager.removeByPath(op.path)
+        reverted++
+      } catch {
+        unresolved.push(op.path)
+      }
+    }
+
+    return { reverted, unresolved }
+  }
+
+  private buildVirtualMetadata(path: string, content: FileContent): FileMetadata {
+    let size = 0
+    let contentType: 'text' | 'binary' = 'binary'
+    if (typeof content === 'string') {
+      size = new Blob([content]).size
+      contentType = 'text'
+    } else if (content instanceof Blob) {
+      size = content.size
+      contentType = 'binary'
+    } else {
+      size = content.byteLength
+      contentType = 'binary'
+    }
+
+    return {
+      path,
+      mtime: Date.now(),
+      size,
+      contentType,
+    }
+  }
+
+  private async readFromFilesDir(
+    path: string
+  ): Promise<{ content: FileContent; mtime: number; size: number; contentType: 'text' | 'binary' } | null> {
+    try {
+      const filesDir = await this.getFilesDir()
+      const parts = path.split('/').filter(Boolean)
+      if (parts.length === 0) return null
+
+      let current = filesDir
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = await current.getDirectoryHandle(parts[i])
+      }
+
+      const fileHandle = await current.getFileHandle(parts[parts.length - 1])
+      const file = await fileHandle.getFile()
+      let content: FileContent
+      let contentType: 'text' | 'binary' = 'binary'
+      try {
+        content = await file.text()
+        contentType = 'text'
+      } catch {
+        content = await file.arrayBuffer()
+      }
+      return {
+        content,
+        mtime: file.lastModified,
+        size: file.size,
+        contentType,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private async deleteFromFilesDirIfExists(path: string): Promise<void> {
+    try {
+      const filesDir = await this.getFilesDir()
+      const parts = path.split('/').filter(Boolean)
+      if (parts.length === 0) return
+
+      let current = filesDir
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = await current.getDirectoryHandle(parts[i])
+      }
+      await current.removeEntry(parts[parts.length - 1])
+    } catch {
+      // Ignore if file doesn't exist in files/ snapshot.
+    }
   }
 
   /**
@@ -800,7 +951,13 @@ export class SessionWorkspace {
     const latestPending = await this.pendingManager.getAll()
     const changes: FileChange[] = latestPending.map((pending) => {
       if (pending.type === 'delete') {
-        return { type: 'delete', path: pending.path }
+        return {
+          type: 'delete',
+          path: pending.path,
+          checkpointId: pending.checkpointId,
+          checkpointStatus: pending.checkpointStatus,
+          checkpointSummary: pending.checkpointSummary,
+        }
       }
       const file = currentFiles.get(normalizeComparePath(pending.path))
       return {
@@ -808,6 +965,9 @@ export class SessionWorkspace {
         path: pending.path,
         size: file?.size,
         mtime: file?.mtime,
+        checkpointId: pending.checkpointId,
+        checkpointStatus: pending.checkpointStatus,
+        checkpointSummary: pending.checkpointSummary,
       }
     })
 
@@ -827,6 +987,20 @@ export class SessionWorkspace {
     })
 
     return { changes, added, modified, deleted }
+  }
+
+  async registerDetectedChanges(changes: FileChange[]): Promise<void> {
+    if (!this.initialized) await this.initialize()
+
+    for (const change of changes) {
+      if (change.type === 'add') {
+        await this.pendingManager.markAsCreated(change.path)
+      } else if (change.type === 'modify') {
+        await this.pendingManager.add(change.path)
+      } else if (change.type === 'delete') {
+        await this.pendingManager.markForDeletion(change.path)
+      }
+    }
   }
 
   /**

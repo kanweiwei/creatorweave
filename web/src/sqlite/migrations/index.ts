@@ -68,6 +68,78 @@ export const migrations: Migration[] = [
       PRAGMA user_version = 4;
     `,
   },
+  {
+    version: 5,
+    name: 'add_fs_overlay_ledger_tables',
+    up: `
+      CREATE TABLE IF NOT EXISTS fs_changesets (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'tool',
+        status TEXT NOT NULL DEFAULT 'draft',
+        summary TEXT,
+        created_at INTEGER NOT NULL,
+        committed_at INTEGER,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fs_changesets_workspace_status
+        ON fs_changesets(workspace_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS fs_ops (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        changeset_id TEXT,
+        path TEXT NOT NULL,
+        op_type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        fs_mtime INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (changeset_id) REFERENCES fs_changesets(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fs_ops_workspace_status
+        ON fs_ops(workspace_id, status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_fs_ops_workspace_path_status
+        ON fs_ops(workspace_id, path, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS fs_sync_batches (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        total_ops INTEGER NOT NULL DEFAULT 0,
+        success_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        skipped_count INTEGER NOT NULL DEFAULT 0,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fs_sync_batches_workspace_started
+        ON fs_sync_batches(workspace_id, started_at DESC);
+
+      CREATE TABLE IF NOT EXISTS fs_sync_items (
+        id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL,
+        op_id TEXT,
+        path TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        synced_at INTEGER NOT NULL,
+        FOREIGN KEY (batch_id) REFERENCES fs_sync_batches(id) ON DELETE CASCADE,
+        FOREIGN KEY (op_id) REFERENCES fs_ops(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fs_sync_items_batch
+        ON fs_sync_items(batch_id, synced_at DESC);
+
+      PRAGMA user_version = 5;
+    `,
+  },
 ]
 
 // ============================================================================
