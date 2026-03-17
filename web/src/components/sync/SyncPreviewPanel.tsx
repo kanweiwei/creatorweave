@@ -146,15 +146,18 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         ? pendingChanges.changes.filter(c => selectedPaths.includes(c.path))
         : pendingChanges.changes
 
-      // Sync via unified pending pipeline (cache-backed)
-      const result = await workspace.syncToDisk(
+      // Sync via files/ snapshot pipeline first (better aligned with preview source),
+      // then clear corresponding pending records through pending pipeline.
+      const nativeResult = await workspace.syncToNative(nativeDir, filesToSync)
+      const pendingResult = await workspace.syncToDisk(
         nativeDir,
         filesToSync.map((c) => c.path)
       )
 
       // Show sync result
-      if (result.failed > 0) {
-        setSyncError(`${result.failed} 个文件同步失败`)
+      const failed = nativeResult.failed + pendingResult.failed
+      if (failed > 0) {
+        setSyncError(`${failed} 个文件同步失败`)
       }
 
       // Refresh pending snapshot after sync (supports partial sync)

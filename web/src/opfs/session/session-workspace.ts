@@ -741,16 +741,17 @@ export class SessionWorkspace {
     let detectedModified = 0
     let detectedDeleted = 0
 
-    // Check for new or modified files (in OPFS but not in pending, or different mtime)
+    // Check for modified/restored files that are already tracked by pending queue.
+    // NOTE: Do NOT auto-create new pending records for every file found in files/.
+    // files/ can contain baseline/synced snapshots; re-adding them would cause
+    // "pending reappears after successful sync".
     for (const [path, item] of currentFiles.entries()) {
       const pendingItem = existingPaths.get(path)
       const pendingPath = pendingItem?.path ?? path
 
       if (!pendingItem) {
-        // New file in OPFS (not in pending.json) - add as created
-        await this.pendingManager.markAsCreated(path)
-        detectedChanges.push({ type: 'add', path, size: item.size, mtime: item.mtime })
-        detectedAdded++
+        // Not tracked in pending queue: skip.
+        continue
       } else if (pendingItem.type !== 'delete' && pendingItem.fsMtime !== item.mtime) {
         // File was modified after being added to pending - update mtime
         // Note: fsMtime will be set during sync, just update timestamp here

@@ -10,6 +10,7 @@ import type { PendingChange, SyncResult } from '../types/opfs-types'
 import { generateId } from '../utils/opfs-utils'
 
 const PENDING_FILE = 'pending.json'
+const FILES_DIR = 'files'
 
 /**
  * Session Pending Manager
@@ -252,6 +253,12 @@ export class SessionPendingManager {
         }
       } catch (err: any) {
         if (err.name === 'NotFoundError') {
+          if (change.type === 'delete') {
+            // Idempotent delete: target already gone, treat as success.
+            result.success++
+            toRemove.push(change.id)
+            continue
+          }
           if (change.type === 'create') {
             // New file, this is expected
             result.success++
@@ -333,11 +340,45 @@ export class SessionPendingManager {
     cacheManager: any
   ): Promise<string | ArrayBuffer | null> {
     try {
-      // Read from cache manager
+      // Prefer cache-only read. This avoids fake native directory handles and
+      // keeps sync deterministic with OPFS pending content.
+      if (typeof cacheManager.readCached === 'function') {
+        const cached = await cacheManager.readCached(path)
+        if (cached !== null) return cached
+      }
+
+      // Fallback: read from OPFS files/ snapshot directory.
+      const fromFilesDir = await this.readFromFilesDir(path)
+      if (fromFilesDir !== null) {
+        return fromFilesDir
+      }
+
+      // Backward compatibility fallback.
       const result = await cacheManager.read(path, { getFileHandle: () => null })
-      return result.content
+      return result?.content ?? null
     } catch {
       console.warn(`Failed to read cache for ${path}`)
+      return null
+    }
+  }
+
+  /**
+   * Fallback read from OPFS files/ directory.
+   */
+  private async readFromFilesDir(path: string): Promise<string | ArrayBuffer | null> {
+    try {
+      const parts = path.split('/').filter(Boolean)
+      if (parts.length === 0) return null
+
+      let current = await this.sessionDir.getDirectoryHandle(FILES_DIR, { create: true })
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = await current.getDirectoryHandle(parts[i])
+      }
+
+      const fileHandle = await current.getFileHandle(parts[parts.length - 1])
+      const file = await fileHandle.getFile()
+      return await file.arrayBuffer()
+    } catch {
       return null
     }
   }
