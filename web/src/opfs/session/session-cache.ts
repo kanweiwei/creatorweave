@@ -290,7 +290,7 @@ export class SessionCacheManager {
     // Navigate to parent directory
     for (let i = 0; i < parts.length - 1; i++) {
       if (!parts[i]) continue
-      current = await current.getDirectoryHandle(parts[i])
+      current = await this.getDirectoryHandleByName(current, parts[i])
     }
 
     // Get file handle
@@ -299,7 +299,64 @@ export class SessionCacheManager {
       throw new Error(`Invalid file path: ${path}`)
     }
 
-    return await current.getFileHandle(fileName)
+    return await this.getFileHandleByName(current, fileName)
+  }
+
+  /**
+   * Resolve directory by exact name.
+   * Falls back to directory iteration when direct lookup rejects the name.
+   */
+  private async getDirectoryHandleByName(
+    parent: FileSystemDirectoryHandle,
+    name: string
+  ): Promise<FileSystemDirectoryHandle> {
+    try {
+      return await parent.getDirectoryHandle(name)
+    } catch (error) {
+      const matched = await this.findEntryByName(parent, name, 'directory')
+      if (matched) return matched
+      throw error
+    }
+  }
+
+  /**
+   * Resolve file by exact name.
+   * Falls back to directory iteration when direct lookup rejects the name.
+   */
+  private async getFileHandleByName(
+    parent: FileSystemDirectoryHandle,
+    name: string
+  ): Promise<FileSystemFileHandle> {
+    try {
+      return await parent.getFileHandle(name)
+    } catch (error) {
+      const matched = await this.findEntryByName(parent, name, 'file')
+      if (matched) return matched
+      throw error
+    }
+  }
+
+  private async findEntryByName(
+    parent: FileSystemDirectoryHandle,
+    name: string,
+    kind: 'file'
+  ): Promise<FileSystemFileHandle | null>
+  private async findEntryByName(
+    parent: FileSystemDirectoryHandle,
+    name: string,
+    kind: 'directory'
+  ): Promise<FileSystemDirectoryHandle | null>
+  private async findEntryByName(
+    parent: FileSystemDirectoryHandle,
+    name: string,
+    kind: 'file' | 'directory'
+  ): Promise<FileSystemFileHandle | FileSystemDirectoryHandle | null> {
+    for await (const [entryName, handle] of parent.entries()) {
+      if (entryName === name && handle.kind === kind) {
+        return handle as FileSystemFileHandle | FileSystemDirectoryHandle
+      }
+    }
+    return null
   }
 
   /**
