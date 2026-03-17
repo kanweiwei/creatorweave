@@ -32,7 +32,23 @@ export function ToolCallDisplay({
     // Incomplete JSON during streaming — ignore parse error
   }
 
-  const isError = result ? result.includes('"error"') : false
+  let parsedResult: Record<string, unknown> | null = null
+  if (result) {
+    try {
+      parsedResult = JSON.parse(result) as Record<string, unknown>
+    } catch {
+      parsedResult = null
+    }
+  }
+
+  const hasToolError =
+    parsedResult && Object.prototype.hasOwnProperty.call(parsedResult, 'error')
+      ? true
+      : result
+        ? result.includes('"error"')
+        : false
+  const hasExplicitFailure = parsedResult?.success === false
+  const isError = hasToolError || hasExplicitFailure
   const isStreaming = streamingArgs !== undefined && !result
 
   // Extract path for summary display

@@ -113,10 +113,6 @@ async function executeSingleEdit(
   const { oldText, newText, path } = opts
   const toolContext = context as { directoryHandle?: FileSystemDirectoryHandle }
 
-  if (!toolContext.directoryHandle) {
-    return JSON.stringify({ error: 'No directory selected. Please select a project folder first.' })
-  }
-
   try {
     const { readFile, writeFile, getPendingChanges } = useOPFSStore.getState()
 

@@ -12,6 +12,12 @@ import { formatErrorForUser, withAutoRetry } from './error-handling'
 import { readDefinition, readExecutor, writeDefinition, writeExecutor } from './tools/io.tool'
 import { deleteDefinition, deleteExecutor } from './tools/delete.tool'
 import { editDefinition, editExecutor } from './tools/file-edit.tool'
+import {
+  commitChangesDefinition,
+  commitChangesExecutor,
+  rollbackChangesetDefinition,
+  rollbackChangesetExecutor,
+} from './tools/changeset.tool'
 import { readDirectoryDefinition, readDirectoryExecutor } from './tools/read-directory.tool'
 import { executeDefinition, executeExecutor } from './tools/execute.tool'
 import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm-bridge.tool'
@@ -32,6 +38,8 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: writeDefinition, executor: writeExecutor },
   { definition: deleteDefinition, executor: deleteExecutor },
   { definition: editDefinition, executor: editExecutor },
+  { definition: commitChangesDefinition, executor: commitChangesExecutor },
+  { definition: rollbackChangesetDefinition, executor: rollbackChangesetExecutor },
   // Directory & search
   { definition: readDirectoryDefinition, executor: readDirectoryExecutor },
   // Execution (unified)

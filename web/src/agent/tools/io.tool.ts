@@ -50,10 +50,6 @@ export const readExecutor: ToolExecutor = async (args, context) => {
   const paths = args.paths as string[] | undefined
   const maxSize = args.max_size as number | undefined
 
-  if (!context.directoryHandle) {
-    return JSON.stringify({ error: 'No directory selected. Please select a project folder first.' })
-  }
-
   // Batch mode: multiple files
   if (paths && Array.isArray(paths) && paths.length > 0) {
     return executeBatchRead(paths, maxSize, context.directoryHandle)
@@ -66,7 +62,10 @@ export const readExecutor: ToolExecutor = async (args, context) => {
   return executeSingleRead(path, context.directoryHandle)
 }
 
-async function executeSingleRead(path: string, directoryHandle: FileSystemDirectoryHandle): Promise<string> {
+async function executeSingleRead(
+  path: string,
+  directoryHandle?: FileSystemDirectoryHandle | null
+): Promise<string> {
   const { readFile } = useOPFSStore.getState()
 
   try {
@@ -106,7 +105,7 @@ async function executeSingleRead(path: string, directoryHandle: FileSystemDirect
 async function executeBatchRead(
   paths: string[],
   maxSize: number | undefined,
-  directoryHandle: FileSystemDirectoryHandle
+  directoryHandle?: FileSystemDirectoryHandle | null
 ): Promise<string> {
   const { readFile } = useOPFSStore.getState()
   const sizeLimit = maxSize || 262144 // 256KB default
@@ -199,26 +198,22 @@ export const writeExecutor: ToolExecutor = async (args, context) => {
   const content = args.content as string | undefined
   const files = args.files as FileItem[] | undefined
 
-  if (!context.directoryHandle) {
-    return JSON.stringify({ error: 'No directory selected. Please select a project folder first.' })
-  }
-
   // Batch mode: files array
   if (files && Array.isArray(files) && files.length > 0) {
-    return executeBatchWrite(files, context.directoryHandle!)
+    return executeBatchWrite(files, context.directoryHandle)
   }
 
   // Single file mode
   if (!path || content === undefined) {
     return JSON.stringify({ error: 'Either (path + content) or files must be provided' })
   }
-  return executeSingleWrite(path, content, context.directoryHandle!)
+  return executeSingleWrite(path, content, context.directoryHandle)
 }
 
 async function executeSingleWrite(
   path: string,
   content: string,
-  directoryHandle: FileSystemDirectoryHandle
+  directoryHandle?: FileSystemDirectoryHandle | null
 ): Promise<string> {
   const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
 
@@ -255,7 +250,7 @@ async function executeSingleWrite(
 
 async function executeBatchWrite(
   files: FileItem[],
-  directoryHandle: FileSystemDirectoryHandle
+  directoryHandle?: FileSystemDirectoryHandle | null
 ): Promise<string> {
   const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
   const results: Array<{ path: string; success: boolean; error?: string }> = []
