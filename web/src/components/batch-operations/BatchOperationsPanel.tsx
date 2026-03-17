@@ -25,7 +25,7 @@ import { Progress } from '@/components/ui/progress'
 // Types
 //=============================================================================
 
-export type BatchOperationType = 'batch_edit' | 'read' | 'file_edit'
+export type BatchOperationType = 'batch_edit' | 'read' | 'edit'
 
 export interface BatchEditPreview {
   path: string
@@ -100,7 +100,7 @@ export function BatchOperationsPanel({ onExecute, onUndo, className }: BatchOper
     setState((prev) => ({ ...prev, type: 'batch_edit', isRunning: true, progress: 0, error: null }))
 
     try {
-      const result = await onExecute('file_edit', {
+      const result = await onExecute('edit', {
         path: editFilePattern,
         find: editFind,
         replace: editReplace,

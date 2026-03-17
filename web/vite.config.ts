@@ -7,6 +7,7 @@ import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const isVitest = process.env.VITEST === 'true'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -134,10 +135,15 @@ export default defineConfig({
     }),
   ],
   define: {
-    'process.env': {},
-    'process.platform': JSON.stringify('browser'),
-    'process.version': JSON.stringify(''),
-    'process.browser': JSON.stringify(true),
+    // Avoid mutating read-only Node process fields during Vitest runtime.
+    ...(isVitest
+      ? {}
+      : {
+          'process.env': {},
+          'process.platform': JSON.stringify('browser'),
+          'process.version': JSON.stringify(''),
+          'process.browser': JSON.stringify(true),
+        }),
     __DEV__: process.env.NODE_ENV !== 'production' ? JSON.stringify(true) : JSON.stringify(false),
   },
   worker: {

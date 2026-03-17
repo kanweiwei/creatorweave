@@ -161,9 +161,9 @@ describe('RecommendationEngine', () => {
       expect(readTool).toBeDefined()
     })
 
-    it('should recommend file_edit for code changes', () => {
+    it('should recommend edit for code changes', () => {
       const recommendations = engine.recommend('change the function name')
-      const editTool = recommendations.find((r) => r.toolName === 'file_edit')
+      const editTool = recommendations.find((r) => r.toolName === 'edit')
 
       expect(editTool).toBeDefined()
     })

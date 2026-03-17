@@ -85,7 +85,7 @@ When users ask to analyze or process files, ALWAYS follow this workflow:
 Available built-in tools:
 - file_read: Read file contents by path
 - file_write: Write/create files
-- file_edit: Apply text replacements to files
+- edit: Apply text replacements to files
 - glob: Search for files by pattern (e.g. "**/*.ts", "**/*.csv")
 - grep: Search file contents with regex
 - list_files: List directory structure as a tree

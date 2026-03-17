@@ -1,5 +1,5 @@
 /**
- * file_edit tool - Apply diff-based edits to a file using string replacement.
+ * edit tool - Apply diff-based edits to a file using string replacement.
  *
  * Supports two modes:
  * - Single file mode: exact text replacement (old_text/new_text)
@@ -19,10 +19,10 @@ import { getUndoManager } from '@/undo/undo-manager'
 import micromatch from 'micromatch'
 import { traverseDirectory } from '@/services/traversal.service'
 
-export const fileEditDefinition: ToolDefinition = {
+export const editDefinition: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'file_edit',
+    name: 'edit',
     description:
       'Apply text replacements to file(s). ' +
       'Single mode: path + old_text + new_text for exact replacement. ' +
@@ -74,7 +74,7 @@ export const fileEditDefinition: ToolDefinition = {
   },
 }
 
-export const fileEditExecutor: ToolExecutor = async (args, context) => {
+export const editExecutor: ToolExecutor = async (args, context) => {
   const path = args.path as string
   const oldText = args.old_text as string
   const newText = args.new_text as string

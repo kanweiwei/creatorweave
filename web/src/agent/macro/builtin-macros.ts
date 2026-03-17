@@ -45,7 +45,7 @@ export const BUILTIN_MACROS: Macro[] = [
         description: 'Create new component file',
       },
       {
-        name: 'file_edit',
+        name: 'edit',
         arguments: {
           path: '{sourcePath}',
           old_text: '{selection}',
@@ -125,7 +125,7 @@ export const BUILTIN_MACROS: Macro[] = [
         description: 'Read file to format',
       },
       {
-        name: 'file_edit',
+        name: 'edit',
         arguments: {
           path: '{path}',
           old_text: '{imports}',
@@ -216,7 +216,7 @@ export const BUILTIN_MACROS: Macro[] = [
         description: 'Read code to document',
       },
       {
-        name: 'file_edit',
+        name: 'edit',
         arguments: {
           path: '{path}',
           old_text: '{codeWithoutDocs}',

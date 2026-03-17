@@ -42,7 +42,7 @@ You can help users with a wide variety of tasks:
 - \`read(paths)\` - Read multiple files
 - \`write(path, content)\` - Create new files
 - \`write(files)\` - Write multiple files
-- \`file_edit(path, old_text, new_text)\` - Replace text in files
+- \`edit(path, old_text, new_text)\` - Replace text in files
 
 ### Code Execution (for data/analysis tasks)
 - \`execute(language="python", code)\` - Execute Python with pandas, numpy, matplotlib

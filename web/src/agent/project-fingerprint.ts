@@ -865,13 +865,13 @@ export class FingerprintScanner {
     const base = ['read_directory', 'read']
 
     const typeTools: Record<string, string[]> = {
-      react: ['file_edit'],
-      vue: ['file_edit'],
+      react: ['edit'],
+      vue: ['edit'],
       python: ['execute'],
       'data-science': ['execute', 'analyze_data'],
-      rust: ['file_edit'],
-      go: ['file_edit'],
-      node: ['file_edit'],
+      rust: ['edit'],
+      go: ['edit'],
+      node: ['edit'],
     }
 
     return [...new Set([...base, ...(typeTools[projectType] || [])])]

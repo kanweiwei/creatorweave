@@ -591,7 +591,7 @@ if (usageRatio > 0.9) {
    - 选择要操作的项目目录
 
 2. **编辑文件**
-   - 使用 Agent 工具编辑文件 (`file_write`, `file_edit`)
+   - 使用 Agent 工具编辑文件 (`write`, `edit`)
    - 文件会自动缓存到 OPFS
    - 文件树会显示待同步状态（🟡 修改、🟢 新建）
 

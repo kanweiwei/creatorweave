@@ -205,13 +205,13 @@ const TOOL_METADATA: Record<
     description: 'Create or update files',
     baseExample: 'write(path="new.md", content="# Title") or write(files=[{path:"a.ts", content:"..."}])',
   },
-  file_edit: {
-    name: 'file_edit',
+  edit: {
+    name: 'edit',
     displayName: 'Edit File',
     category: 'writing',
     intents: ['file-edit', 'refactoring'],
     description: 'Replace text in files',
-    baseExample: 'file_edit(path="config.ts", old_text="old", new_text="new")',
+    baseExample: 'edit(path="config.ts", old_text="old", new_text="new")',
   },
   execute: {
     name: 'execute',
