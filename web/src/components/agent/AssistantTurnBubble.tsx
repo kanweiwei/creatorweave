@@ -201,7 +201,7 @@ export function AssistantTurnBubble({
         )}
 
         {/* Waiting indicator - three pulsing dots while waiting for next model response */}
-        {isWaiting && !currentToolCall && !streamingContent && (
+        {isWaiting && !currentToolCall && !isStreamingReasoning && !isStreamingContent && (
           <div className="inline-block rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-700">
             <span className="flex items-center gap-1.5">
               <span
