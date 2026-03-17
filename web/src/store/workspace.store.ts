@@ -27,6 +27,8 @@ import { toast } from 'sonner'
 
 // De-duplicate concurrent pending-change scans across UI/tool triggers.
 let refreshPendingChangesInFlight: Promise<void> | null = null
+let refreshPendingChangesNeedsRerun = false
+let refreshPendingChangesRerunSilent = true
 
 /**
  * Workspace metadata shape from SessionManager (matches InternalSessionMetadata)
@@ -658,8 +660,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         refreshPendingChanges: async (silent = false) => {
           if (refreshPendingChangesInFlight) {
+            refreshPendingChangesNeedsRerun = true
+            refreshPendingChangesRerunSilent = refreshPendingChangesRerunSilent && silent
             return refreshPendingChangesInFlight
           }
+
+          refreshPendingChangesRerunSilent = true
 
           refreshPendingChangesInFlight = (async () => {
             const activeWorkspace = await getActiveWorkspace()
@@ -667,8 +673,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
             const changes = await activeWorkspace.workspace.refreshPendingChanges()
             const hasChanges = changes && changes.changes.length > 0
+            const pendingCount = changes?.changes.length ?? 0
             set((state) => ({
               pendingChanges: changes,
+              currentPendingCount:
+                state.activeWorkspaceId === activeWorkspace.workspaceId
+                  ? pendingCount
+                  : state.currentPendingCount,
+              workspaces: state.workspaces.map((w) =>
+                w.id === activeWorkspace.workspaceId ? { ...w, pendingCount } : w
+              ),
               // Keep current panel state when there are changes; only auto-close when empty.
               showPreview: hasChanges ? state.showPreview : false,
             }))
@@ -696,6 +710,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             await refreshPendingChangesInFlight
           } finally {
             refreshPendingChangesInFlight = null
+            if (refreshPendingChangesNeedsRerun) {
+              const rerunSilent = refreshPendingChangesRerunSilent
+              refreshPendingChangesNeedsRerun = false
+              refreshPendingChangesRerunSilent = true
+              await get().refreshPendingChanges(rerunSilent)
+            }
           }
         },
 
