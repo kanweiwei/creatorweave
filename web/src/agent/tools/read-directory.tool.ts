@@ -10,6 +10,7 @@
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import micromatch from 'micromatch'
+import { getActiveWorkspace } from '@/store/workspace.store'
 import {
   getStaticGlobPrefix,
   normalizeSubPath,
@@ -120,6 +121,22 @@ export const readDirectoryExecutor: ToolExecutor = async (args, context) => {
   return executeListMode(args, context)
 }
 
+async function resolveDirectoryHandleWithWorkspaceFallback(
+  handle: FileSystemDirectoryHandle | undefined
+): Promise<FileSystemDirectoryHandle | null> {
+  if (handle) return handle
+  try {
+    const { useFolderAccessStore } = await import('@/store/folder-access.store')
+    const folderHandle = useFolderAccessStore.getState().getCurrentHandle()
+    if (folderHandle) return folderHandle
+  } catch {
+    // ignore folder-access store loading failures and continue fallback chain
+  }
+  const active = await getActiveWorkspace()
+  if (!active) return null
+  return active.workspace.getFilesDir()
+}
+
 /**
  * List mode - directory tree listing (from original list_files)
  */
@@ -146,12 +163,13 @@ async function executeListMode(args: Record<string, unknown>, context: unknown):
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  if (!toolContext.directoryHandle) {
+  const rootHandle = await resolveDirectoryHandleWithWorkspaceFallback(toolContext.directoryHandle)
+  if (!rootHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
   }
 
   try {
-    const { handle: searchHandle } = await resolveDirectoryHandle(toolContext.directoryHandle, subPath)
+    const { handle: searchHandle } = await resolveDirectoryHandle(rootHandle, subPath)
     const startedAt = Date.now()
     const deadlineAt = startedAt + deadlineMs
     const entries: Array<{ path: string; type: 'file' | 'directory'; size: number; depth: number }> = []
@@ -284,18 +302,17 @@ async function executeGlobMode(
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  if (!toolContext.directoryHandle) {
+  const rootHandle = await resolveDirectoryHandleWithWorkspaceFallback(toolContext.directoryHandle)
+  if (!rootHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
   }
 
   try {
     const staticPrefix = subPath ? '' : getStaticGlobPrefix(pattern)
     const effectiveRoot = subPath || staticPrefix
-    const { handle: searchHandle, exists } = await resolveDirectoryHandle(
-      toolContext.directoryHandle,
-      effectiveRoot,
-      { allowMissing: !subPath && !!staticPrefix }
-    )
+    const { handle: searchHandle, exists } = await resolveDirectoryHandle(rootHandle, effectiveRoot, {
+      allowMissing: !subPath && !!staticPrefix,
+    })
     if (!exists) {
       return `No files matching pattern "${pattern}"`
     }
