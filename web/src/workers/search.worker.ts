@@ -95,7 +95,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 
 async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
   if (isProcessing) {
-    sendError({ error: 'Already processing a search' })
+    sendError({ code: 'search_worker_error', message: 'Already processing a search' })
     return
   }
 
