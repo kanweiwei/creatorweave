@@ -364,9 +364,7 @@ export function PendingSyncPanel() {
               </>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 4h.01M5 8h14a1 1 0 110-1 0" />
-                </svg>
+                <RefreshCw className="w-4 h-4" />
                 {showSyncSuccess ? '完成!' : selectedCount > 0 ? `同步选中 (${selectedCount})` : '同步全部'}
               </>
             )}
@@ -397,12 +395,12 @@ export function PendingSyncPanel() {
                 取消
               </BrandButton>
               <BrandButton
-                variant="primary"
+                variant="outline"
                 onClick={() => {
                   handleClear()
                   setShowClearConfirm(false)
                 }}
-                className="text-danger bg-danger hover:bg-danger/90 focus:ring-danger"
+                className="text-danger border-danger hover:bg-danger/10 focus:ring-danger"
               >
                 确认清空
               </BrandButton>

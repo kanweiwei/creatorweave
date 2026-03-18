@@ -14,7 +14,7 @@ import { type ChangeDetectionResult, type FileChange } from '@/opfs/types/opfs-t
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
 import { BrandButton, BrandCheckbox } from '@creatorweave/ui'
 import { Badge } from '@/components/ui/badge'
-import { Download, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { RefreshCw, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
 type CheckpointGroup = {
   key: string
@@ -325,7 +325,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
               </>
             ) : (
               <>
-                <Download className="w-4 h-4" />
+                <RefreshCw className="w-4 h-4" />
                 {hasSelection ? `同步选中 (${selectedCount})` : '同步全部'}
               </>
             )}
