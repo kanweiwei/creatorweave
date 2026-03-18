@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '../tool-types'
-import { searchExecutor } from '../search.tool'
+import { searchDefinition, searchExecutor } from '../search.tool'
 
 const searchInDirectoryMock = vi.fn()
 const getFilesDirMock = vi.fn()
@@ -37,20 +37,30 @@ describe('search tool', () => {
   })
 
   it('requires query', async () => {
-    const result = await searchExecutor({}, context)
+    const result = await searchExecutor({ mode: 'literal' }, context)
     const parsed = JSON.parse(result)
     expect(parsed.error).toContain('query is required')
   })
 
+  it('declares query and mode as required in schema', () => {
+    expect(searchDefinition.function.parameters.required).toEqual(['query', 'mode'])
+  })
+
+  it('requires mode', async () => {
+    const result = await searchExecutor({ query: 'TODO' }, context)
+    const parsed = JSON.parse(result)
+    expect(parsed.error).toContain('mode is required')
+  })
+
   it('searches with provided directory handle', async () => {
-    const result = await searchExecutor({ query: 'TODO', max_results: 20 }, context)
+    const result = await searchExecutor({ query: 'TODO', mode: 'literal', max_results: 20 }, context)
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(true)
     expect(parsed.totalMatches).toBe(1)
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
-      expect.objectContaining({ query: 'TODO', maxResults: 20 })
+      expect.objectContaining({ query: 'TODO', regex: false, maxResults: 20 })
     )
   })
 
@@ -63,23 +73,58 @@ describe('search tool', () => {
       workspaceId: 'ws_1',
     })
 
-    const result = await searchExecutor({ query: 'TODO' }, { directoryHandle: null })
+    const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(true)
     expect(getFilesDirMock).toHaveBeenCalledOnce()
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
-      expect.objectContaining({ query: 'TODO' })
+      expect.objectContaining({ query: 'TODO', regex: false })
     )
   })
 
   it('returns error when no directory and no active workspace', async () => {
     getActiveWorkspaceMock.mockResolvedValue(undefined)
 
-    const result = await searchExecutor({ query: 'TODO' }, { directoryHandle: null })
+    const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
     const parsed = JSON.parse(result)
 
     expect(parsed.error).toContain('No active workspace')
+  })
+
+  it('rejects regex-like query when mode=literal', async () => {
+    const result = await searchExecutor(
+      {
+        query: 'from.*project-fingerprint|from.*intelligence-coordinator',
+        mode: 'literal',
+      },
+      context
+    )
+    const parsed = JSON.parse(result)
+
+    expect(parsed.error).toContain('query looks like regex')
+    expect(parsed.hint).toContain('set mode="regex"')
+    expect(searchInDirectoryMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts regex-like query when mode=regex', async () => {
+    const result = await searchExecutor(
+      {
+        query: 'Fingerprint|IntelligenceCoordinator|getFingerprintScanner|formatFingerprint',
+        mode: 'regex',
+      },
+      context
+    )
+    const parsed = JSON.parse(result)
+
+    expect(parsed.success).toBe(true)
+    expect(searchInDirectoryMock).toHaveBeenCalledWith(
+      directoryHandle,
+      expect.objectContaining({
+        query: 'Fingerprint|IntelligenceCoordinator|getFingerprintScanner|formatFingerprint',
+        regex: true,
+      })
+    )
   })
 })
