@@ -39,27 +39,17 @@ export const readDefinition: ToolDefinition = {
         reads: {
           type: 'array',
           description:
-            'Advanced batch mode: [{ path, offset?, limit?, start_line?, line_count? }]. ' +
+            'Advanced batch mode: [{ path, start_line?, line_count? }]. ' +
             'Use this when each file needs different read ranges.',
           items: {
             type: 'object',
             properties: {
               path: { type: 'string' },
-              offset: { type: 'number' },
-              limit: { type: 'number' },
               start_line: { type: 'number' },
               line_count: { type: 'number' },
             },
             required: ['path'],
           },
-        },
-        offset: {
-          type: 'number',
-          description: 'Optional 1-based line offset for partial text read (single path mode only)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Optional line count for partial text read (single path mode only)',
         },
         start_line: {
           type: 'number',
@@ -81,15 +71,11 @@ export const readDefinition: ToolDefinition = {
 
 interface ReadRequest {
   path: string
-  offset?: number
-  limit?: number
   start_line?: number
   line_count?: number
 }
 
 interface ReadRangeOptions {
-  offset?: number
-  limit?: number
   startLine?: number
   lineCount?: number
 }
@@ -99,9 +85,13 @@ export const readExecutor: ToolExecutor = async (args, context) => {
   const paths = args.paths as string[] | undefined
   const reads = args.reads as ReadRequest[] | undefined
   const maxSize = args.max_size as number | undefined
+  if (args.offset !== undefined || args.limit !== undefined) {
+    return JSON.stringify({
+      error:
+        'offset/limit are no longer supported. Use start_line/line_count instead.',
+    })
+  }
   const rangeOptions: ReadRangeOptions = {
-    offset: args.offset as number | undefined,
-    limit: args.limit as number | undefined,
     startLine: args.start_line as number | undefined,
     lineCount: args.line_count as number | undefined,
   }
@@ -127,8 +117,6 @@ export const readExecutor: ToolExecutor = async (args, context) => {
         return JSON.stringify({ error: 'reads[].path is required' })
       }
       const err = validateReadRange({
-        offset: read.offset,
-        limit: read.limit,
         startLine: read.start_line,
         lineCount: read.line_count,
       })
@@ -286,26 +274,12 @@ async function executeBatchRead(
 
 function hasRangeOptions(options: ReadRangeOptions): boolean {
   return (
-    options.offset !== undefined ||
-    options.limit !== undefined ||
     options.startLine !== undefined ||
     options.lineCount !== undefined
   )
 }
 
 function validateReadRange(options: ReadRangeOptions): string | null {
-  const hasOffsetRange = options.offset !== undefined || options.limit !== undefined
-  const hasLineRange = options.startLine !== undefined || options.lineCount !== undefined
-
-  if (hasOffsetRange && hasLineRange) {
-    return 'Cannot mix offset/limit with start_line/line_count in one read request'
-  }
-  if (options.offset !== undefined && options.offset < 1) {
-    return 'offset must be >= 1 (line index)'
-  }
-  if (options.limit !== undefined && options.limit <= 0) {
-    return 'limit must be > 0'
-  }
   if (options.startLine !== undefined && options.startLine < 1) {
     return 'start_line must be >= 1'
   }
@@ -316,18 +290,13 @@ function validateReadRange(options: ReadRangeOptions): string | null {
 }
 
 function applyTextRange(content: string, options: ReadRangeOptions): string {
-  const hasOffsetRange = options.offset !== undefined || options.limit !== undefined
   const hasLineRange = options.startLine !== undefined || options.lineCount !== undefined
-
-  if (!hasOffsetRange && !hasLineRange) {
+  if (!hasLineRange) {
     return content
   }
 
-  // Range reads are line-based.
-  // - offset/limit: preferred short form
-  // - start_line/line_count: explicit aliases
-  const start = (options.startLine ?? options.offset ?? 1) - 1
-  const count = options.lineCount ?? options.limit ?? Number.MAX_SAFE_INTEGER
+  const start = (options.startLine ?? 1) - 1
+  const count = options.lineCount ?? Number.MAX_SAFE_INTEGER
   const lines = content.split('\n')
   return lines.slice(start, start + count).join('\n')
 }

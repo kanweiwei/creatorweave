@@ -37,14 +37,15 @@ describe('io read tool', () => {
     expect(result).toBe(largeContent)
   })
 
-  it('supports line range read via offset/limit for single file', async () => {
+  it('rejects offset/limit for single file (breaking change)', async () => {
     readFileMock.mockResolvedValueOnce({
       content: 'line1\nline2\nline3\nline4',
       metadata: { size: 24, contentType: 'text' },
     })
 
     const result = await readExecutor({ path: 'a.txt', offset: 2, limit: 2 }, context)
-    expect(result).toBe('line2\nline3')
+    const parsed = JSON.parse(result)
+    expect(parsed.error).toContain('offset/limit are no longer supported')
   })
 
   it('supports line range read for single file', async () => {
@@ -58,17 +59,15 @@ describe('io read tool', () => {
   })
 
   it('supports advanced batch reads with per-file ranges', async () => {
-    readFileMock.mockImplementation(async (path: string) => {
-      if (path === 'a.txt') {
-        return { content: 'a1\na2\na3\na4', metadata: { size: 11, contentType: 'text' } }
-      }
-      return { content: 'line1\nline2\nline3', metadata: { size: 17, contentType: 'text' } }
-    })
+    readFileMock.mockReset()
+    readFileMock
+      .mockResolvedValueOnce({ content: 'a1\na2\na3\na4', metadata: { size: 11, contentType: 'text' } })
+      .mockResolvedValueOnce({ content: 'line1\nline2\nline3', metadata: { size: 17, contentType: 'text' } })
 
     const result = await readExecutor(
       {
         reads: [
-          { path: 'a.txt', offset: 3, limit: 1 },
+          { path: 'a.txt', start_line: 3, line_count: 1 },
           { path: 'b.txt', start_line: 2, line_count: 1 },
         ],
       },
@@ -79,8 +78,10 @@ describe('io read tool', () => {
     expect(parsed.success).toBe(true)
     expect(parsed.total).toBe(2)
     expect(parsed.successCount).toBe(2)
-    expect(parsed.results[0].content).toBe('a3')
-    expect(parsed.results[1].content).toBe('line2')
+    const aResult = parsed.results.find((r: { path: string }) => r.path === 'a.txt')
+    const bResult = parsed.results.find((r: { path: string }) => r.path === 'b.txt')
+    expect(aResult?.content).toBe('a3')
+    expect(bResult?.content).toBe('line2')
   })
 
   it('returns too_large error when max_size is explicitly requested', async () => {
