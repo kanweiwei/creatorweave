@@ -36,6 +36,11 @@ export interface ToolContext {
   directoryHandle: FileSystemDirectoryHandle | null
   /** Abort signal for cancellation */
   abortSignal?: AbortSignal
+  /** Current context token usage (optional, for tools to self-regulate) */
+  contextUsage?: {
+    usedTokens: number
+    maxTokens: number
+  }
 }
 
 /** Tool executor function signature */

@@ -43,7 +43,7 @@ import { generateFollowUp } from '@/agent/follow-up-generator'
 import { getConversationRepository, initSQLiteDB } from '@/sqlite'
 import { useSettingsStore } from './settings.store'
 
-const ENABLE_FOLLOW_UP_LLM = import.meta.env.VITE_ENABLE_FOLLOW_UP_LLM === 'true'
+// Follow-up suggestions are enabled by default
 
 //=============================================================================
 // Persistence Functions (SQLite)
@@ -840,20 +840,16 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               console.warn('[conversation.store] Failed to refresh pending changes on complete:', err)
             }
 
-            if (ENABLE_FOLLOW_UP_LLM) {
-              try {
-                const apiKey = await apiKeyRepo.load(providerConfig.apiKeyProviderKey)
-                if (apiKey) {
-                  const suggestion = await generateFollowUp(targetMessages, providerType, apiKey)
-                  if (suggestion) {
-                    get().setSuggestedFollowUp(conversationId, suggestion)
-                  }
+            try {
+              const apiKey = await apiKeyRepo.load(providerConfig.apiKeyProviderKey)
+              if (apiKey) {
+                const suggestion = await generateFollowUp(targetMessages, providerType, apiKey)
+                if (suggestion) {
+                  get().setSuggestedFollowUp(conversationId, suggestion)
                 }
-              } catch (err) {
-                console.error('[conversation.store] Failed to generate follow-up:', err)
               }
-            } else {
-              get().clearSuggestedFollowUp(conversationId)
+            } catch (err) {
+              console.error('[conversation.store] Failed to generate follow-up:', err)
             }
           }
         }
@@ -1667,14 +1663,16 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
     // Follow-up suggestion actions
     setSuggestedFollowUp: (conversationId: string, suggestion: string) => {
-      set((state) => {
-        state.suggestedFollowUps.set(conversationId, suggestion)
-      })
+      set((state) => ({
+        suggestedFollowUps: new Map(state.suggestedFollowUps).set(conversationId, suggestion),
+      }))
     },
 
     clearSuggestedFollowUp: (conversationId: string) => {
       set((state) => {
-        state.suggestedFollowUps.delete(conversationId)
+        const newMap = new Map(state.suggestedFollowUps)
+        newMap.delete(conversationId)
+        return { suggestedFollowUps: newMap }
       })
     },
 

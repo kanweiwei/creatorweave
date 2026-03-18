@@ -55,7 +55,7 @@ export const searchDefinition: ToolDefinition = {
         },
         max_results: {
           type: 'number',
-          description: 'Maximum matches to return. Default 200.',
+          description: 'Maximum matches to return. Default 50.',
         },
         context_lines: {
           type: 'number',
@@ -104,6 +104,19 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
     })
   }
 
+  // 根据 contextUsage 智能调整 max_results
+  let userMaxResults = typeof args.max_results === 'number' ? args.max_results : 50
+
+  // 如果上下文已经用了 50% 以上，进一步减少默认结果数量
+  if (context.contextUsage && args.max_results === undefined) {
+    const usageRatio = context.contextUsage.usedTokens / context.contextUsage.maxTokens
+    if (usageRatio > 0.6) {
+      userMaxResults = 25
+    } else if (usageRatio > 0.4) {
+      userMaxResults = 35
+    }
+  }
+
   let directoryHandle: FileSystemDirectoryHandle | null = context.directoryHandle
 
   // OPFS-only fallback: search in workspace files/ snapshot.
@@ -117,6 +130,15 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
 
   try {
     const manager = getSearchWorkerManager()
+    const userContextLines = typeof args.context_lines === 'number' ? args.context_lines : 0
+
+    // 当结果数量多时，自动减少上下文行数以控制返回大小
+    let contextLines = userContextLines
+    if (userMaxResults > 100 && userContextLines > 3) {
+      // 结果很多且上下文很多时，降低上下文行数
+      contextLines = Math.min(userContextLines, 3)
+    }
+
     const result = await manager.searchInDirectory(directoryHandle, {
       query,
       path: typeof args.path === 'string' ? args.path : undefined,
@@ -124,8 +146,8 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
       regex: useRegex,
       caseSensitive: args.case_sensitive === true,
       wholeWord: args.whole_word === true,
-      maxResults: typeof args.max_results === 'number' ? args.max_results : undefined,
-      contextLines: typeof args.context_lines === 'number' ? args.context_lines : undefined,
+      maxResults: userMaxResults,
+      contextLines,
       deadlineMs: typeof args.deadline_ms === 'number' ? args.deadline_ms : undefined,
       maxFileSize: typeof args.max_file_size === 'number' ? args.max_file_size : undefined,
       includeIgnored: args.include_ignored === true,
