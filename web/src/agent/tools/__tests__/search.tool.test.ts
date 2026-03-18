@@ -127,4 +127,32 @@ describe('search tool', () => {
       })
     )
   })
+
+  it('returns structured path_not_found error from worker details', async () => {
+    searchInDirectoryMock.mockRejectedValueOnce(
+      new Error(
+        JSON.stringify({
+          code: 'path_not_found',
+          message: 'Search path "web/src/agent" not found under current root "web"',
+          requestedPath: 'web/src/agent',
+          resolvedRootName: 'web',
+        })
+      )
+    )
+
+    const result = await searchExecutor(
+      {
+        query: 'ProjectFingerprint',
+        mode: 'regex',
+        path: 'web/src/agent',
+      },
+      context
+    )
+    const parsed = JSON.parse(result)
+
+    expect(parsed.error).toBe('path_not_found')
+    expect(parsed.requestedPath).toBe('web/src/agent')
+    expect(parsed.resolvedRootName).toBe('web')
+    expect(parsed.hint).toContain('Try')
+  })
 })

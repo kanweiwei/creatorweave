@@ -45,7 +45,16 @@ type WorkerMessage =
 
 type WorkerResponse =
   | { type: 'SEARCH_RESULT'; payload: SearchInDirectoryResult }
-  | { type: 'ERROR'; payload: { error: string } }
+  | {
+      type: 'ERROR'
+      payload: {
+        message?: string
+        error?: string
+        code?: 'path_not_found' | 'search_worker_error'
+        requestedPath?: string
+        resolvedRootName?: string
+      }
+    }
 
 class SearchWorkerManager {
   private worker: Worker | null = null
@@ -58,7 +67,14 @@ class SearchWorkerManager {
       this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         if (!this.pending) return
         if (event.data.type === 'ERROR') {
-          this.pending.reject(new Error(event.data.payload.error))
+          const payload = event.data.payload
+          const structured = {
+            code: payload.code,
+            message: payload.message || payload.error || 'Search worker error',
+            requestedPath: payload.requestedPath,
+            resolvedRootName: payload.resolvedRootName,
+          }
+          this.pending.reject(new Error(JSON.stringify(structured)))
         } else {
           this.pending.resolve(event.data.payload)
         }

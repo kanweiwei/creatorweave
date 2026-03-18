@@ -7,6 +7,17 @@ function looksRegexLikeQuery(query: string): boolean {
   return query.includes('|') || query.includes('.*')
 }
 
+function parseStructuredError(error: unknown): Record<string, unknown> | null {
+  if (!(error instanceof Error) || !error.message) return null
+  try {
+    const parsed = JSON.parse(error.message) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 export const searchDefinition: ToolDefinition = {
   type: 'function',
   function: {
@@ -130,6 +141,19 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
       message: `Found ${result.totalMatches} matches in ${result.scannedFiles} files.`,
     })
   } catch (error) {
+    const structured = parseStructuredError(error)
+    if (structured?.code === 'path_not_found') {
+      return JSON.stringify({
+        error: 'path_not_found',
+        message:
+          typeof structured.message === 'string'
+            ? structured.message
+            : 'Requested search path was not found under current root.',
+        requestedPath: structured.requestedPath,
+        resolvedRootName: structured.resolvedRootName,
+        hint: 'Try path="src/..." relative to current root, or omit path to search from root.',
+      })
+    }
     return JSON.stringify({
       error: `Search failed: ${error instanceof Error ? error.message : String(error)}`,
     })

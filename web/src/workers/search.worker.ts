@@ -44,9 +44,16 @@ interface SearchResultPayload {
   deadlineExceeded: boolean
 }
 
+interface SearchErrorPayload {
+  message: string
+  code?: 'path_not_found' | 'search_worker_error'
+  requestedPath?: string
+  resolvedRootName?: string
+}
+
 type WorkerResponse =
   | { type: 'SEARCH_RESULT'; payload: SearchResultPayload }
-  | { type: 'ERROR'; payload: { error: string } }
+  | { type: 'ERROR'; payload: SearchErrorPayload }
 
 const DEFAULT_EXCLUDED_DIRS = new Set([
   '.git',
@@ -76,10 +83,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         isProcessing = false
         break
       default:
-        sendError({ error: `Unknown message type: ${(message as any).type}` })
+        sendError({ message: `Unknown message type: ${(message as any).type}` })
     }
   } catch (error) {
-    sendError({ error: String(error) })
+    sendError({
+      code: 'search_worker_error',
+      message: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 
@@ -124,7 +134,24 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
 
     const start = Date.now()
     const deadlineAt = start + Math.max(1000, deadlineMs)
-    const root = await resolveSubdir(directoryHandle, path)
+    const normalizedPath = normalizeSubPath(path)
+    let root = directoryHandle
+    if (normalizedPath) {
+      try {
+        root = await resolveSubdir(directoryHandle, normalizedPath)
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          sendError({
+            code: 'path_not_found',
+            message: `Search path "${normalizedPath}" not found under current root "${directoryHandle.name}".`,
+            requestedPath: normalizedPath,
+            resolvedRootName: directoryHandle.name,
+          })
+          return
+        }
+        throw error
+      }
+    }
     const matcher = buildMatcher(query, { regex, caseSensitive, wholeWord })
 
     const stack: Array<{ dir: FileSystemDirectoryHandle; relPath: string }> = [{ dir: root, relPath: '' }]
@@ -142,7 +169,19 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
       }
 
       const current = stack.pop()!
-      for await (const entry of current.dir.values()) {
+      let entries: FileSystemHandle[] = []
+      try {
+        for await (const entry of current.dir.values()) {
+          entries.push(entry)
+        }
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          skippedFiles++
+          continue
+        }
+        throw error
+      }
+      for (const entry of entries) {
         if (signal.aborted) break
         if (Date.now() > deadlineAt) {
           deadlineExceeded = true
@@ -160,7 +199,16 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
         if (glob && !micromatch.isMatch(rel, glob)) continue
 
         scannedFiles++
-        const file = await (entry as FileSystemFileHandle).getFile()
+        let file: File
+        try {
+          file = await (entry as FileSystemFileHandle).getFile()
+        } catch (error) {
+          if (isNotFoundError(error)) {
+            skippedFiles++
+            continue
+          }
+          throw error
+        }
         if (file.size > Math.max(1, maxFileSize)) {
           skippedFiles++
           continue
@@ -205,19 +253,25 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
       deadlineExceeded,
     })
   } catch (error) {
-    sendError({ error: error instanceof Error ? error.message : String(error) })
+    sendError({
+      code: 'search_worker_error',
+      message: error instanceof Error ? error.message : String(error),
+    })
   } finally {
     isProcessing = false
   }
 }
 
-async function resolveSubdir(
-  root: FileSystemDirectoryHandle,
-  subPath?: string
-): Promise<FileSystemDirectoryHandle> {
-  if (!subPath) return root
+function normalizeSubPath(subPath?: string): string {
+  if (!subPath) return ''
   const clean = subPath.trim().replace(/^\.?\//, '').replace(/\/+$/, '')
-  if (!clean) return root
+  if (!clean) return ''
+  return clean
+}
+
+async function resolveSubdir(root: FileSystemDirectoryHandle, cleanPath: string): Promise<FileSystemDirectoryHandle> {
+  if (!cleanPath) return root
+  const clean = cleanPath
   const parts = clean.split('/').filter(Boolean)
   let current = root
   for (const part of parts) {
@@ -225,6 +279,13 @@ async function resolveSubdir(
     current = await current.getDirectoryHandle(part)
   }
   return current
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === 'NotFoundError' || error.name === 'NotFound')
+  )
 }
 
 function shouldSkipDir(name: string, includeIgnored: boolean, excludeDirs: string[]): boolean {
@@ -299,7 +360,7 @@ function sendResult(payload: SearchResultPayload): void {
   self.postMessage(response)
 }
 
-function sendError(payload: { error: string }): void {
+function sendError(payload: SearchErrorPayload): void {
   const response: WorkerResponse = { type: 'ERROR', payload }
   self.postMessage(response)
 }
