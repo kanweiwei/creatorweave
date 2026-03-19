@@ -287,3 +287,17 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
 }
+
+/* Sync diff inline comments */
+.cw-commented-line {
+  background-color: color-mix(in oklab, var(--primary, #3b82f6) 12%, transparent);
+}
+
+.cw-comment-glyph {
+  background: color-mix(in oklab, var(--primary, #3b82f6) 80%, white 20%);
+  border-radius: 9999px;
+  width: 8px !important;
+  height: 8px !important;
+  margin-left: 4px;
+  margin-top: 4px;
+}

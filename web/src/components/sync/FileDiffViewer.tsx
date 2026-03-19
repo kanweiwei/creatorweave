@@ -5,9 +5,11 @@
  * Uses Monaco DiffEditor for text comparison.
  */
 
-import React, { Suspense, useEffect, useState } from 'react'
+import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { type ChangeType, type FileChange } from '@/opfs/types/opfs-types'
 import { getActiveWorkspace } from '@/store/workspace.store'
+import { BrandButton } from '@creatorweave/ui'
+import { Badge } from '@/components/ui/badge'
 import {
   isImageFile,
   fileExistsInNativeFS,
@@ -19,8 +21,32 @@ import {
 
 const MonacoDiffEditor = React.lazy(() => import('./MonacoDiffEditor'))
 
+type CommentSide = 'original' | 'modified'
+
+type LineComment = {
+  id: string
+  path: string
+  side: CommentSide
+  startLine: number
+  endLine: number
+  text: string
+  createdAt: number
+}
+
 interface FileDiffViewerProps {
   fileChange: FileChange | null
+  snapshotDiff?: {
+    originalText: string
+    modifiedText: string
+    snapshotTitle?: string
+    beforeKind?: 'text' | 'binary' | 'none'
+    afterKind?: 'text' | 'binary' | 'none'
+    beforeSize?: number
+    afterSize?: number
+    capturedAt?: number
+    beforeBinary?: Uint8Array | null
+    afterBinary?: Uint8Array | null
+  } | null
 }
 
 type FileContentState = {
@@ -49,7 +75,29 @@ function getImageMimeType(path: string): string {
   return 'application/octet-stream'
 }
 
-export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) => {
+function formatSize(size?: number): string {
+  const bytes = size || 0
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${bytes}B`
+}
+
+function formatTime(timestamp?: number): string {
+  if (!timestamp) return '-'
+  try {
+    return new Date(timestamp).toLocaleString('zh-CN', {
+      hour12: false,
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return String(timestamp)
+  }
+}
+
+export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange, snapshotDiff = null }) => {
   const [content, setContent] = useState<FileContentState>({
     opfs: null,
     native: null,
@@ -60,12 +108,41 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     error: null,
   })
   const [lightbox, setLightbox] = useState<{ src: string; title: string } | null>(null)
+  const [snapshotImageUrls, setSnapshotImageUrls] = useState<{ before: string | null; after: string | null }>({
+    before: null,
+    after: null,
+  })
+  const [commentsByPath, setCommentsByPath] = useState<Record<string, LineComment[]>>({})
+  const [composer, setComposer] = useState<{ side: CommentSide; startLine: number; endLine: number; text: string } | null>(null)
+  const activePath = fileChange?.path ?? ''
+  const isSnapshotMode = Boolean(snapshotDiff)
+  const hasBinarySnapshot = isSnapshotMode && (
+    snapshotDiff?.beforeKind === 'binary' || snapshotDiff?.afterKind === 'binary'
+  )
+  const currentFileComments = activePath ? commentsByPath[activePath] ?? [] : []
+  const allComments = useMemo(
+    () => Object.values(commentsByPath).flat().sort((a, b) => a.createdAt - b.createdAt),
+    [commentsByPath]
+  )
 
   useEffect(() => {
     if (!fileChange) {
       setContent({
         opfs: null,
         native: null,
+        opfsImageUrl: null,
+        nativeImageUrl: null,
+        showNativePanel: true,
+        loading: false,
+        error: null,
+      })
+      return
+    }
+
+    if (snapshotDiff) {
+      setContent({
+        opfs: snapshotDiff.modifiedText,
+        native: snapshotDiff.originalText,
         opfsImageUrl: null,
         nativeImageUrl: null,
         showNativePanel: true,
@@ -183,7 +260,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     }
 
     loadContents()
-  }, [fileChange])
+  }, [fileChange, snapshotDiff])
 
   useEffect(() => {
     if (!lightbox) return
@@ -197,6 +274,28 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [lightbox])
+
+  useEffect(() => {
+    if (!isSnapshotMode || !fileChange || !isImageFile(fileChange.path)) {
+      setSnapshotImageUrls({ before: null, after: null })
+      return
+    }
+
+    const beforeBlob = snapshotDiff?.beforeBinary
+      ? new Blob([snapshotDiff.beforeBinary], { type: getImageMimeType(fileChange.path) })
+      : null
+    const afterBlob = snapshotDiff?.afterBinary
+      ? new Blob([snapshotDiff.afterBinary], { type: getImageMimeType(fileChange.path) })
+      : null
+    const beforeUrl = beforeBlob ? URL.createObjectURL(beforeBlob) : null
+    const afterUrl = afterBlob ? URL.createObjectURL(afterBlob) : null
+    setSnapshotImageUrls({ before: beforeUrl, after: afterUrl })
+
+    return () => {
+      if (beforeUrl) URL.revokeObjectURL(beforeUrl)
+      if (afterUrl) URL.revokeObjectURL(afterUrl)
+    }
+  }, [isSnapshotMode, snapshotDiff, fileChange])
 
   if (!fileChange) {
     return (
@@ -212,7 +311,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
           </svg>
         </div>
         <h3 className="mb-2 text-lg font-medium text-primary dark:text-primary-foreground">选择文件查看详情</h3>
-        <p className="max-w-sm text-sm text-tertiary dark:text-muted">从左侧列表选择一个文件，查看 OPFS 与本机文件系统的差异</p>
+        <p className="max-w-sm text-sm text-tertiary dark:text-muted">从左侧列表选择一个文件，查看变更版本与当前文件的差异</p>
       </div>
     )
   }
@@ -271,16 +370,179 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
     }
   }
 
-  const isImage = isImageFile(fileChange.path)
+  const isImage = !isSnapshotMode && isImageFile(fileChange.path)
   const color = getChangeTypeColor(fileChange.type)
   const originalText = content.showNativePanel ? (content.native ?? '') : ''
   const modifiedText = content.opfs ?? ''
 
+  const addComment = () => {
+    if (!composer || !fileChange) return
+    const text = composer.text.trim()
+    if (!text) return
+
+    const comment: LineComment = {
+      id: `${fileChange.path}:${composer.side}:${composer.startLine}-${composer.endLine}:${Date.now()}`,
+      path: fileChange.path,
+      side: composer.side,
+      startLine: composer.startLine,
+      endLine: composer.endLine,
+      text,
+      createdAt: Date.now(),
+    }
+
+    setCommentsByPath((prev) => ({
+      ...prev,
+      [activePath]: [...(prev[activePath] ?? []), comment],
+    }))
+    setComposer(null)
+  }
+
+  const removeComment = (id: string) => {
+    if (!activePath) return
+    setCommentsByPath((prev) => ({
+      ...prev,
+      [activePath]: (prev[activePath] ?? []).filter((item) => item.id !== id),
+    }))
+  }
+
+  const copyCommentsForLLM = async () => {
+    if (allComments.length === 0) return
+
+    const payload = allComments
+      .map((item) => {
+        const sideLabel = item.side === 'modified'
+          ? (isSnapshotMode ? '快照后' : '变更版本')
+          : (isSnapshotMode ? '快照前' : '当前文件')
+        const lineLabel = item.startLine === item.endLine
+          ? `L${item.startLine}`
+          : `L${item.startLine}-L${item.endLine}`
+        return `- ${item.path} [${sideLabel} ${lineLabel}] ${item.text}`
+      })
+      .join('\n')
+
+    const contentToCopy = `${payload}`
+
+    try {
+      await navigator.clipboard.writeText(contentToCopy)
+    } catch {
+      // fallback for limited environments
+      const textArea = document.createElement('textarea')
+      textArea.value = contentToCopy
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+  }
+
+  const copySnapshotTemplateForLLM = async () => {
+    if (!isSnapshotMode || !fileChange) return
+
+    const beforeType = snapshotDiff?.beforeKind === 'binary' ? 'binary' : snapshotDiff?.beforeKind === 'text' ? 'text' : 'none'
+    const afterType = snapshotDiff?.afterKind === 'binary' ? 'binary' : snapshotDiff?.afterKind === 'text' ? 'text' : 'none'
+
+    const beforeContent = beforeType === 'text' ? (snapshotDiff?.originalText || '') : `[${beforeType}]`
+    const afterContent = afterType === 'text' ? (snapshotDiff?.modifiedText || '') : `[${afterType}]`
+
+    const template = [
+      '请基于下面这个文件快照做审阅并给出修改建议：',
+      `文件: ${fileChange.path}`,
+      `变更类型: ${fileChange.type}`,
+      `快照: ${snapshotDiff?.snapshotTitle || '-'}`,
+      `记录时间: ${formatTime(snapshotDiff?.capturedAt)}`,
+      `before(${beforeType}, ${formatSize(snapshotDiff?.beforeSize)}):`,
+      '```',
+      beforeContent,
+      '```',
+      `after(${afterType}, ${formatSize(snapshotDiff?.afterSize)}):`,
+      '```',
+      afterContent,
+      '```',
+      '请输出：',
+      '1) 问题清单（按严重度）',
+      '2) 可直接执行的修改建议',
+      '3) 如需改代码，请给出最小改动补丁',
+    ].join('\n')
+
+    try {
+      await navigator.clipboard.writeText(template)
+    } catch {
+      const textArea = document.createElement('textarea')
+      textArea.value = template
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+  }
+
   const renderTextDiff = () => {
+    if (hasBinarySnapshot) {
+      if (isImageFile(fileChange.path) && (snapshotImageUrls.before || snapshotImageUrls.after)) {
+        return (
+          <div className="flex h-full">
+            <div className="flex flex-1 flex-col border-r border-subtle">
+              <div className="border-b border-subtle bg-muted px-4 py-2 text-sm text-secondary">快照前</div>
+              <div className="flex flex-1 items-center justify-center bg-card p-4">
+                {snapshotImageUrls.before ? (
+                  <img
+                    src={snapshotImageUrls.before}
+                    alt={`快照前: ${fileChange.path}`}
+                    className="max-h-full max-w-full rounded border border-subtle object-contain"
+                  />
+                ) : (
+                  <span className="text-sm text-secondary">无图片内容</span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col">
+              <div className="border-b border-subtle bg-muted px-4 py-2 text-sm text-secondary">快照后</div>
+              <div className="flex flex-1 items-center justify-center bg-card p-4">
+                {snapshotImageUrls.after ? (
+                  <img
+                    src={snapshotImageUrls.after}
+                    alt={`快照后: ${fileChange.path}`}
+                    className="max-h-full max-w-full rounded border border-subtle object-contain"
+                  />
+                ) : (
+                  <span className="text-sm text-secondary">无图片内容</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="flex h-full items-center justify-center p-6">
+          <div className="w-full max-w-2xl rounded-lg border border-subtle bg-background p-4">
+            <h4 className="text-sm font-semibold text-primary mb-3">二进制快照对比</h4>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded border border-subtle bg-elevated p-3">
+                <div className="text-xs text-secondary">快照前</div>
+                <div className="mt-1 text-sm text-primary">
+                  类型: {snapshotDiff?.beforeKind === 'binary' ? '二进制' : snapshotDiff?.beforeKind === 'text' ? '文本' : '无'}
+                </div>
+                <div className="text-sm text-primary">大小: {formatSize(snapshotDiff?.beforeSize)}</div>
+              </div>
+              <div className="rounded border border-subtle bg-elevated p-3">
+                <div className="text-xs text-secondary">快照后</div>
+                <div className="mt-1 text-sm text-primary">
+                  类型: {snapshotDiff?.afterKind === 'binary' ? '二进制' : snapshotDiff?.afterKind === 'text' ? '文本' : '无'}
+                </div>
+                <div className="text-sm text-primary">大小: {formatSize(snapshotDiff?.afterSize)}</div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-secondary">二进制内容不支持文本行级 diff，请下载文件或使用专用二进制比对工具。</p>
+          </div>
+        </div>
+      )
+    }
+
     if (!content.showNativePanel && content.opfs === null) {
       return (
         <div className="flex h-full items-center justify-center text-sm text-tertiary dark:text-muted">
-          {fileChange.type === 'delete' ? '文件已删除（OPFS 中无内容）' : '无法读取 OPFS 内容'}
+          {fileChange.type === 'delete' ? '文件已删除（变更版本中无内容）' : '无法读取变更版本内容'}
         </div>
       )
     }
@@ -293,7 +555,24 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
           </div>
         }
       >
-        <MonacoDiffEditor original={originalText} modified={modifiedText} path={fileChange.path} />
+        <MonacoDiffEditor
+          original={originalText}
+          modified={modifiedText}
+          path={fileChange.path}
+          comments={currentFileComments.map((item) => ({
+            side: item.side,
+            startLine: item.startLine,
+            endLine: item.endLine,
+          }))}
+          onLineSelectForComment={(target) => {
+            setComposer({
+              side: target.side,
+              startLine: target.startLine,
+              endLine: target.endLine,
+              text: '',
+            })
+          }}
+        />
       </Suspense>
     )
   }
@@ -315,9 +594,53 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               {fileChange.size ? `${(fileChange.size / 1024).toFixed(1)} KB` : '-'}
             </p>
           </div>
-
+          <div className="flex items-center gap-2">
+              {isSnapshotMode && (
+                <Badge variant="outline">{snapshotDiff?.snapshotTitle || '快照对比'}</Badge>
+              )}
+              {isSnapshotMode && (
+                <Badge variant="outline">记录时间 {formatTime(snapshotDiff?.capturedAt)}</Badge>
+              )}
+              <Badge variant="outline">评论 {allComments.length}</Badge>
+              {isSnapshotMode && (
+                <BrandButton variant="outline" onClick={copySnapshotTemplateForLLM}>
+                  复制快照模板
+                </BrandButton>
+              )}
+              <BrandButton variant="outline" onClick={copyCommentsForLLM} disabled={allComments.length === 0}>
+                复制评论
+              </BrandButton>
+          </div>
         </div>
       </div>
+
+      {composer && (
+        <div className="border-b bg-card px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-secondary mb-2">
+            <Badge variant="outline">{composer.side === 'modified' ? '变更版本' : '当前文件'}</Badge>
+            <span>
+              {composer.startLine === composer.endLine
+                ? `第 ${composer.startLine} 行`
+                : `第 ${composer.startLine}-${composer.endLine} 行`}
+            </span>
+            <span>点击行号可单行评论，Shift+点击可选中多行</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              className="h-9 flex-1 rounded border border-input bg-background px-3 text-sm"
+              placeholder="输入此行修改意见..."
+              value={composer.text}
+              onChange={(e) => setComposer((prev) => (prev ? { ...prev, text: e.target.value } : prev))}
+            />
+            <BrandButton variant="outline" onClick={() => setComposer(null)}>
+              取消
+            </BrandButton>
+            <BrandButton variant="primary" onClick={addComment} disabled={!composer.text.trim()}>
+              添加评论
+            </BrandButton>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {isImage ? (
@@ -325,7 +648,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
             <div className={`flex flex-1 flex-col ${content.showNativePanel ? 'border-r border dark:border-border' : ''}`}>
               <div className="border-b border bg-muted px-4 py-2 dark:border-border dark:bg-muted">
                 <h4 className="text-sm font-medium text-secondary dark:text-muted">
-                  {content.showNativePanel ? '本机文件系统（当前）' : 'OPFS 版本（待同步）'}
+                  {content.showNativePanel ? (isSnapshotMode ? '快照前' : '当前文件') : (isSnapshotMode ? '快照后' : '变更版本')}
                   {!content.showNativePanel && fileChange.type === 'delete' && (
                     <span className="ml-2 text-xs text-red-600">(将被删除)</span>
                   )}
@@ -338,14 +661,18 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                     onClick={() =>
                       setLightbox({
                         src: (content.showNativePanel ? content.nativeImageUrl : content.opfsImageUrl)!,
-                        title: content.showNativePanel ? `本机文件系统 - ${fileChange.path}` : `OPFS 版本 - ${fileChange.path}`,
+                        title: content.showNativePanel
+                          ? `${isSnapshotMode ? '快照前' : '当前文件'} - ${fileChange.path}`
+                          : `${isSnapshotMode ? '快照后' : '变更版本'} - ${fileChange.path}`,
                       })
                     }
                     className="flex h-full w-full items-center justify-center"
                   >
                     <img
                       src={(content.showNativePanel ? content.nativeImageUrl : content.opfsImageUrl)!}
-                      alt={content.showNativePanel ? `Native: ${fileChange.path}` : `OPFS: ${fileChange.path}`}
+                      alt={content.showNativePanel
+                        ? `${isSnapshotMode ? '快照前' : '当前文件'}: ${fileChange.path}`
+                        : `${isSnapshotMode ? '快照后' : '变更版本'}: ${fileChange.path}`}
                       className="max-h-full max-w-full rounded border border dark:border-border object-contain"
                       loading="lazy"
                     />
@@ -355,8 +682,8 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                     {content.showNativePanel
                       ? '无法读取本机图片'
                       : fileChange.type === 'delete'
-                        ? '图片将被删除（OPFS 中无内容）'
-                        : '无法读取 OPFS 图片'}
+                        ? '图片将被删除（变更版本中无内容）'
+                        : '无法读取变更版本图片'}
                   </div>
                 )}
               </div>
@@ -366,7 +693,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
               <div className="flex flex-1 flex-col">
                 <div className="border-b border bg-muted px-4 py-2 dark:border-border dark:bg-muted">
                   <h4 className="text-sm font-medium text-secondary dark:text-muted">
-                    OPFS 版本（待同步）
+                    {isSnapshotMode ? '快照后' : '变更版本'}
                     {fileChange.type === 'delete' && <span className="ml-2 text-xs text-red-600">(将被删除)</span>}
                   </h4>
                 </div>
@@ -377,21 +704,21 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
                       onClick={() =>
                         setLightbox({
                           src: content.opfsImageUrl!,
-                          title: `OPFS 版本 - ${fileChange.path}`,
+                          title: `变更版本 - ${fileChange.path}`,
                         })
                       }
                       className="flex h-full w-full items-center justify-center"
                     >
                       <img
                         src={content.opfsImageUrl}
-                        alt={`OPFS: ${fileChange.path}`}
+                        alt={`变更版本: ${fileChange.path}`}
                         className="max-h-full max-w-full rounded border border dark:border-border object-contain"
                         loading="lazy"
                       />
                     </button>
                   ) : (
                     <div className="text-sm text-tertiary dark:text-muted">
-                      {fileChange.type === 'delete' ? '图片将被删除（OPFS 中无内容）' : '无法读取 OPFS 图片'}
+                      {fileChange.type === 'delete' ? '图片将被删除（变更版本中无内容）' : '无法读取变更版本图片'}
                     </div>
                   )}
                 </div>
@@ -402,6 +729,26 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange }) =>
           <div className="flex-1 overflow-hidden bg-card dark:bg-card">{renderTextDiff()}</div>
         )}
       </div>
+
+      {currentFileComments.length > 0 && (
+        <div className="border-t bg-elevated px-4 py-2">
+          <div className="text-xs text-secondary mb-1">当前文件评论</div>
+          <div className="flex flex-wrap gap-2">
+            {currentFileComments.map((item) => (
+              <div key={item.id} className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs">
+                <span className="font-medium">
+                  {item.side === 'modified' ? '变更' : '当前'}{' '}
+                  {item.startLine === item.endLine ? `L${item.startLine}` : `L${item.startLine}-L${item.endLine}`}
+                </span>
+                <span className="max-w-[360px] truncate" title={item.text}>{item.text}</span>
+                <button className="text-tertiary hover:text-destructive" onClick={() => removeComment(item.id)}>
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {lightbox && (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/80" onClick={() => setLightbox(null)} role="presentation">
