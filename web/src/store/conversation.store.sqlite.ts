@@ -1200,7 +1200,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                   c.streamingToolArgs = ''
                 }
                 c.activeToolCalls = (c.activeToolCalls || []).filter((x) => x.id !== tc.id)
-                
+
                 // Check if there are more tools to execute
                 const hasMoreTools = (c.activeToolCalls || []).length > 0
                 if (hasMoreTools) {
@@ -1214,11 +1214,27 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                   // Set status to 'pending' to show loading effect
                   c.status = 'pending'
                 }
-                
+
                 c.streamingToolArgsByCallId = c.streamingToolArgsByCallId || {}
 
                 if (c.draftAssistant) {
                   c.draftAssistant.toolResults[tc.id] = _result || ''
+
+                  // Sync streamed args to the tool call in draftAssistant.toolCalls
+                  // This ensures complete tool call args are preserved when stopped
+                  const streamedArgs = c.streamingToolArgsByCallId[tc.id] || ''
+                  if (streamedArgs && c.draftAssistant.toolCalls) {
+                    const toolCallIndex = c.draftAssistant.toolCalls.findIndex((t) => t.id === tc.id)
+                    if (toolCallIndex !== -1) {
+                      c.draftAssistant.toolCalls[toolCallIndex] = {
+                        ...c.draftAssistant.toolCalls[toolCallIndex],
+                        function: {
+                          ...c.draftAssistant.toolCalls[toolCallIndex].function,
+                          arguments: streamedArgs,
+                        },
+                      }
+                    }
+                  }
 
                   const completedStep = c.draftAssistant.steps.find((s) => s.id === completedStepId)
                   if (completedStep && completedStep.type === 'tool_call') {
@@ -1532,10 +1548,16 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             const draftContent = c.draftAssistant?.content || c.streamingContent
             const draftToolCalls = c.draftAssistant?.toolCalls || []
             const draftToolResults = c.draftAssistant?.toolResults || {}
+
+            // Only save tool calls with execution results (completed tool call + tool result pairs)
             const completedDraftToolCalls = draftToolCalls.filter((tc) =>
               Object.prototype.hasOwnProperty.call(draftToolResults, tc.id)
             )
-            if (draftReasoning.trim() || draftContent.trim() || completedDraftToolCalls.length > 0) {
+
+            const hasPartialContent =
+              draftReasoning.trim() || draftContent.trim() || completedDraftToolCalls.length > 0
+
+            if (hasPartialContent) {
               c.messages.push(
                 createAssistantMessage(
                   draftContent || null,

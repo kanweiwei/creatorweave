@@ -355,7 +355,9 @@ export function ConversationView({
                     onRegenerate={
                       convId ? (userMessageId: string) => regenerateUserMessage(convId, userMessageId) : undefined
                     }
+                    onCancel={handleCancel}
                     disableDeleteActions={isProcessing}
+                    isProcessing={isProcessing}
                   />
                 ) : (
                   <AssistantTurnBubble
@@ -446,7 +448,7 @@ export function ConversationView({
         {/* Input area */}
         <div className="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
           <div className="mx-auto flex max-w-3xl flex-col">
-            <div className="flex items-end gap-2">
+            <div className="relative">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -458,14 +460,14 @@ export function ConversationView({
                 }
                 aria-label={t('conversation.input.ariaLabel')}
                 style={{ height: '38px', maxHeight: '96px' }}
-                className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900"
+                className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 w-full resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all placeholder:text-neutral-400 focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
                 disabled={isProcessing || !hasApiKey}
               />
               {isProcessing ? (
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600"
+                  className="absolute bottom-4 right-4 rounded-xl bg-red-500 p-2 text-white shadow-sm transition-colors hover:bg-red-600"
                   title={t('conversation.buttons.stop')}
                 >
                   <StopCircle className="h-4 w-4" />
@@ -475,7 +477,7 @@ export function ConversationView({
                   type="button"
                   onClick={handleSend}
                   disabled={(!input.trim() && !suggestedFollowUp) || !hasApiKey}
-                  className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-30"
+                  className="absolute bottom-4 right-4 rounded-xl bg-primary-600 p-2 text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-30 disabled:hover:bg-primary-600"
                   title={t('conversation.buttons.send')}
                 >
                   <Send className="h-4 w-4" />

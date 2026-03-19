@@ -47,6 +47,10 @@ interface MessageBubbleProps {
   disableDeleteActions?: boolean
   /** 重新生成回调 */
   onRegenerate?: (userMessageId: string) => void
+  /** 取消当前流式输出的回调 */
+  onCancel?: () => void
+  /** 是否正在处理（流式输出） */
+  isProcessing?: boolean
 }
 
 export function MessageBubble({
@@ -58,6 +62,8 @@ export function MessageBubble({
   onDeleteAgentLoop,
   disableDeleteActions = false,
   onRegenerate,
+  onCancel,
+  isProcessing = false,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isStreamingReasoning = streaming?.reasoning ?? false
@@ -93,7 +99,9 @@ export function MessageBubble({
                 messageContent={message.content || ''}
                 conversationId={''}
                 onRegenerate={onRegenerate}
+                onCancel={onCancel}
                 disabled={disableDeleteActions}
+                isRunning={isProcessing}
               />
             )}
             <CopyButton content={message.content || ''} title="复制" />
