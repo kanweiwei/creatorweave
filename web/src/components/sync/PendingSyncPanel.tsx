@@ -19,6 +19,8 @@ import { RefreshCw } from 'lucide-react'
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
 import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
 import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
+import { sendChangeReviewToConversation } from './review-request'
+import { toast } from 'sonner'
 
 export function PendingSyncPanel() {
   const pendingChanges = useWorkspaceStore((state) => state.pendingChanges)
@@ -35,6 +37,7 @@ export function PendingSyncPanel() {
   const [snapshotSummary, setSnapshotSummary] = useState('')
   const [generatingSummary, setGeneratingSummary] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [isReviewing, setIsReviewing] = useState(false)
   const listRef = React.useRef<HTMLDivElement>(null)
 
   // Handle keyboard shortcuts
@@ -312,6 +315,27 @@ export function PendingSyncPanel() {
     setGeneratingSummary(false)
   }, [pendingChanges, isSyncing, selectedItems, generateSummaryWithLLM])
 
+  const handleReview = useCallback(async () => {
+    if (!pendingChanges || pendingChanges.changes.length === 0 || isReviewing) return
+
+    const filesToReview = selectedItems.size > 0
+      ? pendingChanges.changes.filter((c) => selectedItems.has(c.path))
+      : pendingChanges.changes
+
+    if (filesToReview.length === 0) return
+
+    setIsReviewing(true)
+    try {
+      await sendChangeReviewToConversation(filesToReview)
+      toast.success('已发送变更审阅请求')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '发送审阅请求失败'
+      toast.error(message)
+    } finally {
+      setIsReviewing(false)
+    }
+  }, [pendingChanges, selectedItems, isReviewing])
+
   // 没有变更文件时显示空状态
   if (isEmpty) {
     return (
@@ -477,8 +501,17 @@ export function PendingSyncPanel() {
           <BrandButton
             variant="outline"
             className="h-8 px-3 py-1.5 text-xs"
+            onClick={handleReview}
+            disabled={isSyncing || isReviewing}
+            aria-label="一键审阅变更"
+          >
+            {isReviewing ? '审阅中...' : '一键 Review'}
+          </BrandButton>
+          <BrandButton
+            variant="outline"
+            className="h-8 px-3 py-1.5 text-xs"
             onClick={() => setShowClearConfirm(true)}
-            disabled={isSyncing}
+            disabled={isSyncing || isReviewing}
             aria-label="拒绝全部变更"
           >
             拒绝
@@ -487,7 +520,7 @@ export function PendingSyncPanel() {
             variant="primary"
             className="h-8 px-4 py-1.5 text-xs"
             onClick={handleSync}
-            disabled={isSyncing}
+            disabled={isSyncing || isReviewing}
             aria-label="审批通过所选变更"
           >
             {isSyncing ? (

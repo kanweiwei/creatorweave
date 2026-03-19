@@ -23,6 +23,8 @@ import { FileDiffViewer } from './FileDiffViewer'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
 import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
+import { sendChangeReviewToConversation } from './review-request'
+import { toast } from 'sonner'
 
 /**
  * Empty state when no changes detected
@@ -122,6 +124,7 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
   const [snapshotSummary, setSnapshotSummary] = useState('')
   const [generatingSummary, setGeneratingSummary] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [isReviewing, setIsReviewing] = useState(false)
 
   // Selection state for selective sync
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
@@ -313,6 +316,27 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
     setGeneratingSummary(false)
   }, [pendingChanges, isSyncing, generateSummaryWithLLM, snapshotSummary])
 
+  const handleReview = useCallback(async () => {
+    if (!pendingChanges || pendingChanges.changes.length === 0 || isReviewing) return
+
+    const filesToReview = selectedItems.size > 0
+      ? pendingChanges.changes.filter((c) => selectedItems.has(c.path))
+      : pendingChanges.changes
+
+    if (filesToReview.length === 0) return
+
+    setIsReviewing(true)
+    try {
+      await sendChangeReviewToConversation(filesToReview)
+      toast.success('已发送变更审阅请求')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '发送审阅请求失败'
+      toast.error(message)
+    } finally {
+      setIsReviewing(false)
+    }
+  }, [pendingChanges, selectedItems, isReviewing])
+
   /**
    * Handle clear all pending changes (user decides not to sync)
    */
@@ -346,7 +370,7 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         {/* Header - simplified for Drawer (title and close handled by Drawer) */}
         <div className="border-b px-4 py-3 bg-card">
         {/* Summary */}
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">
             检测到{' '}
             <span className="font-semibold text-foreground">{totalFiles}</span>{' '}
@@ -378,6 +402,17 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
               {syncError}
             </span>
           )}
+          <div className="ml-auto">
+            <BrandButton
+              variant="outline"
+              className="h-7 px-3 text-xs"
+              onClick={handleReview}
+              disabled={isSyncing || isReviewing || totalFiles === 0}
+              aria-label="一键审阅变更"
+            >
+              {isReviewing ? '审阅中...' : '一键 Review'}
+            </BrandButton>
+          </div>
         </div>
         </div>
 
