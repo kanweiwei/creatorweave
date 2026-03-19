@@ -1,5 +1,5 @@
 /**
- * PendingSyncPanel - 侧边栏待同步文件面板
+ * PendingSyncPanel - 侧边栏变更面板
  *
  * 方案 A: 极简紧凑版
  * - 单行紧凑显示，最大化空间利用
@@ -8,10 +8,17 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect as useReactEffect } from 'react'
+import { isImageFile, readFileFromNativeFS, readFileFromOPFS } from '@/opfs'
 import { useWorkspaceStore, getActiveWorkspace } from '@/store/workspace.store'
+import { useSettingsStore } from '@/store/settings.store'
+import { getApiKeyRepository } from '@/sqlite'
+import { createLLMProvider } from '@/agent/llm/provider-factory'
+import { buildCommitSummaryDiffSections } from '@/workers/commit-summary-worker-manager'
 import { BrandButton } from '@creatorweave/ui'
 import { RefreshCw } from 'lucide-react'
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
+import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
+import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
 
 export function PendingSyncPanel() {
   const pendingChanges = useWorkspaceStore((state) => state.pendingChanges)
@@ -23,6 +30,11 @@ export function PendingSyncPanel() {
   const [showSyncSuccess, setShowSyncSuccess] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+  const [pendingApprovePaths, setPendingApprovePaths] = useState<string[]>([])
+  const [snapshotSummary, setSnapshotSummary] = useState('')
+  const [generatingSummary, setGeneratingSummary] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
   const listRef = React.useRef<HTMLDivElement>(null)
 
   // Handle keyboard shortcuts
@@ -33,7 +45,7 @@ export function PendingSyncPanel() {
         e.preventDefault()
         handleToggleSelectAll()
       }
-      // Ctrl/Cmd + Enter: Sync
+      // Ctrl/Cmd + Enter: Approve
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
         handleSync()
@@ -63,6 +75,11 @@ export function PendingSyncPanel() {
   const handleOpenPreview = useCallback(() => {
     const { showPreviewPanel } = useWorkspaceStore.getState()
     showPreviewPanel()
+  }, [])
+
+  const handleOpenPreviewForPath = useCallback((path: string) => {
+    const { showPreviewPanelForPath } = useWorkspaceStore.getState()
+    showPreviewPanelForPath(path)
   }, [])
 
   // 计算选中的数量
@@ -110,7 +127,7 @@ export function PendingSyncPanel() {
     await discardPendingPath(path)
   }, [discardPendingPath])
 
-  // 处理清空列表 (必须在条件返回之前定义)
+  // 处理拒绝全部 (必须在条件返回之前定义)
   const handleClear = useCallback(async () => {
     await clearChanges()
     setSelectedItems(new Set())
@@ -118,9 +135,96 @@ export function PendingSyncPanel() {
     setShowClearConfirm(false)
   }, [clearChanges])
 
-  // 处理同步 (必须在条件返回之前定义)
-  const handleSync = useCallback(async () => {
-    if (!pendingChanges || pendingChanges.changes.length === 0 || isSyncing) return
+  const generateSummaryWithLLM = useCallback(async (paths: string[]): Promise<string | null> => {
+    try {
+      const activeWorkspace = await getActiveWorkspace()
+      if (!activeWorkspace) return null
+      const { workspace, workspaceId } = activeWorkspace
+      const nativeDir = await workspace.getNativeDirectoryHandle()
+
+      const settingsState = useSettingsStore.getState()
+      const providerType = settingsState.providerType
+      const effectiveConfig = settingsState.getEffectiveProviderConfig()
+      if (!effectiveConfig?.baseUrl || !effectiveConfig.modelName) return null
+
+      const apiKey = await getApiKeyRepository().load(effectiveConfig.apiKeyProviderKey)
+      if (!apiKey) return null
+
+      const provider = createLLMProvider({
+        apiKey,
+        providerType,
+        baseUrl: effectiveConfig.baseUrl,
+        model: effectiveConfig.modelName,
+      })
+
+      const selectedChanges = (pendingChanges?.changes || []).filter((c) => paths.includes(c.path))
+      const changesText = selectedChanges
+        .slice(0, 20)
+        .map((c) => `- ${c.type}: ${c.path}`)
+        .join('\n')
+
+      const diffInputs: Array<{
+        path: string
+        beforeText: string
+        afterText: string
+        isBinary?: boolean
+      }> = []
+      for (const change of selectedChanges.slice(0, 8)) {
+        if (isImageFile(change.path)) {
+          diffInputs.push({
+            path: change.path,
+            beforeText: '',
+            afterText: '',
+            isBinary: true,
+          })
+          continue
+        }
+
+        let beforeText = ''
+        let afterText = ''
+        if (change.type !== 'add' && nativeDir) {
+          const text = await readFileFromNativeFS(nativeDir, change.path)
+          beforeText = text ?? ''
+        }
+        if (change.type !== 'delete') {
+          const text = await readFileFromOPFS(workspaceId, change.path)
+          afterText = text ?? ''
+        }
+        diffInputs.push({
+          path: change.path,
+          beforeText: beforeText.slice(0, 2000),
+          afterText: afterText.slice(0, 2000),
+        })
+      }
+      let diffSections: string[] = []
+      try {
+        diffSections = await buildCommitSummaryDiffSections(diffInputs, {
+          timeoutMs: 2500,
+          maxOutputLines: 90,
+          contextLines: 2,
+          maxNoChangeLines: 20,
+        })
+      } catch {
+        // Fallback to file-list-only prompt when worker times out/fails.
+        diffSections = []
+      }
+
+      const prompt = buildSnapshotSummaryPrompt(selectedChanges.length, changesText, diffSections)
+
+      const response = await provider.chat({
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 220,
+      })
+      const content = response.choices[0]?.message?.content?.trim()
+      if (!content) return null
+      return content.slice(0, 3000)
+    } catch {
+      return null
+    }
+  }, [pendingChanges])
+
+  const runSync = useCallback(async (pathsToSync: string[], summary: string) => {
+    if (!pendingChanges || pendingChanges.changes.length === 0 || isSyncing) return false
 
     setIsSyncing(true)
 
@@ -144,10 +248,14 @@ export function PendingSyncPanel() {
         return
       }
 
-      // Determine which files to sync: selected items or all
-      const filesToSync = selectedItems.size > 0
-        ? pendingChanges.changes.filter(c => selectedItems.has(c.path))
-        : pendingChanges.changes
+      const filesToSync = pendingChanges.changes.filter((c) => pathsToSync.includes(c.path))
+      if (filesToSync.length === 0) return false
+
+      await workspace.createApprovedSnapshotForPaths(
+        filesToSync.map((c) => c.path),
+        summary.trim(),
+        nativeDir
+      )
 
       // 执行同步（统一走 pending/cache 同步链路）
       const result = await workspace.syncToDisk(
@@ -168,29 +276,56 @@ export function PendingSyncPanel() {
       setShowSyncSuccess(true)
       setSyncError(null)
       setTimeout(() => setShowSyncSuccess(false), 3000)
+      return true
     } catch (err) {
       console.error('[PendingSyncPanel] Sync failed:', err)
-      setSyncError(err instanceof Error ? err.message : '同步失败，请重试')
+      setSyncError(err instanceof Error ? err.message : '审批失败，请重试')
       setTimeout(() => setSyncError(null), 5000)
+      return false
     } finally {
       setIsSyncing(false)
     }
   }, [pendingChanges, isSyncing, selectedItems])
 
-  // 没有待同步文件时显示空状态
+  // 处理审批按钮点击：先弹窗
+  const handleSync = useCallback(async () => {
+    if (!pendingChanges || pendingChanges.changes.length === 0 || isSyncing) return
+    const filesToSync = selectedItems.size > 0
+      ? pendingChanges.changes.filter((c) => selectedItems.has(c.path))
+      : pendingChanges.changes
+    const paths = filesToSync.map((c) => c.path)
+    if (paths.length === 0) return
+
+    setPendingApprovePaths(paths)
+    setSnapshotSummary('')
+    setSummaryError(null)
+    setApproveDialogOpen(true)
+
+    setGeneratingSummary(true)
+    const aiSummary = await generateSummaryWithLLM(paths)
+    if (aiSummary && aiSummary.trim().length > 0) {
+      setSnapshotSummary(aiSummary.trim())
+      setSummaryError(null)
+    } else {
+      setSummaryError('AI 生成失败，请手动填写')
+    }
+    setGeneratingSummary(false)
+  }, [pendingChanges, isSyncing, selectedItems, generateSummaryWithLLM])
+
+  // 没有变更文件时显示空状态
   if (isEmpty) {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="border-subtle flex items-center gap-2 border-b bg-elevated px-3 py-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">待同步文件</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
         </div>
 
         {/* Empty State */}
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
             <div className="text-4xl mb-3 opacity-20 transition-opacity duration-500 hover:opacity-30">✓</div>
-            <p className="text-sm font-medium text-secondary">所有文件已同步</p>
+            <p className="text-sm font-medium text-secondary">当前没有待审阅变更</p>
             <p className="text-xs text-tertiary mt-1">新变更会自动显示在此处</p>
           </div>
         </div>
@@ -206,7 +341,7 @@ export function PendingSyncPanel() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7l-7 7-7-7 7" />
           </svg>
-          同步成功！
+          审批成功！
         </div>
       )}
 
@@ -223,7 +358,7 @@ export function PendingSyncPanel() {
       {/* Header with count */}
       <div className="border-subtle flex items-center justify-between border-b bg-elevated px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">待同步文件</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded-full animate-pulse-on-change">
               {pendingChanges.changes.length}
@@ -257,7 +392,7 @@ export function PendingSyncPanel() {
       <div
         ref={listRef}
         role="listbox"
-        aria-label="待同步文件列表"
+        aria-label="变更文件列表"
         className="flex-1 overflow-y-auto custom-scrollbar"
       >
         <div className="divide-y divide-subtle/50">
@@ -273,6 +408,7 @@ export function PendingSyncPanel() {
                 className={`group flex items-center gap-2 px-3 py-2 transition-all cursor-pointer ${
                   isSelected ? 'bg-primary-50/50' : 'hover:bg-hover'
                 }`}
+                onClick={() => handleOpenPreviewForPath(change.path)}
               >
                 {/* Checkbox */}
                 <input
@@ -290,10 +426,7 @@ export function PendingSyncPanel() {
                 </span>
 
                 {/* File Name */}
-                <span
-                  className="flex-1 text-sm font-medium text-primary truncate min-w-0"
-                  title={change.path}
-                >
+                <span className="flex-1 text-sm font-medium text-primary truncate min-w-0" title={change.path}>
                   {change.path.split('/').pop() || change.path}
                 </span>
 
@@ -346,26 +479,26 @@ export function PendingSyncPanel() {
             className="h-8 px-3 py-1.5 text-xs"
             onClick={() => setShowClearConfirm(true)}
             disabled={isSyncing}
-            aria-label="清空列表"
+            aria-label="拒绝全部变更"
           >
-            清空
+            拒绝
           </BrandButton>
           <BrandButton
             variant="primary"
             className="h-8 px-4 py-1.5 text-xs"
             onClick={handleSync}
             disabled={isSyncing}
-            aria-label="同步所有文件到本机"
+            aria-label="审批通过所选变更"
           >
             {isSyncing ? (
               <>
                 <div className={`w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin`} />
-                同步中...
+                审批中...
               </>
             ) : (
               <>
                 <RefreshCw className="w-4 h-4" />
-                {showSyncSuccess ? '完成!' : selectedCount > 0 ? `同步选中 (${selectedCount})` : '同步全部'}
+                {showSyncSuccess ? '完成!' : selectedCount > 0 ? `审批选中 (${selectedCount})` : '审批全部'}
               </>
             )}
           </BrandButton>
@@ -383,9 +516,9 @@ export function PendingSyncPanel() {
       {showClearConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowClearConfirm(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-sm mx-4 p-6 dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-primary mb-2">确认清空</h3>
+            <h3 className="text-lg font-semibold text-primary mb-2">确认拒绝</h3>
             <p className="text-sm text-secondary mb-4">
-              确定要清空所有待同步文件吗？此操作无法撤销。
+              确定要拒绝所有变更吗？此操作无法撤销。
             </p>
             <div className="flex justify-end gap-2">
               <BrandButton
@@ -402,12 +535,38 @@ export function PendingSyncPanel() {
                 }}
                 className="text-danger border-danger hover:bg-danger/10 focus:ring-danger"
               >
-                确认清空
+                确认拒绝
               </BrandButton>
             </div>
           </div>
         </div>
       )}
+
+      <SnapshotApprovalDialog
+        open={approveDialogOpen}
+        pendingCount={pendingApprovePaths.length}
+        summary={snapshotSummary}
+        summaryError={summaryError}
+        generatingSummary={generatingSummary}
+        isSyncing={isSyncing}
+        onOpenChange={setApproveDialogOpen}
+        onSummaryChange={setSnapshotSummary}
+        onGenerateSummary={async () => {
+          setGeneratingSummary(true)
+          const aiSummary = await generateSummaryWithLLM(pendingApprovePaths)
+          if (aiSummary && aiSummary.trim().length > 0) {
+            setSnapshotSummary(aiSummary.trim())
+            setSummaryError(null)
+          } else {
+            setSummaryError('AI 生成失败，请手动填写')
+          }
+          setGeneratingSummary(false)
+        }}
+        onConfirm={async () => {
+          const ok = await runSync(pendingApprovePaths, snapshotSummary)
+          if (ok) setApproveDialogOpen(false)
+        }}
+      />
     </div>
   )
 }

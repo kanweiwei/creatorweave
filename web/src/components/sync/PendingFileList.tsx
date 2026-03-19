@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * PendingFileList Component - 紧凑待同步文件列表
+ * PendingFileList Component - 紧凑变更列表
  *
  * 方案 A: 紧凑内联列表
  * - 单行紧凑显示文件
@@ -16,10 +16,10 @@ import { BrandButton, BrandCheckbox } from '@creatorweave/ui'
 import { Badge } from '@/components/ui/badge'
 import { RefreshCw, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
-type CheckpointGroup = {
+type SnapshotGroup = {
   key: string
   title: string
-  status: 'draft' | 'committed'
+  status: 'draft' | 'committed' | 'approved' | 'rolled_back'
   summary?: string
   count: number
   changes: FileChange[]
@@ -61,17 +61,17 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
   // Internal state for uncontrolled mode (backward compatibility)
   const [internalSelectAll, setInternalSelectAll] = useState(false)
   const [internalSelectedItems, setInternalSelectedItems] = useState<Set<string>>(new Set())
-  // checkpoint 分组展开/折叠状态
+  // snapshot 分组展开/折叠状态
   const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({
     draft: true,
   })
 
-  // 按 checkpoint 分组
+  // 按 snapshot 分组
   const groupedChanges = useMemo(() => {
-    const groupsMap = new Map<string, Omit<CheckpointGroup, 'expanded'>>()
+    const groupsMap = new Map<string, Omit<SnapshotGroup, 'expanded'>>()
     for (const change of changes.changes) {
-      const key = change.checkpointId || 'draft'
-      const status = change.checkpointStatus || 'draft'
+      const status = change.snapshotStatus || 'draft'
+      const key = status === 'draft' ? 'draft' : (change.snapshotId || 'draft')
       const existing = groupsMap.get(key)
       if (existing) {
         existing.changes.push(change)
@@ -80,9 +80,9 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
       }
       groupsMap.set(key, {
         key,
-        title: key === 'draft' ? '当前草稿' : `Checkpoint ${key.slice(-8)}`,
+        title: status === 'draft' ? '当前草稿' : `快照 ${key.slice(-8)}`,
         status,
-        summary: change.checkpointSummary,
+        summary: status === 'draft' ? undefined : change.snapshotSummary,
         count: 1,
         changes: [change],
       })
@@ -94,7 +94,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
     }))
   }, [changes.changes, groupExpanded])
 
-  // 切换 checkpoint 分组展开/折叠
+  // 切换 snapshot 分组展开/折叠
   const toggleGroup = useCallback((key: string) => {
     setGroupExpanded((prev) => ({
       ...prev,
@@ -177,7 +177,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
       {/* 紧凑标题栏 */}
       <div className="border-subtle flex items-center justify-between border-b bg-elevated px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-primary">待同步文件</span>
+          <span className="text-sm font-medium text-primary">变更文件</span>
           <Badge variant="warning">{changes.changes.length}</Badge>
         </div>
         {hasSelection && (
@@ -208,10 +208,22 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                   {/* 分组标签 */}
                   <Badge
                     className={`flex-shrink-0 ${
-                      group.status === 'committed' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                      group.status === 'committed'
+                        ? 'bg-blue-100 text-blue-700'
+                        : group.status === 'approved'
+                          ? 'bg-green-100 text-green-700'
+                          : group.status === 'rolled_back'
+                            ? 'bg-neutral-200 text-neutral-700'
+                            : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {group.status === 'committed' ? '已保存' : '草稿'}
+                    {group.status === 'committed'
+                      ? '已保存'
+                      : group.status === 'approved'
+                        ? '已审批'
+                        : group.status === 'rolled_back'
+                          ? '已回滚'
+                          : '草稿'}
                   </Badge>
                   
                   {/* 分组标题 */}
@@ -311,7 +323,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
             disabled={isSyncing}
           >
             <Trash2 className="w-4 h-4" />
-            清空
+            拒绝
           </BrandButton>
           <BrandButton
             variant="primary"
@@ -321,12 +333,12 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
             {isSyncing ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                同步中...
+                处理中...
               </>
             ) : (
               <>
                 <RefreshCw className="w-4 h-4" />
-                {hasSelection ? `同步选中 (${selectedCount})` : '同步全部'}
+                {hasSelection ? `审批通过选中 (${selectedCount})` : '审批通过全部'}
               </>
             )}
           </BrandButton>
