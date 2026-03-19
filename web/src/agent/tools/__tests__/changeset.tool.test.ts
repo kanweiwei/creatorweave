@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '../tool-types'
-import { commitChangesExecutor, rollbackChangesetExecutor } from '../changeset.tool'
+import { createSnapshotExecutor, rollbackSnapshotExecutor } from '../changeset.tool'
 
-const commitDraftChangesetMock = vi.fn()
-const rollbackChangesetMock = vi.fn()
+const createDraftSnapshotMock = vi.fn()
+const rollbackSnapshotMock = vi.fn()
 const updateCurrentCountsMock = vi.fn()
 const refreshPendingChangesMock = vi.fn()
 const getActiveWorkspaceMock = vi.fn()
@@ -22,54 +22,54 @@ const context: ToolContext = {
   directoryHandle: null,
 }
 
-describe('changeset tools', () => {
+describe('snapshot tools', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     updateCurrentCountsMock.mockResolvedValue(undefined)
     refreshPendingChangesMock.mockResolvedValue(undefined)
   })
 
-  it('checkpoint returns committed payload when draft exists', async () => {
-    commitDraftChangesetMock.mockResolvedValue({ changesetId: 'cs_1', opCount: 3 })
+  it('create_snapshot returns created payload when draft exists', async () => {
+    createDraftSnapshotMock.mockResolvedValue({ snapshotId: 'snap_1', opCount: 3 })
     getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { commitDraftChangeset: commitDraftChangesetMock },
+      workspace: { createDraftSnapshot: createDraftSnapshotMock },
     })
 
-    const result = await commitChangesExecutor({ summary: 'batch update' }, context)
+    const result = await createSnapshotExecutor({ summary: 'batch update' }, context)
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(true)
-    expect(parsed.committed).toBe(true)
-    expect(parsed.changesetId).toBe('cs_1')
+    expect(parsed.created).toBe(true)
+    expect(parsed.snapshotId).toBe('snap_1')
     expect(parsed.opCount).toBe(3)
   })
 
-  it('checkpoint returns no-op when no draft exists', async () => {
-    commitDraftChangesetMock.mockResolvedValue(null)
+  it('create_snapshot returns no-op when no draft exists', async () => {
+    createDraftSnapshotMock.mockResolvedValue(null)
     getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { commitDraftChangeset: commitDraftChangesetMock },
+      workspace: { createDraftSnapshot: createDraftSnapshotMock },
     })
 
-    const result = await commitChangesExecutor({}, context)
+    const result = await createSnapshotExecutor({}, context)
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(true)
-    expect(parsed.committed).toBe(false)
+    expect(parsed.created).toBe(false)
   })
 
-  it('revert_checkpoint validates required checkpoint_id', async () => {
-    const result = await rollbackChangesetExecutor({}, context)
+  it('rollback_snapshot validates required snapshot_id', async () => {
+    const result = await rollbackSnapshotExecutor({}, context)
     const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('checkpoint_id is required')
+    expect(parsed.error).toContain('snapshot_id is required')
   })
 
-  it('revert_checkpoint returns unresolved paths', async () => {
-    rollbackChangesetMock.mockResolvedValue({ reverted: 1, unresolved: ['src/a.ts'] })
+  it('rollback_snapshot returns unresolved paths', async () => {
+    rollbackSnapshotMock.mockResolvedValue({ reverted: 1, unresolved: ['src/a.ts'] })
     getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { rollbackChangeset: rollbackChangesetMock },
+      workspace: { rollbackSnapshot: rollbackSnapshotMock },
     })
 
-    const result = await rollbackChangesetExecutor({ checkpoint_id: 'cs_1' }, context)
+    const result = await rollbackSnapshotExecutor({ snapshot_id: 'snap_1' }, context)
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(false)

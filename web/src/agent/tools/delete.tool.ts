@@ -134,7 +134,7 @@ export const deleteExecutor: ToolExecutor = async (args, context) => {
     pendingCount: pendingChanges.length,
     message:
       failed.length === 0
-        ? `${deleted.length} file(s) marked for deletion. ${pendingChanges.length} file(s) pending sync.`
-        : `${deleted.length} file(s) marked for deletion, ${failed.length} failed. ${pendingChanges.length} file(s) pending sync.`,
+        ? `${deleted.length} file(s) marked for deletion. ${pendingChanges.length} change(s) pending review.`
+        : `${deleted.length} file(s) marked for deletion, ${failed.length} failed. ${pendingChanges.length} change(s) pending review.`,
   })
 }

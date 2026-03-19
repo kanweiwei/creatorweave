@@ -160,7 +160,7 @@ async function executeSingleEdit(
       action: 'edited',
       status: 'pending',
       pendingCount: pendingChanges.length,
-      message: `File "${path}" edited. ${pendingChanges.length} file(s) pending sync.`,
+      message: `File "${path}" edited. ${pendingChanges.length} change(s) pending review.`,
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'NotFoundError') {
@@ -351,7 +351,7 @@ async function executeBatchEdit(
       results,
       message: dryRun
         ? `Dry run: ${totalMatches} matches found in ${matchingFiles.length} files`
-        : `Edited ${totalReplacements} of ${matchingFiles.length} files. ${pendingChanges.length} file(s) pending sync.`,
+        : `Edited ${totalReplacements} of ${matchingFiles.length} files. ${pendingChanges.length} change(s) pending review.`,
     })
   } catch (error) {
     return JSON.stringify({

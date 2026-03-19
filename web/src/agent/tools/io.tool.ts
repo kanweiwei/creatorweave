@@ -447,8 +447,8 @@ async function executeSingleWrite(
       status: 'pending',
       pendingCount: pendingChanges.length,
       message: isNew
-        ? `File "${path}" created. ${pendingChanges.length} file(s) pending sync.`
-        : `File "${path}" updated. ${pendingChanges.length} file(s) pending sync.`,
+        ? `File "${path}" created. ${pendingChanges.length} change(s) pending review.`
+        : `File "${path}" updated. ${pendingChanges.length} change(s) pending review.`,
     })
   } catch (error) {
     return JSON.stringify({
@@ -498,6 +498,6 @@ async function executeBatchWrite(
     failed: files.length - created - updated,
     results,
     pendingCount: pendingChanges.length,
-    message: `${files.length} files processed. ${pendingChanges.length} pending sync.`,
+    message: `${files.length} files processed. ${pendingChanges.length} change(s) pending review.`,
   })
 }

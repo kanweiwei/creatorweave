@@ -1,79 +1,79 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { getActiveWorkspace, useWorkspaceStore } from '@/store/workspace.store'
 
-export const commitChangesDefinition: ToolDefinition = {
+export const createSnapshotDefinition: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'checkpoint',
+    name: 'create_snapshot',
     description:
-      'Save a draft checkpoint for current file changes. ' +
-      'Use this as a review point before syncing files to disk. ' +
-      'Important: this does NOT sync changes to native disk.',
+      'Create a snapshot for current file changes. ' +
+      'Use this as a review point before approving changes to disk. ' +
+      'Important: this does NOT apply changes to native disk.',
     parameters: {
       type: 'object',
       properties: {
         summary: {
           type: 'string',
-          description: 'Optional short note describing this checkpoint',
+          description: 'Optional short note describing this snapshot',
         },
       },
     },
   },
 }
 
-export const commitChangesExecutor: ToolExecutor = async (args) => {
+export const createSnapshotExecutor: ToolExecutor = async (args) => {
   const summary = args.summary as string | undefined
   const active = await getActiveWorkspace()
   if (!active) {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
-  const result = await active.workspace.commitDraftChangeset(summary)
+  const result = await active.workspace.createDraftSnapshot(summary)
   await useWorkspaceStore.getState().updateCurrentCounts()
   await useWorkspaceStore.getState().refreshPendingChanges(true)
 
   if (!result) {
     return JSON.stringify({
       success: true,
-      committed: false,
-      message: 'No draft changes to save as checkpoint.',
+      created: false,
+      message: 'No draft changes to save as snapshot.',
     })
   }
 
   return JSON.stringify({
     success: true,
-    committed: true,
-    changesetId: result.changesetId,
+    created: true,
+    snapshotId: result.snapshotId,
     opCount: result.opCount,
-    message: `Saved checkpoint ${result.changesetId} (${result.opCount} change(s)).`,
+    message: `Saved snapshot ${result.snapshotId} (${result.opCount} change(s)).`,
   })
 }
 
-export const rollbackChangesetDefinition: ToolDefinition = {
+export const rollbackSnapshotDefinition: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'revert_checkpoint',
+    name: 'rollback_snapshot',
     description:
-      'Revert pending file changes from a checkpoint. ' +
-      'New files from that checkpoint are removed from workspace. ' +
+      'Rollback pending file changes from a snapshot. ' +
+      'New files from that snapshot are removed from workspace. ' +
       'Modified/deleted existing files may require a directory handle to restore from disk.',
     parameters: {
       type: 'object',
       properties: {
-        checkpoint_id: {
+        snapshot_id: {
           type: 'string',
-          description: 'Checkpoint id to revert',
+          description: 'Snapshot id to rollback',
         },
       },
-      required: ['checkpoint_id'],
+      required: ['snapshot_id'],
     },
   },
 }
 
-export const rollbackChangesetExecutor: ToolExecutor = async (args, context) => {
-  const changesetId = args.checkpoint_id as string | undefined
-  if (!changesetId) {
-    return JSON.stringify({ error: 'checkpoint_id is required' })
+export const rollbackSnapshotExecutor: ToolExecutor = async (args, context) => {
+  const snapshotId = args.snapshot_id as string | undefined
+  if (!snapshotId) {
+    return JSON.stringify({ error: 'snapshot_id is required' })
   }
 
   const active = await getActiveWorkspace()
@@ -81,7 +81,7 @@ export const rollbackChangesetExecutor: ToolExecutor = async (args, context) => 
     return JSON.stringify({ error: 'No active workspace' })
   }
 
-  const result = await active.workspace.rollbackChangeset(changesetId, context.directoryHandle)
+  const result = await active.workspace.rollbackSnapshot(snapshotId, context.directoryHandle)
   await useWorkspaceStore.getState().updateCurrentCounts()
   await useWorkspaceStore.getState().refreshPendingChanges(true)
   const hasUnresolved = result.unresolved.length > 0
@@ -98,7 +98,7 @@ export const rollbackChangesetExecutor: ToolExecutor = async (args, context) => 
           : undefined,
     message:
       !hasUnresolved
-        ? `Reverted ${result.reverted} change(s) from checkpoint ${changesetId}.`
-        : `Reverted ${result.reverted} change(s), ${result.unresolved.length} unresolved.`,
+        ? `Rolled back ${result.reverted} change(s) from snapshot ${snapshotId}.`
+        : `Rolled back ${result.reverted} change(s), ${result.unresolved.length} unresolved.`,
   })
 }
