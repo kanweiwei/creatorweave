@@ -9,7 +9,7 @@
  * - Default: Current sidebar + conversation layout
  */
 
-import { ResizablePanels } from './ResizablePanels'
+import { SplitPane } from './SplitPane'
 
 //=============================================================================
 // Types
@@ -107,11 +107,12 @@ export function DeveloperLayout({
       {/* Main Content Area - Split vertically */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top: Code Preview + Terminal */}
-        <ResizablePanels
+        <SplitPane
           direction="horizontal"
           storageKey="dev-top"
-          firstPanel={{ id: 'dev-code', minSize: 30, initialSize: 70 }}
-          secondPanel={{ id: 'dev-terminal', minSize: 20, initialSize: 30, collapsible: true }}
+          initialSize={70}
+          minSize={30}
+          maxSize={80}
           className="flex-1"
         >
           {/* Code Preview */}
@@ -125,7 +126,7 @@ export function DeveloperLayout({
               <span>Terminal (coming soon)</span>
             </div>
           )}
-        </ResizablePanels>
+        </SplitPane>
 
         {/* Bottom: Conversation */}
         <div className="h-80 border-t border-neutral-200 dark:border-neutral-700">{conversation}</div>
@@ -155,11 +156,12 @@ export function AnalystLayout({ sidebar, conversation, dataView, chartView }: An
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top: Data Table + Chart */}
-        <ResizablePanels
+        <SplitPane
           direction="horizontal"
           storageKey="analyst-top"
-          firstPanel={{ id: 'analyst-data', minSize: 40, initialSize: 60 }}
-          secondPanel={{ id: 'analyst-chart', minSize: 30, collapsible: true }}
+          initialSize={60}
+          minSize={40}
+          maxSize={80}
           className="flex-1"
         >
           {/* Data Table */}
@@ -173,7 +175,7 @@ export function AnalystLayout({ sidebar, conversation, dataView, chartView }: An
               <span>Chart (coming soon)</span>
             </div>
           )}
-        </ResizablePanels>
+        </SplitPane>
 
         {/* Bottom: Conversation */}
         <div className="h-64 border-t border-neutral-200 dark:border-neutral-700">{conversation}</div>
@@ -203,16 +205,12 @@ export function ReaderLayout({ sidebar, conversation, document, notes }: ReaderL
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top: Document + Notes */}
-        <ResizablePanels
+        <SplitPane
           direction="horizontal"
           storageKey="reader-top"
-          firstPanel={{ id: 'reader-doc', minSize: 40, initialSize: 70 }}
-          secondPanel={{
-            id: 'reader-notes',
-            minSize: 20,
-            collapsible: true,
-            defaultCollapsed: true,
-          }}
+          initialSize={70}
+          minSize={40}
+          maxSize={85}
           className="flex-1"
         >
           {/* Document */}
@@ -226,7 +224,7 @@ export function ReaderLayout({ sidebar, conversation, document, notes }: ReaderL
               <span>Notes (coming soon)</span>
             </div>
           )}
-        </ResizablePanels>
+        </SplitPane>
 
         {/* Bottom: Conversation */}
         <div className="h-48 border-t border-neutral-200 dark:border-neutral-700">{conversation}</div>

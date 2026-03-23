@@ -1,10 +1,11 @@
 /**
- * FilePreview - read-only file content display with syntax highlighting.
- * Uses shiki for code highlighting, with lazy loading.
+ * FilePreview - read-only file content display with Monaco Editor.
+ * Supports text files with syntax highlighting and images with direct display.
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { X, FileText, Copy, Check } from 'lucide-react'
+import { Editor } from '@monaco-editor/react'
 import { formatBytes } from '@/lib/utils'
 
 interface FilePreviewProps {
@@ -13,206 +14,143 @@ interface FilePreviewProps {
   onClose: () => void
 }
 
-/** Map file extension to shiki language ID */
-function getLangFromPath(path: string): string {
+/** Get Monaco language ID from file path */
+function getMonacoLanguage(path: string): string {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.ts')) return 'typescript'
+  if (lower.endsWith('.tsx')) return 'typescript'
+  if (lower.endsWith('.js')) return 'javascript'
+  if (lower.endsWith('.jsx')) return 'javascript'
+  if (lower.endsWith('.json')) return 'json'
+  if (lower.endsWith('.html')) return 'html'
+  if (lower.endsWith('.css')) return 'css'
+  if (lower.endsWith('.scss')) return 'scss'
+  if (lower.endsWith('.md')) return 'markdown'
+  if (lower.endsWith('.py')) return 'python'
+  if (lower.endsWith('.go')) return 'go'
+  if (lower.endsWith('.rs')) return 'rust'
+  if (lower.endsWith('.java')) return 'java'
+  if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'yaml'
+  if (lower.endsWith('.xml')) return 'xml'
+  if (lower.endsWith('.sql')) return 'sql'
+  if (lower.endsWith('.sh')) return 'shell'
+  if (lower.endsWith('.bash')) return 'shell'
+  if (lower.endsWith('.zsh')) return 'shell'
+  if (lower.endsWith('.dockerfile')) return 'dockerfile'
+  if (lower.endsWith('.vue')) return 'html'
+  if (lower.endsWith('.php')) return 'php'
+  if (lower.endsWith('.rb')) return 'ruby'
+  if (lower.endsWith('.swift')) return 'swift'
+  if (lower.endsWith('.kt')) return 'kotlin'
+  if (lower.endsWith('.c')) return 'c'
+  if (lower.endsWith('.cpp') || lower.endsWith('.hpp')) return 'cpp'
+  if (lower.endsWith('.h')) return 'c'
+  return 'plaintext'
+}
+
+/** Image extensions for direct display */
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'svg'])
+
+/** Binary (non-image) extensions */
+const BINARY_EXTS = new Set([
+  'wasm', 'zip', 'gz', 'tar', 'br', 'zst', 'pdf', 'doc', 'docx', 'xls', 'xlsx',
+  'mp3', 'mp4', 'webm', 'ogg', 'wav', 'avi', 'woff', 'woff2', 'ttf', 'eot', 'otf',
+  'exe', 'dll', 'so', 'dylib',
+])
+
+/** Text extensions */
+const TEXT_EXTS = new Set([
+  'txt', 'md', 'mdx', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'env',
+  'xml', 'svg', 'html', 'htm', 'css', 'scss', 'less',
+  'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx',
+  'py', 'rs', 'go', 'java', 'kt', 'swift', 'c', 'cpp', 'h', 'hpp',
+  'sh', 'bash', 'zsh', 'sql', 'graphql', 'gql', 'php', 'rb', 'vue', 'svelte',
+  'lock', 'gitignore', 'editorconfig', 'dockerfile', 'makefile',
+])
+
+function getFileType(path: string): 'text' | 'image' | 'binary' {
   const ext = path.split('.').pop()?.toLowerCase() || ''
-  const langMap: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'tsx',
-    js: 'javascript',
-    jsx: 'jsx',
-    rs: 'rust',
-    py: 'python',
-    go: 'go',
-    rb: 'ruby',
-    java: 'java',
-    kt: 'kotlin',
-    swift: 'swift',
-    c: 'c',
-    cpp: 'cpp',
-    h: 'c',
-    hpp: 'cpp',
-    css: 'css',
-    scss: 'scss',
-    less: 'less',
-    html: 'html',
-    xml: 'xml',
-    svg: 'xml',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    toml: 'toml',
-    md: 'markdown',
-    mdx: 'mdx',
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'bash',
-    sql: 'sql',
-    graphql: 'graphql',
-    dockerfile: 'dockerfile',
-    vue: 'vue',
-    php: 'php',
-  }
-  // Also check filename-based languages
-  const name = path.split('/').pop()?.toLowerCase() || ''
-  if (name === 'dockerfile') return 'dockerfile'
-  if (name === 'makefile') return 'makefile'
-  if (name.endsWith('.lock')) return 'json'
-
-  return langMap[ext] || 'text'
+  if (IMAGE_EXTS.has(ext)) return 'image'
+  if (TEXT_EXTS.has(ext)) return 'text'
+  if (BINARY_EXTS.has(ext)) return 'binary'
+  // Unknown extension - try text
+  return 'text'
 }
 
-/** Check if a file is likely binary */
-function isBinaryExtension(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  const binaryExts = new Set([
-    'png',
-    'jpg',
-    'jpeg',
-    'gif',
-    'webp',
-    'ico',
-    'bmp',
-    'svg',
-    'wasm',
-    'zip',
-    'gz',
-    'tar',
-    'br',
-    'zst',
-    'pdf',
-    'doc',
-    'docx',
-    'xls',
-    'xlsx',
-    'mp3',
-    'mp4',
-    'webm',
-    'ogg',
-    'wav',
-    'avi',
-    'woff',
-    'woff2',
-    'ttf',
-    'eot',
-    'otf',
-    'exe',
-    'dll',
-    'so',
-    'dylib',
-  ])
-  return binaryExts.has(ext)
-}
-
-/** Check if extension is likely text */
-function isTextExtension(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  const textExts = new Set([
-    'txt',
-    'md',
-    'mdx',
-    'json',
-    'jsonc',
-    'yaml',
-    'yml',
-    'toml',
-    'ini',
-    'env',
-    'xml',
-    'svg',
-    'html',
-    'htm',
-    'css',
-    'scss',
-    'less',
-    'js',
-    'jsx',
-    'mjs',
-    'cjs',
-    'ts',
-    'tsx',
-    'py',
-    'rs',
-    'go',
-    'java',
-    'kt',
-    'swift',
-    'c',
-    'cpp',
-    'h',
-    'hpp',
-    'sh',
-    'bash',
-    'zsh',
-    'sql',
-    'graphql',
-    'gql',
-    'php',
-    'rb',
-    'vue',
-    'svelte',
-    'lock',
-    'gitignore',
-    'editorconfig',
-  ])
-  return textExts.has(ext)
-}
-
-function isTextFile(path: string): boolean {
-  if (isBinaryExtension(path)) return false
-  if (isTextExtension(path)) return true
-  return false
-}
-
-const MAX_FILE_SIZE = 512 * 1024 // 512KB for syntax highlighting
-const MAX_PLAIN_SIZE = 2 * 1024 * 1024 // 2MB for plain text
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps) {
   const [content, setContent] = useState<string | null>(null)
-  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
   const [fileSize, setFileSize] = useState<number>(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [diskNewer, setDiskNewer] = useState(false) // Conflict: disk file is newer than OPFS
-  const contentRef = useRef<HTMLDivElement>(null)
+  const [diskNewer, setDiskNewer] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [isDark, setIsDark] = useState(
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  )
+
+  const fileType = useMemo(() => (filePath ? getFileType(filePath) : 'text'), [filePath])
+
+  // Track dark mode changes
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    const updateTheme = () => setIsDark(root.classList.contains('dark'))
+
+    updateTheme()
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'class') {
+          updateTheme()
+          break
+        }
+      }
+    })
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] })
+
+    return () => observer.disconnect()
+  }, [])
 
   // Load file content when filePath or fileHandle changes
   useEffect(() => {
     if (!filePath) {
       setContent(null)
-      setHighlightedHtml(null)
+      setImageUrl(null)
       setError(null)
       setDiskNewer(false)
       return
     }
 
     let cancelled = false
+    let objectUrl: string | null = null
 
     async function loadFile() {
       setLoading(true)
       setError(null)
       setContent(null)
-      setHighlightedHtml(null)
+      setImageUrl(null)
       setDiskNewer(false)
 
       try {
         let text: string | undefined
+        let blob: Blob | undefined
         let fileSize = 0
         let opfsMtime: number | null = null
         let diskMtime: number | null = null
 
-        // Try to read from OPFS first (pending changes version)
         try {
           const opfs = (await import('@/store/opfs.store')).useOPFSStore.getState()
           const result = await opfs.readFile(filePath!)
 
-          if (typeof result.content === 'string') {
+          if (result.content instanceof Blob) {
+            blob = result.content
+            fileSize = result.content.size
+          } else if (typeof result.content === 'string') {
             text = result.content
             fileSize = new Blob([result.content]).size
-          } else if (result.content instanceof Blob) {
-            text = await result.content.text()
-            fileSize = result.content.size
           } else {
             const decoder = new TextDecoder()
             text = decoder.decode(result.content as ArrayBuffer)
@@ -223,78 +161,51 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
           // OPFS read failed, will try disk
         }
 
-        // If we have a file handle, compare mtimes and use newer content
         if (fileHandle) {
           try {
             const diskFile = await fileHandle.getFile()
             diskMtime = diskFile.lastModified
 
-            // If disk file is newer than OPFS, use disk content and mark conflict
             if (opfsMtime !== null && diskMtime > opfsMtime) {
-              console.log('[FilePreview] Disk file is newer, using disk content:', {
-                path: filePath,
-                opfsMtime,
-                diskMtime,
-              })
               fileSize = diskFile.size
-              text = await diskFile.text()
-              setDiskNewer(true) // Mark as conflict - disk is newer
+              if (fileType === 'image') {
+                blob = diskFile
+              } else {
+                text = await diskFile.text()
+              }
+              setDiskNewer(true)
             } else if (opfsMtime === null) {
-              // No OPFS content, use disk
-              text = await diskFile.text()
+              fileSize = diskFile.size
+              if (fileType === 'image') {
+                blob = diskFile
+              } else {
+                text = await diskFile.text()
+              }
             }
-            // If opfsMtime >= diskMtime, we already have OPFS content
           } catch {
             // Disk read failed, rely on OPFS if available
           }
-        } else if (!text) {
-          // No file handle and OPFS failed, error
+        } else if (!text && !blob) {
           setError('无法读取文件')
+          setLoading(false)
+          return
+        }
+
+        if (cancelled) return
+
+        if (fileSize > MAX_FILE_SIZE) {
+          setError(`文件过大 (${formatBytes(fileSize)})，最大支持 ${formatBytes(MAX_FILE_SIZE)}`)
           setLoading(false)
           return
         }
 
         setFileSize(fileSize)
 
-        // Extension-only file type detection
-        const textFile = isTextFile(filePath!)
-        if (!textFile) {
-          setContent(null)
-          setError(null)
-          setLoading(false)
-          return
-        }
-
-        // Too large
-        if (fileSize > MAX_PLAIN_SIZE) {
-          setError(`文件过大 (${formatBytes(fileSize)})，最大支持 ${formatBytes(MAX_PLAIN_SIZE)}`)
-          setLoading(false)
-          return
-        }
-
-        if (cancelled) return
-        if (text === undefined) {
-          setError('无法读取文件内容')
-          setLoading(false)
-          return
-        }
-        setContent(text)
-
-        // Apply syntax highlighting for smaller files
-        if (fileSize <= MAX_FILE_SIZE) {
-          try {
-            const { codeToHtml } = await import('shiki')
-            const lang = getLangFromPath(filePath!)
-            const html = await codeToHtml(text, {
-              lang,
-              theme: 'github-light',
-            })
-            if (!cancelled) {
-              setHighlightedHtml(html)
-            }
-          } catch {
-            // Fallback to plain text if highlighting fails
-          }
+        if (fileType === 'image' && blob) {
+          objectUrl = URL.createObjectURL(blob)
+          setImageUrl(objectUrl)
+        } else if (text !== undefined) {
+          setContent(text)
         }
       } catch (err) {
         if (!cancelled) {
@@ -308,21 +219,25 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
     }
 
     loadFile()
+
     return () => {
       cancelled = true
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
     }
-  }, [filePath, fileHandle])
+  }, [filePath, fileHandle, fileType])
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     if (!content) return
     await navigator.clipboard.writeText(content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
+  }, [content])
 
   if (!filePath) {
     return (
-      <div className="flex h-full items-center justify-center bg-white p-4 dark:bg-neutral-950">
+      <div className="flex h-full items-center justify-center bg-white dark:bg-neutral-950">
         <div className="text-center text-neutral-400">
           <FileText className="mx-auto mb-2 h-6 w-6" />
           <p className="text-xs">点击文件树中的文件进行预览</p>
@@ -332,7 +247,7 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
   }
 
   const fileName = filePath.split('/').pop() || filePath
-  const isBinary = content === null && !loading && !error
+  const language = getMonacoLanguage(filePath)
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
@@ -358,7 +273,7 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
               type="button"
               onClick={handleCopy}
               className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
-              title="Copy content"
+              title="复制内容"
             >
               {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
             </button>
@@ -367,7 +282,7 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
             type="button"
             onClick={onClose}
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
-            title="Close"
+            title="关闭"
           >
             <X className="h-3 w-3" />
           </button>
@@ -375,12 +290,25 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto" ref={contentRef}>
+      <div className="flex-1 overflow-auto">
         {loading && <div className="p-4 text-center text-xs text-neutral-400">Loading...</div>}
 
         {error && <div className="p-4 text-center text-xs text-red-500">{error}</div>}
 
-        {isBinary && !loading && (
+        {/* Image preview */}
+        {fileType === 'image' && imageUrl && !loading && (
+          <div className="flex h-full items-center justify-center p-4">
+            <img
+              src={imageUrl}
+              alt={fileName}
+              className="max-h-full max-w-full object-contain"
+              style={{ imageRendering: fileName.endsWith('.ico') ? 'pixelated' : 'auto' }}
+            />
+          </div>
+        )}
+
+        {/* Binary (non-image) file */}
+        {fileType === 'binary' && !loading && !error && (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
             <FileText className="h-8 w-8 text-neutral-300" />
             <p className="text-xs text-neutral-500">二进制文件</p>
@@ -390,26 +318,35 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
           </div>
         )}
 
-        {/* Syntax highlighted content */}
-        {highlightedHtml && (
-          <div
-            className="shiki-preview overflow-x-auto text-xs leading-5 [&_pre]:!m-0 [&_pre]:!rounded-none [&_pre]:!p-3"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        {/* Monaco Editor for text files */}
+        {content && fileType === 'text' && !loading && !error && (
+          <Editor
+            height="100%"
+            language={language}
+            value={content}
+            theme={isDark ? 'vs-dark' : 'vs'}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              wordWrap: 'on',
+              automaticLayout: true,
+              fontSize: 12,
+              padding: { top: 8, bottom: 8 },
+              scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto',
+                verticalScrollbarSize: 10,
+                horizontalScrollbarSize: 10,
+              },
+            }}
           />
-        )}
-
-        {/* Plain text fallback (no highlighting) */}
-        {content && !highlightedHtml && !loading && !isBinary && (
-          <div className="overflow-x-auto p-3">
-            <pre className="text-xs leading-5 text-neutral-700">
-              <code>{content}</code>
-            </pre>
-          </div>
         )}
       </div>
 
       {/* Footer - file path */}
-      <div className="border-t border-neutral-100 px-3 py-1">
+      <div className="border-t border-neutral-100 px-3 py-1 dark:border-neutral-800">
         <span className="text-[10px] text-neutral-400" title={filePath}>
           {filePath}
         </span>

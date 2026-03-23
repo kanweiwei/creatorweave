@@ -18,7 +18,7 @@
  * 5. pendingMessage is cleared via onInitialMessageConsumed callback
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
 import { useSettingsStore } from '@/store/settings.store'
@@ -83,10 +83,6 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [selectedFileHandle, setSelectedFileHandle] = useState<FileSystemFileHandle | null>(null)
-  const [previewWidth, setPreviewWidth] = useState(35) // percentage
-
-  // Drag ref for preview panel resize
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   // Skills management state
   const [skillsManagerOpen, setSkillsManagerOpen] = useState(false)
@@ -127,7 +123,6 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
   // Mobile sidebar state
   const isMobile = useMobile()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const mainRef = useRef<HTMLDivElement>(null)
 
   const handleStartConversation = useCallback(
     (text: string) => {
@@ -496,32 +491,6 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
     setSelectedFileHandle(null)
   }, [])
 
-  // Drag handler for preview panel resize
-  const handlePreviewDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      dragRef.current = { startX: e.clientX, startWidth: previewWidth }
-
-      const handleMove = (me: MouseEvent) => {
-        if (!dragRef.current) return
-        const containerWidth = mainRef.current?.offsetWidth || window.innerWidth
-        const delta = dragRef.current.startX - me.clientX
-        const deltaPercent = (delta / containerWidth) * 100
-        const newWidth = Math.max(20, Math.min(60, dragRef.current.startWidth + deltaPercent))
-        setPreviewWidth(newWidth)
-      }
-
-      const handleUp = () => {
-        dragRef.current = null
-        document.removeEventListener('mousemove', handleMove)
-        document.removeEventListener('mouseup', handleUp)
-      }
-
-      document.addEventListener('mousemove', handleMove)
-      document.addEventListener('mouseup', handleUp)
-    },
-    [previewWidth]
-  )
 
   return (
     <div className="flex h-screen flex-col bg-white dark:bg-neutral-950">
@@ -550,12 +519,9 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
         )}
 
         {/* Main area: conversation + optional sync preview panel */}
-        <div ref={mainRef} className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden">
           {/* Conversation / Welcome */}
-          <main
-            className="overflow-hidden"
-            style={{ width: selectedFilePath ? `${100 - previewWidth}%` : '100%' }}
-          >
+          <main className="flex-1 overflow-hidden">
             {hasActiveConversation ? (
               <ConversationView
                 initialMessage={pendingMessage}
@@ -578,31 +544,21 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
             )}
           </main>
 
-          {/* File preview panel */}
-          {selectedFilePath && (
-            <>
-              {/* Drag handle */}
-              <div
-                className="group relative flex w-1 shrink-0 cursor-col-resize flex-col items-center justify-center bg-neutral-200/50 transition-colors hover:bg-primary-200/50 dark:bg-neutral-700/50 dark:hover:bg-primary-700/50"
-                onMouseDown={handlePreviewDragStart}
-                title="拖动调整宽度"
-              >
-                <div className="h-8 w-0.5 rounded-full bg-neutral-300 transition-colors group-hover:bg-primary-400" />
-              </div>
-              <div
-                className="overflow-hidden border-l border-neutral-200 dark:border-neutral-700"
-                style={{ width: `${previewWidth}%` }}
-              >
-                <FilePreview
-                  filePath={selectedFilePath}
-                  fileHandle={selectedFileHandle}
-                  onClose={handleCloseFilePreview}
-                />
-              </div>
-            </>
-          )}
+          {/* File preview as Drawer (overlay, no squeeze) */}
+          {/* Note: FilePreview has its own header with title, breadcrumb, and actions */}
+          <Drawer
+            open={!!selectedFilePath}
+            onClose={handleCloseFilePreview}
+            width="50vw"
+          >
+            <FilePreview
+              filePath={selectedFilePath}
+              fileHandle={selectedFileHandle}
+              onClose={handleCloseFilePreview}
+            />
+          </Drawer>
 
-          {/* Sync preview as Drawer (overlay, no squeeze) - full width */}
+          {/* Sync preview as Drawer (overlay, no squeeze) */}
           <Drawer open={showPreview} onClose={handleClosePreview} title="变更待审阅" width="85vw">
             <SyncPreviewPanel onCancel={handleClosePreview} />
           </Drawer>

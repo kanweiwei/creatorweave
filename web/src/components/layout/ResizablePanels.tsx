@@ -28,7 +28,7 @@ export interface PanelConfig {
 
 export interface ResizablePanelsProps {
   direction: PanelDirection
-  children: [ReactNode, ReactNode] // Only 2 panels supported initially
+  children: [ReactNode, ReactNode]
   className?: string
   storageKey?: string
   firstPanel?: PanelConfig
