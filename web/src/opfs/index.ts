@@ -7,8 +7,11 @@
  * - Type definitions for OPFS operations
  * - Utility functions for path handling, hashing, and storage management
  * - Session management for isolated file operations per conversation
+ * - Project management with multi-agent support
  *
  * Architecture:
+ * - ProjectManager: Top-level manager for projects, each with its own agents
+ * - AgentManager: Manages agents within a project
  * - SessionManager: Top-level manager for multiple session workspaces
  * - SessionWorkspace: Encapsulates single session's OPFS operations
  * - SessionCacheManager: Per-session file caching with mtime-based change detection
@@ -83,3 +86,16 @@ export {
   getSessionManager,
   resetSessionManager,
 } from './session'
+
+// Project
+export { ProjectManager, type ProjectInfo } from './project'
+
+// Agent
+export {
+  AgentManager,
+  type AgentMeta,
+  type AgentInfo,
+  getDefaultAgentTemplate,
+  DEFAULT_AGENT_TEMPLATE,
+  type AgentTemplate,
+} from './agent'

@@ -2,9 +2,10 @@
  * Intelligence Coordinator - Integrates Phase 2 intelligent enhancements.
  *
  * This module coordinates:
- * 1. Tool Recommendation System
- * 2. Project Fingerprint Identification
- * 3. Context Memory System
+ * 1. Agent Configuration (SOUL, IDENTITY, etc.)
+ * 2. Tool Recommendation System
+ * 3. Project Fingerprint Identification
+ * 4. Context Memory System
  *
  * And injects relevant enhancements into the system prompt.
  */
@@ -24,6 +25,11 @@ import {
   getMemoryBlockForPrompt,
   type MemoryContext,
 } from './context-memory'
+import { ProjectManager, type AgentInfo } from '@/opfs'
+import { buildAgentPrompt, type PromptOptions } from './prompt-builder'
+
+// Re-export AgentInfo for use in this module
+export type { AgentInfo } from '@/opfs'
 
 //=============================================================================
 // Types
@@ -39,6 +45,8 @@ export interface IntelligenceEnhancement {
   recommendedTools: string[]
   /** Memory context used */
   memoryContext: MemoryContext
+  /** Agent info (if loaded) */
+  agentInfo: AgentInfo | null
 }
 
 /** Coordinator options */
@@ -73,6 +81,10 @@ export class IntelligenceCoordinator {
   ): Promise<IntelligenceEnhancement> {
     const enhancements: string[] = []
     const recommendedTools: string[] = []
+    let agentInfo: AgentInfo | null = null
+
+    // 0. Load Agent Configuration (default agent)
+    agentInfo = await this.loadDefaultAgent()
 
     // 1. Project Fingerprint (cached)
     let fingerprint: ProjectFingerprint | null = null
@@ -114,6 +126,19 @@ export class IntelligenceCoordinator {
 
     // Combine all enhancements
     let enhancedPrompt = basePrompt
+
+    // If agent info is available, prepend agent prompt as personality layer
+    // The base prompt (UNIVERSAL_SYSTEM_PROMPT) contains tool usage rules that must be preserved
+    if (agentInfo) {
+      const promptOptions: PromptOptions = {
+        includeTodayLog: true,
+        todayLog: await this.loadTodayLog(agentInfo.id),
+      }
+      const agentPrompt = buildAgentPrompt(agentInfo, promptOptions)
+      // Agent prompt goes first (personality), then base prompt (capabilities & tools)
+      enhancedPrompt = agentPrompt + '\n\n---\n\n' + basePrompt
+    }
+
     if (enhancements.length > 0) {
       enhancedPrompt += '\n\n' + enhancements.join('\n\n')
     }
@@ -123,6 +148,56 @@ export class IntelligenceCoordinator {
       fingerprint,
       recommendedTools: [...new Set(recommendedTools)],
       memoryContext,
+      agentInfo,
+    }
+  }
+
+  /**
+   * Load default agent configuration
+   * Note: No caching - always read fresh from OPFS so user changes take effect immediately
+   */
+  private async loadDefaultAgent(): Promise<AgentInfo | null> {
+    try {
+      const projectManager = await ProjectManager.create()
+      const currentProjectId = localStorage.getItem('activeProjectId')
+
+      if (!currentProjectId) {
+        return null
+      }
+
+      const project = await projectManager.getProject(currentProjectId)
+      if (!project) {
+        return null
+      }
+
+      return await project.agentManager.getAgent('default')
+    } catch (error) {
+      console.warn('[IntelligenceCoordinator] Failed to load default agent:', error)
+      return null
+    }
+  }
+
+  /**
+   * Load today's log for an agent
+   */
+  private async loadTodayLog(agentId: string): Promise<string | null> {
+    try {
+      const projectManager = await ProjectManager.create()
+      const currentProjectId = localStorage.getItem('activeProjectId')
+
+      if (!currentProjectId) {
+        return null
+      }
+
+      const project = await projectManager.getProject(currentProjectId)
+      if (!project) {
+        return null
+      }
+
+      return await project.agentManager.readTodayLog(agentId)
+    } catch (error) {
+      console.warn('[IntelligenceCoordinator] Failed to load today log:', error)
+      return null
     }
   }
 
