@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
 import {
   BrandButton,
   BrandDialog,
@@ -129,10 +128,6 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
     }
   }, [loadSnapshots])
 
-  const approvedCount = useMemo(
-    () => snapshots.filter((item) => item.status === 'approved' || item.status === 'committed').length,
-    [snapshots]
-  )
   const latestRollbackableId = useMemo(
     () => snapshots.find((item) => item.status === 'approved' || item.status === 'committed')?.id ?? null,
     [snapshots]
@@ -279,25 +274,27 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
   }, [confirmAction, performClearSnapshots, performDeleteSnapshot])
 
   return (
-    <div className={`${fullHeight ? 'h-full' : ''} border-t bg-elevated px-3 py-2 flex flex-col`}>
-      <div className="mb-2 flex items-center justify-between">
+    <div className={`${fullHeight ? 'h-full' : ''} flex flex-col`}>
+      {/* Header */}
+      <div className="border-subtle flex items-center justify-between border-b bg-elevated px-2 py-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-primary">快照列表</span>
-          <Badge variant="outline">{snapshots.length}</Badge>
+          <span className="px-2 py-0.5 bg-muted text-secondary text-xs font-semibold rounded-full">
+            {snapshots.length}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-secondary">可用 {approvedCount}</span>
+        <div className="flex items-center gap-1">
           <BrandButton
-            variant="outline"
-            className="h-7 px-2 text-[11px]"
+            variant="ghost"
+            className="h-6 px-2 text-[11px]"
             disabled={clearingSnapshots || snapshots.length === 0}
             onClick={handleClearSnapshots}
           >
             {clearingSnapshots ? '清空中...' : '清空'}
           </BrandButton>
           <BrandButton
-            variant="outline"
-            className="h-7 px-2 text-[11px]"
+            variant="ghost"
+            className="h-6 px-2 text-[11px]"
             disabled={!latestRollbackableId || rollingBack === '__latest__' || clearingSnapshots}
             onClick={handleRollbackLatest}
           >
@@ -306,28 +303,34 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
         </div>
       </div>
 
-      {loading && <p className="text-xs text-secondary">正在加载快照...</p>}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {loading && <p className="px-2 py-2 text-xs text-secondary">正在加载快照...</p>}
+      {error && <p className="px-2 py-2 text-xs text-destructive">{error}</p>}
       {switchProgress && (
-        <p className="text-xs text-secondary">
+        <p className="px-2 py-2 text-xs text-secondary">
           处理中 {switchProgress.processed}/{switchProgress.total}
         </p>
       )}
 
       {!loading && !error && snapshots.length === 0 && (
-        <p className="text-xs text-secondary">暂无快照记录</p>
+        <p className="px-2 py-2 text-xs text-secondary">暂无快照记录</p>
       )}
 
       {!loading && !error && snapshots.length > 0 && (
-        <div className={`${fullHeight ? 'flex-1 min-h-0' : 'max-h-48'} space-y-1 overflow-y-auto pr-1 custom-scrollbar`}>
+        <div
+          role="list"
+          aria-label="快照列表"
+          className={`${fullHeight ? 'flex-1 min-h-0' : 'max-h-48'} space-y-px overflow-y-auto px-1 py-1 custom-scrollbar`}
+        >
           {snapshots.map((item) => (
             <div
               key={item.id}
-              className={`rounded border px-2 py-1.5 ${
-                currentSnapshotId === item.id ? 'border-primary-500 bg-primary-50/30' : 'border-subtle bg-background'
+              role="listitem"
+              aria-current={currentSnapshotId === item.id ? 'true' : undefined}
+              className={`rounded-md px-2 py-1.5 ${
+                currentSnapshotId === item.id ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-hover'
               }`}
             >
-              <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
                   className="min-w-0 flex-1 truncate text-left text-xs font-medium text-primary hover:underline"
@@ -336,30 +339,32 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
                 >
                   {item.summary || '未命名快照'}
                 </button>
-                <Badge variant="outline" className="text-[10px]">
-                  {getStatusLabel(item.status)}
-                </Badge>
-                {currentSnapshotId === item.id && (
-                  <Badge variant="outline" className="text-[10px]">当前</Badge>
-                )}
+                <div className="flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-secondary">
+                    {getStatusLabel(item.status)}
+                  </span>
+                  {currentSnapshotId === item.id && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary">当前</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center justify-between text-[11px] text-secondary">
+              <div className="mt-0.5 flex items-center justify-between text-[11px] text-secondary">
                 <span>{item.workspaceName || item.workspaceId} · {item.opCount} 个变更</span>
                 <span>{formatSnapshotTime(item.committedAt || item.createdAt)}</span>
               </div>
-              <div className="mt-1 flex justify-end gap-2">
-                  <BrandButton
-                    variant="outline"
-                    className="h-7 px-2 text-[11px]"
-                    disabled={deletingSnapshotId === item.id || rollingBack !== null || clearingSnapshots}
-                    onClick={() => handleDeleteSnapshot(item.id)}
+              <div className="mt-1 flex justify-end gap-1">
+                <BrandButton
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={deletingSnapshotId === item.id || rollingBack !== null || clearingSnapshots}
+                  onClick={() => handleDeleteSnapshot(item.id)}
                 >
                   {deletingSnapshotId === item.id ? '删除中...' : '删除'}
                 </BrandButton>
                 {(item.status === 'approved' || item.status === 'committed') && (
                   <BrandButton
-                    variant="outline"
-                    className="h-7 px-2 text-[11px]"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
                     disabled={rollingBack === item.id || deletingSnapshotId !== null || clearingSnapshots}
                     onClick={() => handleRollbackTo(item.id)}
                   >

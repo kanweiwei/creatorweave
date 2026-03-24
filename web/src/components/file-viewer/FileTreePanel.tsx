@@ -276,7 +276,7 @@ function TreeNodeRow({
     <>
       <div
         ref={rowRef}
-        className={`group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-3 text-xs transition-colors ${
+        className={`group flex cursor-pointer items-center gap-2 rounded-md h-7 pr-3 text-xs transition-colors ${
           selected
             ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
             : 'hover:bg-hover text-secondary'
@@ -716,7 +716,7 @@ export function FileTreePanel({
   return (
     <div className="flex h-full flex-col">
       {showHeader && (
-        <div className="border-subtle flex items-center justify-between border-b px-2 py-1">
+        <div className="border-subtle flex items-center justify-between border-b px-2 py-1.5">
           <span className="truncate text-xs font-semibold uppercase tracking-wider text-primary">
             {rootName || directoryHandle?.name || '草稿文件'}
           </span>

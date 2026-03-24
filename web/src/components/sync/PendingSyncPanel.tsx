@@ -14,8 +14,16 @@ import { useSettingsStore } from '@/store/settings.store'
 import { getApiKeyRepository } from '@/sqlite'
 import { createLLMProvider } from '@/agent/llm/provider-factory'
 import { buildCommitSummaryDiffSections } from '@/workers/commit-summary-worker-manager'
-import { BrandButton } from '@creatorweave/ui'
-import { RefreshCw, Sparkles } from 'lucide-react'
+import {
+  BrandButton,
+  BrandDialog,
+  BrandDialogContent,
+  BrandDialogHeader,
+  BrandDialogTitle,
+  BrandDialogBody,
+  BrandDialogFooter,
+} from '@creatorweave/ui'
+import { RefreshCw, Sparkles, ChevronRight, X, Check, AlertTriangle } from 'lucide-react'
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
 import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
 import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
@@ -236,45 +244,40 @@ export function PendingSyncPanel() {
 
       if (!activeWorkspace) {
         console.error('[PendingSyncPanel] No active workspace')
-        return
+        return false
       }
 
       const { workspace } = activeWorkspace
       const nativeDir = await workspace.getNativeDirectoryHandle()
 
-      if (!nativeDir) {
-        // 没有目录句柄，触发目录选择
-        const store = useWorkspaceStore.getState()
-        if (store.requestDirectoryAccess) {
-          await store.requestDirectoryAccess()
-        }
-        return
-      }
-
       const filesToSync = pendingChanges.changes.filter((c) => pathsToSync.includes(c.path))
       if (filesToSync.length === 0) return false
 
+      // 创建审批快照（无论是否有本地目录都可以）
       await workspace.createApprovedSnapshotForPaths(
         filesToSync.map((c) => c.path),
         summary.trim(),
         nativeDir
       )
 
-      // 执行同步（统一走 pending/cache 同步链路）
-      const result = await workspace.syncToDisk(
-        nativeDir,
-        filesToSync.map((c) => c.path)
-      )
+      // 只有在有本地目录时才同步到磁盘
+      if (nativeDir) {
+        // 执行同步（统一走 pending/cache 同步链路）
+        const result = await workspace.syncToDisk(
+          nativeDir,
+          filesToSync.map((c) => c.path)
+        )
 
-      if (result.failed > 0) {
-        console.error(`[PendingSyncPanel] ${result.failed} files failed to sync`)
-        const conflictHint =
-          result.conflicts.length > 0
-            ? `，其中 ${result.conflicts.length} 个存在冲突`
-            : ''
-        setSyncError(`${result.failed} 个文件审批应用失败${conflictHint}`)
-        setTimeout(() => setSyncError(null), 6000)
-        return false
+        if (result.failed > 0) {
+          console.error(`[PendingSyncPanel] ${result.failed} files failed to sync`)
+          const conflictHint =
+            result.conflicts.length > 0
+              ? `，其中 ${result.conflicts.length} 个存在冲突`
+              : ''
+          setSyncError(`${result.failed} 个文件审批应用失败${conflictHint}`)
+          setTimeout(() => setSyncError(null), 6000)
+          return false
+        }
       }
 
       // 同步后刷新列表（支持部分同步）
@@ -348,7 +351,7 @@ export function PendingSyncPanel() {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="border-subtle flex items-center gap-2 border-b bg-elevated px-3 py-2">
+        <div className="border-subtle flex items-center gap-2 border-b bg-elevated px-2 py-1.5">
           <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
         </div>
 
@@ -369,9 +372,7 @@ export function PendingSyncPanel() {
       {/* Success Toast Notification */}
       {showSyncSuccess && (
         <div className="mx-3 mt-2 px-3 py-2 bg-success/20 text-success text-sm rounded-lg flex items-center gap-2 animate-fade-in-down">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7l-7 7-7-7 7" />
-          </svg>
+          <Check className="w-4 h-4" />
           审批成功！
         </div>
       )}
@@ -379,15 +380,13 @@ export function PendingSyncPanel() {
       {/* Error Toast Notification */}
       {syncError && (
         <div className="mx-3 mt-2 px-3 py-2 bg-danger/20 text-danger text-sm rounded-lg flex items-center gap-2 animate-fade-in-down">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+          <AlertTriangle className="w-4 h-4" />
           {syncError}
         </div>
       )}
 
       {/* Header with count */}
-      <div className="border-subtle flex items-center justify-between border-b bg-elevated px-3 py-2">
+      <div className="border-subtle flex items-center justify-between border-b bg-elevated px-2 py-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
           <div className="flex items-center gap-2">
@@ -396,21 +395,19 @@ export function PendingSyncPanel() {
             </span>
             <button
               onClick={handleRefresh}
-              className="p-1 text-tertiary hover:text-primary transition-colors rounded hover:bg-hover/50"
+              className="h-6 w-6 flex items-center justify-center text-tertiary hover:text-primary transition-colors rounded hover:bg-hover/50"
               title="刷新列表"
               type="button"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3 h-3" />
             </button>
             <button
               onClick={handleOpenPreview}
-              className="p-1 text-tertiary hover:text-primary transition-colors rounded hover:bg-hover/50"
+              className="h-6 w-6 flex items-center justify-center text-tertiary hover:text-primary transition-colors rounded hover:bg-hover/50"
               title="查看详情"
               type="button"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight className="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -436,7 +433,7 @@ export function PendingSyncPanel() {
                 key={`${change.path}-${index}`}
                 role="option"
                 aria-selected={isSelected}
-                className={`group flex items-center gap-2 px-3 py-2 transition-all cursor-pointer ${
+                className={`group flex items-center gap-2 px-2 h-7 transition-all cursor-pointer ${
                   isSelected ? 'bg-primary-50/50' : 'hover:bg-hover'
                 }`}
                 onClick={() => handleOpenPreviewForPath(change.path)}
@@ -446,18 +443,18 @@ export function PendingSyncPanel() {
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => handleToggleSelect(change.path)}
-                  className="w-4 h-4 rounded border-subtle text-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-0 cursor-pointer transition-shadow"
+                  className="w-3.5 h-3.5 rounded border-subtle text-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-0 cursor-pointer transition-shadow"
                   onClick={(e) => e.stopPropagation()}
                   aria-label={`选择 ${change.path.split('/').pop() || change.path}`}
                 />
 
                 {/* File Icon */}
                 <span className="text-tertiary flex-shrink-0">
-                  <FileIcon filename={change.path} className="w-4 h-4" />
+                  <FileIcon filename={change.path} className="w-3.5 h-3.5" />
                 </span>
 
                 {/* File Name */}
-                <span className="flex-1 text-sm font-medium text-primary truncate min-w-0" title={change.path}>
+                <span className="flex-1 text-xs font-medium text-primary truncate min-w-0" title={change.path}>
                   {change.path.split('/').pop() || change.path}
                 </span>
 
@@ -476,12 +473,10 @@ export function PendingSyncPanel() {
                 {/* Remove Button */}
                 <button
                   onClick={() => handleRemoveFile(change.path)}
-                  className="p-1 text-tertiary hover:text-danger transition-colors rounded hover:bg-danger/10 active:bg-danger/20 flex-shrink-0"
+                  className="p-0.5 text-tertiary hover:text-danger transition-colors rounded hover:bg-danger/10 active:bg-danger/20 flex-shrink-0"
                   title="从列表中移除"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             )
@@ -492,7 +487,7 @@ export function PendingSyncPanel() {
       {/* Footer Actions */}
       <div className="border-subtle flex items-center justify-between border-t bg-elevated px-3 py-2">
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
             <input
               type="checkbox"
               checked={selectAll}
@@ -560,34 +555,35 @@ export function PendingSyncPanel() {
       </div>
 
       {/* Clear Confirmation Dialog */}
-      {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowClearConfirm(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-sm mx-4 p-6 dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-primary mb-2">确认拒绝</h3>
-            <p className="text-sm text-secondary mb-4">
+      <BrandDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <BrandDialogContent className="max-w-md">
+          <BrandDialogHeader>
+            <BrandDialogTitle>确认拒绝</BrandDialogTitle>
+          </BrandDialogHeader>
+          <BrandDialogBody>
+            <p className="text-sm text-secondary">
               确定要拒绝所有变更吗？此操作无法撤销。
             </p>
-            <div className="flex justify-end gap-2">
-              <BrandButton
-                variant="outline"
-                onClick={() => setShowClearConfirm(false)}
-              >
-                取消
-              </BrandButton>
-              <BrandButton
-                variant="outline"
-                onClick={() => {
-                  handleClear()
-                  setShowClearConfirm(false)
-                }}
-                className="text-danger border-danger hover:bg-danger/10 focus:ring-danger"
-              >
-                确认拒绝
-              </BrandButton>
-            </div>
-          </div>
-        </div>
-      )}
+          </BrandDialogBody>
+          <BrandDialogFooter>
+            <BrandButton
+              variant="ghost"
+              onClick={() => setShowClearConfirm(false)}
+            >
+              取消
+            </BrandButton>
+            <BrandButton
+              variant="danger"
+              onClick={() => {
+                handleClear()
+                setShowClearConfirm(false)
+              }}
+            >
+              确认拒绝
+            </BrandButton>
+          </BrandDialogFooter>
+        </BrandDialogContent>
+      </BrandDialog>
 
       <SnapshotApprovalDialog
         open={approveDialogOpen}

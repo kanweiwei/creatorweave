@@ -283,12 +283,22 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
               return (
                 <div
                   key={conv.id}
-                  className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isActive}
+                  aria-label={`对话: ${conv.title}`}
+                  className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 ${
                     isActive
                       ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                       : 'hover:bg-hover text-secondary'
                   }`}
                   onClick={() => setActive(conv.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setActive(conv.id)
+                    }
+                  }}
                 >
                   {/* Running status indicator */}
                   {isRunning && (
@@ -415,10 +425,15 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
               )}
 
               {resourceTab === 'plugins' && (
-                <div className="custom-scrollbar h-full overflow-y-auto p-4">
-                  <p className="text-tertiary text-xs">
-                    插件管理功能将在此显示。请通过设置页面管理插件。
-                  </p>
+                <div className="flex h-full flex-col">
+                  <div className="border-subtle flex items-center border-b bg-elevated px-2 py-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-primary">插件</span>
+                  </div>
+                  <div className="flex flex-1 items-center justify-center p-4">
+                    <p className="text-xs text-secondary">
+                      插件管理功能将在此显示
+                    </p>
+                  </div>
                 </div>
               )}
 
