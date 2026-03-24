@@ -183,8 +183,8 @@ export function ResizablePanels({
   }, [])
 
   // Calculate actual sizes considering collapsed state
-  const firstActualSize = firstPanelCollapsed ? 0 : firstPanelSize
-  const secondActualSize = secondPanelCollapsed ? 0 : 100 - firstPanelSize
+  const firstActualSize = firstPanelCollapsed ? 0 : secondPanelCollapsed ? 100 : firstPanelSize
+  const secondActualSize = secondPanelCollapsed ? 0 : firstPanelCollapsed ? 100 : 100 - firstPanelSize
 
   const isHorizontal = direction === 'horizontal'
 
@@ -197,8 +197,11 @@ export function ResizablePanels({
       {/* First Panel */}
       {firstActualSize > 0 && (
         <div
-          style={{ [isHorizontal ? 'width' : 'height']: `${firstActualSize}%` }}
-          className="min-h-0 flex-1 overflow-hidden"
+          style={{
+            [isHorizontal ? 'width' : 'height']: `${firstActualSize}%`,
+            flex: '0 0 auto',
+          }}
+          className="min-h-0 overflow-hidden"
         >
           {children[0]}
         </div>
@@ -237,7 +240,7 @@ export function ResizablePanels({
             isHorizontal
               ? 'hover:bg-primary-300 w-1 cursor-col-resize'
               : 'hover:bg-primary-300 h-1 cursor-row-resize'
-          } flex-shrink-0 select-none bg-neutral-200 transition-colors ${
+          } pointer-events-auto flex-shrink-0 select-none bg-neutral-200 transition-colors ${
             isDragging ? 'bg-primary-400 cursor-grabbing' : ''
           }`}
           style={{ [isHorizontal ? 'height' : 'width']: '100%' }}
@@ -272,8 +275,11 @@ export function ResizablePanels({
       {/* Second Panel */}
       {secondActualSize > 0 && (
         <div
-          style={{ [isHorizontal ? 'width' : 'height']: `${secondActualSize}%` }}
-          className="min-h-0 flex-1 overflow-hidden"
+          style={{
+            [isHorizontal ? 'width' : 'height']: `${secondActualSize}%`,
+            flex: '0 0 auto',
+          }}
+          className="min-h-0 overflow-hidden"
         >
           {children[1]}
         </div>

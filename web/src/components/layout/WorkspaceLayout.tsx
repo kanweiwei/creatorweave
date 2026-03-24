@@ -497,30 +497,32 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
   }, [])
 
   // Render conversation area or welcome screen (shared between file-selected and no-file states)
-  const renderConversationArea = (className: string) => (
-    <div className={className}>
-      {hasActiveConversation ? (
+  const renderConversationArea = () => {
+    if (hasActiveConversation) {
+      return (
         <ConversationView
           initialMessage={pendingMessage}
           onInitialMessageConsumed={handleInitialMessageConsumed}
         />
-      ) : (
-        <div className="relative h-full">
-          {workspaceCount === 0 && (
-            <div className="absolute left-4 top-4 z-10 max-w-md rounded-lg border border-primary-200/70 bg-primary-50/85 p-3 text-sm text-primary-800 shadow-sm backdrop-blur-sm dark:border-primary-900/40 dark:bg-primary-950/25 dark:text-primary-200">
-              <p className="mb-2 text-primary-800 dark:text-primary-200">
-                当前项目还没有工作区，创建首个会话后会自动生成工作区。
-              </p>
-              <BrandButton variant="outline" onClick={handleCreateFirstWorkspace}>
-                创建第一个工作区
-              </BrandButton>
-            </div>
-          )}
-          <WelcomeScreenV2 onStartConversation={handleStartConversation} />
-        </div>
-      )}
-    </div>
-  )
+      )
+    }
+
+    return (
+      <div className="relative h-full min-h-0 w-full overflow-hidden">
+        {workspaceCount === 0 && (
+          <div className="absolute left-4 top-4 z-10 max-w-md rounded-lg border border-primary-200/70 bg-primary-50/85 p-3 text-sm text-primary-800 shadow-sm backdrop-blur-sm dark:border-primary-900/40 dark:bg-primary-950/25 dark:text-primary-200">
+            <p className="mb-2 text-primary-800 dark:text-primary-200">
+              当前项目还没有工作区，创建首个会话后会自动生成工作区。
+            </p>
+            <BrandButton variant="outline" onClick={handleCreateFirstWorkspace}>
+              创建第一个工作区
+            </BrandButton>
+          </div>
+        )}
+        <WelcomeScreenV2 onStartConversation={handleStartConversation} />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col bg-white dark:bg-neutral-950">
@@ -554,6 +556,7 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
           {selectedFilePath ? (
             <ResizablePanels
               direction="vertical"
+              className="min-h-0 min-w-0 flex-1"
               storageKey="file-preview-layout"
               resetKey={expandTrigger}
               firstPanel={{ id: 'file-preview', minSize: 15, maxSize: 85, initialSize: 50, collapsible: true }}
@@ -567,11 +570,11 @@ export function WorkspaceLayout({ onBackToProjects, projectName, workspaceName }
               />
 
               {/* Conversation / Welcome (bottom) */}
-              {renderConversationArea('min-h-0 flex-1 overflow-hidden')}
+              {renderConversationArea()}
             </ResizablePanels>
           ) : (
             /* No file selected: conversation only */
-            renderConversationArea('min-h-0 flex-1 overflow-hidden')
+            renderConversationArea()
           )}
 
           {/* Sync preview as Drawer (overlay, no squeeze) */}

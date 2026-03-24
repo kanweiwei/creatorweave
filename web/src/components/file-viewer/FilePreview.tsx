@@ -250,7 +250,7 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
   const language = getMonacoLanguage(filePath)
 
   return (
-    <div className="flex min-h-0 h-full flex-col bg-white dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-white dark:bg-neutral-950">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-1.5 dark:border-neutral-700">
         <div className="flex min-w-0 items-center gap-2">
