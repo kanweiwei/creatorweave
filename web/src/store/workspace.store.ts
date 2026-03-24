@@ -18,6 +18,7 @@ import type { SessionMetadata, ChangeDetectionResult } from '@/opfs/types/opfs-t
 import { getSessionManager, SessionWorkspace } from '@/opfs/session'
 import { getWorkspaceRepository, type Workspace } from '@/sqlite/repositories/workspace.repository'
 import { getProjectRepository } from '@/sqlite/repositories/project.repository'
+import { getFSOverlayRepository } from '@/sqlite/repositories/fs-overlay.repository'
 import {
   requestDirectoryAccess,
   releaseDirectoryHandle,
@@ -128,6 +129,14 @@ interface WorkspaceState {
   /** ID of workspace currently being switched to (prevents concurrent switches) */
   switchingWorkspaceId: string | null
 
+  /** Unsynced snapshots that need to be synced to disk when directory becomes available */
+  unsyncedSnapshots: Array<{
+    snapshotId: string
+    summary: string | null
+    createdAt: number
+    opCount: number
+  }>
+
   // Actions
 
   /** Initialize store (load workspaces from SQLite, fallback to OPFS) */
@@ -193,6 +202,15 @@ interface WorkspaceState {
 
   /** Get sync preview state */
   getSyncPreviewEnabled: () => boolean
+
+  /** Check for unsynced snapshots (call after directory handle becomes available) */
+  checkUnsyncedSnapshots: () => Promise<void>
+
+  /** Sync all unsynced snapshots to disk */
+  syncUnsyncedSnapshots: () => Promise<void>
+
+  /** Clear unsynced snapshots notification */
+  clearUnsyncedSnapshots: () => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -209,6 +227,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         hasDirectoryHandle: false,
         isSyncPreviewEnabled: true,
         switchingWorkspaceId: null,
+        unsyncedSnapshots: [],
 
         //=============================================================================
         // Actions
@@ -800,6 +819,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 hasDirectoryHandle: true,
                 isLoading: false,
               })
+
+              // Check for unsynced snapshots after getting directory handle
+              await get().checkUnsyncedSnapshots()
             } else {
               // User cancelled
               set({ isLoading: false })
@@ -823,6 +845,90 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           } catch (e) {
             console.error('Failed to release directory handle:', e)
           }
+        },
+
+        checkUnsyncedSnapshots: async () => {
+          const activeWorkspaceId = get().activeWorkspaceId
+          if (!activeWorkspaceId) return
+
+          try {
+            const manager = await getSessionManager()
+            const workspace = await manager.getSession(activeWorkspaceId)
+            if (!workspace) return
+
+            const unsynced = await workspace.getUnsyncedSnapshots()
+            set({ unsyncedSnapshots: unsynced })
+
+            if (unsynced.length > 0) {
+              toast.info(`发现 ${unsynced.length} 个未同步的快照`, {
+                description: '点击同步将文件写入本地磁盘',
+                action: {
+                  label: '同步',
+                  onClick: () => get().syncUnsyncedSnapshots()
+                }
+              })
+            }
+          } catch (e) {
+            console.error('[WorkspaceStore] Failed to check unsynced snapshots:', e)
+          }
+        },
+
+        syncUnsyncedSnapshots: async () => {
+          const activeWorkspaceId = get().activeWorkspaceId
+          if (!activeWorkspaceId) return
+
+          const { unsyncedSnapshots } = get()
+          if (unsyncedSnapshots.length === 0) return
+
+          set({ isLoading: true })
+
+          try {
+            const manager = await getSessionManager()
+            const workspace = await manager.getSession(activeWorkspaceId)
+            if (!workspace) return
+
+            const nativeDir = await workspace.getNativeDirectoryHandle()
+            if (!nativeDir) {
+              toast.error('没有可用的本地目录')
+              set({ isLoading: false })
+              return
+            }
+
+            const repo = getFSOverlayRepository()
+            let syncedCount = 0
+
+            for (const snapshot of unsyncedSnapshots) {
+              const snapshotOps = await repo.listSnapshotOps(
+                activeWorkspaceId,
+                snapshot.snapshotId
+              )
+              const paths = snapshotOps.map((op: { path: string }) => op.path)
+
+              if (paths.length > 0) {
+                const result = await workspace.syncToDisk(nativeDir, paths)
+                if (result.failed === 0) {
+                  await workspace.markSnapshotAsSynced(snapshot.snapshotId)
+                  syncedCount++
+                } else {
+                  console.warn(`[WorkspaceStore] Snapshot ${snapshot.snapshotId} had ${result.failed} failed files`)
+                }
+              }
+            }
+
+            set({ unsyncedSnapshots: [], isLoading: false })
+            toast.success(`已同步 ${syncedCount} 个快照到磁盘`)
+
+            // Refresh pending changes
+            await get().refreshPendingChanges(true)
+          } catch (e) {
+            console.error('[WorkspaceStore] Failed to sync unsynced snapshots:', e)
+            set({ isLoading: false })
+            toast.error('同步快照失败')
+          }
+        },
+
+        clearUnsyncedSnapshots: () => {
+          set({ unsyncedSnapshots: [] })
         },
       })
 )
