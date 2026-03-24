@@ -282,7 +282,7 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
     <div className={`${fullHeight ? 'h-full' : ''} border-t bg-elevated px-3 py-2 flex flex-col`}>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-primary">快照列表</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">快照列表</span>
           <Badge variant="outline">{snapshots.length}</Badge>
         </div>
         <div className="flex items-center gap-2">

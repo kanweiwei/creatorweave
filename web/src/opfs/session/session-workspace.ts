@@ -446,7 +446,9 @@ export class SessionWorkspace {
     if (!this.initialized) await this.initialize()
 
     // Get baseline mtime for conflict detection
+    // Also track if this is a new file (not in files/ index and not in native FS)
     let baselineFsMtime = 0
+    let isNewFile = false
     try {
       if (directoryHandle) {
         // Try to read existing content from files/ first, then native FS
@@ -460,9 +462,29 @@ export class SessionWorkspace {
           const fromNative = await this.readFromNativeFS(path, directoryHandle)
           baselineFsMtime = fromNative.metadata.mtime
         }
+      } else {
+        // No directoryHandle (pure OPFS mode): check if file exists in filesIndex
+        // If not in index, this is a new file
+        if (!this.hasFileInIndex(path)) {
+          isNewFile = true
+        } else {
+          // File exists in index, get mtime from files/
+          const fromFiles = await this.readFromFilesDir(path)
+          if (fromFiles) {
+            baselineFsMtime = fromFiles.mtime
+          }
+        }
       }
-    } catch {
-      // File doesn't exist, baselineFsMtime stays 0
+    } catch (err) {
+      // Only treat as new file if the error is NotFoundError
+      // Other errors (permission, IO, etc.) should be propagated
+      const errorName = err && typeof err === 'object' && 'name' in err ? (err as { name: string }).name : undefined
+      if (errorName === 'NotFoundError') {
+        isNewFile = true
+        baselineFsMtime = 0
+      } else {
+        throw err
+      }
     }
 
     // Write to files/ directory
@@ -478,8 +500,12 @@ export class SessionWorkspace {
       console.warn('[SessionWorkspace] Failed to broadcast file change:', e)
     }
 
-    // Mark as pending
-    await this.pendingManager.add(path, baselineFsMtime)
+    // Mark as pending - use markAsCreated for new files, add for modifications
+    if (isNewFile) {
+      await this.pendingManager.markAsCreated(path, baselineFsMtime)
+    } else {
+      await this.pendingManager.add(path, baselineFsMtime)
+    }
 
     // Update last accessed time
     this.metadata.lastAccessedAt = Date.now()

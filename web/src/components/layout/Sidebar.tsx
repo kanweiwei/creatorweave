@@ -224,8 +224,6 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
     )
   }
 
-  const hasResources = !!directoryHandle
-
   return (
     <>
       <div
@@ -261,7 +259,7 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
         {/* Conversation list */}
         <div
           className="flex flex-col overflow-hidden"
-          style={{ height: hasResources ? `${conversationRatio}%` : '100%' }}
+          style={{ height: `${conversationRatio}%` }}
         >
           <div className="p-2">
             <BrandButton
@@ -329,24 +327,21 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
           </div>
         </div>
 
-        {/* Vertical drag divider (only when resources are visible) */}
-        {hasResources && (
-          <div
-            className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
-            onMouseDown={handleVerticalDragStart}
-            title="拖动调整高度"
-          >
-            {/* 中心圆点 */}
-            <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
-          </div>
-        )}
+        {/* Vertical drag divider */}
+        <div
+          className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
+          onMouseDown={handleVerticalDragStart}
+          title="拖动调整高度"
+        >
+          {/* 中心圆点 */}
+          <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
+        </div>
 
-        {/* Resource tabs (only when folder is selected) */}
-        {hasResources && (
-          <div
-            className="border-subtle flex flex-1 flex-col overflow-hidden border-t bg-white dark:bg-card"
-            style={{ height: `${100 - conversationRatio}%` }}
-          >
+        {/* Resource tabs */}
+        <div
+          className="border-subtle flex flex-1 flex-col overflow-hidden border-t bg-white dark:bg-card"
+          style={{ height: `${100 - conversationRatio}%` }}
+        >
             {/* Tab buttons */}
             <div className="border-subtle flex items-center gap-0.5 border-b px-1.5 py-1">
               <BrandButton
@@ -440,7 +435,6 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
               )}
             </div>
           </div>
-        )}
       </div>
 
       <BrandDialog

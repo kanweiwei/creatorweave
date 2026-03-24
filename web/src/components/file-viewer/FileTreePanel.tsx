@@ -587,10 +587,11 @@ export function FileTreePanel({
   /** Load root directory and optionally reload expanded paths */
   const loadRoot = useCallback(
     async (preserveExpanded: boolean = false) => {
-      if (!directoryHandle) return
       setLoading(true)
       try {
-        const children = await loadChildren(directoryHandle, '')
+        // When directoryHandle is null (no local folder selected), pass null to loadChildren
+        // which will still load OPFS-only pending creates
+        const children = await loadChildren(directoryHandle ?? null, '')
         setRootNodes(children)
         setLoaded(true)
 
@@ -690,14 +691,17 @@ export function FileTreePanel({
     setRootNodes([])
   }, [directoryHandle])
 
-  // Auto-load root when directoryHandle is available and not loaded
+  // Auto-load root when not loaded and not loading
+  // Pass null for directoryHandle if not available (OPFS-only mode)
   useEffect(() => {
-    if (directoryHandle && !loaded && !loading) {
+    if (!loaded && !loading) {
       loadRoot()
     }
   }, [directoryHandle, loaded, loading, loadRoot])
 
-  if (!directoryHandle) {
+  // Show empty state only if no directoryHandle AND no pending changes
+  const hasPendingChanges = pendingChanges.length > 0
+  if (!directoryHandle && !hasPendingChanges) {
     return (
       <div className="flex h-full items-center justify-center p-4">
         <p className="text-tertiary text-center text-xs">
@@ -714,7 +718,7 @@ export function FileTreePanel({
       {showHeader && (
         <div className="border-subtle flex items-center justify-between border-b px-2 py-1">
           <span className="truncate text-xs font-semibold uppercase tracking-wider text-primary">
-            {rootName || directoryHandle.name}
+            {rootName || directoryHandle?.name || '草稿文件'}
           </span>
           <BrandButton
             iconButton
