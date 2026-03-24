@@ -327,8 +327,8 @@ export function ConversationView({
       }}
     >
       <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
-        {/* Messages area */}
-        <div className="custom-scrollbar flex-1 overflow-y-auto">
+        {/* Messages area - allow shrink with min-h-0 so input stays visible */}
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
           {activeConversation?.messages.length === 0 && !isProcessing ? (
             <div className="flex h-full items-center justify-center">
               <div className="flex flex-col items-center text-center">
@@ -344,8 +344,8 @@ export function ConversationView({
               </div>
             </div>
           ) : (
-            <div className="px-4 py-4">
-              <div className="mx-auto max-w-3xl space-y-4">
+            <div className="flex min-h-0 flex-col px-4 py-4">
+              <div className="mx-auto w-full max-w-3xl space-y-4">
               {turns.map((turn, idx) =>
                 turn.type === 'user' ? (
                   <MessageBubble
@@ -446,7 +446,7 @@ export function ConversationView({
         )}
 
         {/* Input area */}
-        <div className="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="shrink-0 border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
           <div className="mx-auto flex max-w-3xl flex-col">
             <div className="relative">
               <textarea

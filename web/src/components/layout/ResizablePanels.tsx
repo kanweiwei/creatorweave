@@ -34,6 +34,11 @@ export interface ResizablePanelsProps {
   firstPanel?: PanelConfig
   secondPanel?: PanelConfig
   onResize?: (sizes: [number, number]) => void
+  /**
+   * When this key changes, force expand all panels (reset collapsed state).
+   * Useful when content changes and you want to ensure panels are visible.
+   */
+  resetKey?: string | number
 }
 
 //=============================================================================
@@ -79,6 +84,7 @@ export function ResizablePanels({
   firstPanel,
   secondPanel,
   onResize,
+  resetKey,
 }: ResizablePanelsProps) {
   const [firstPanelSize, setFirstPanelSize] = useState(() =>
     loadRatio(storageKey, firstPanel?.initialSize || 50)
@@ -92,15 +98,26 @@ export function ResizablePanels({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const isDraggingRef = useRef(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const firstConfig: PanelConfig = useMemo(() => firstPanel || { id: 'first' }, [firstPanel])
   const secondConfig: PanelConfig = useMemo(() => secondPanel || { id: 'second' }, [secondPanel])
+
+  // Reset collapsed state when resetKey changes
+  useEffect(() => {
+    if (resetKey !== undefined) {
+      setFirstPanelCollapsed(false)
+      setSecondPanelCollapsed(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey])
 
   // Handle divider drag
   const handleDividerMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
       isDraggingRef.current = true
+      setIsDragging(true)
 
       const container = containerRef.current
       if (!container) return
@@ -137,6 +154,7 @@ export function ResizablePanels({
 
       const handleMouseUp = () => {
         isDraggingRef.current = false
+        setIsDragging(false)
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
       }
@@ -144,7 +162,7 @@ export function ResizablePanels({
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     },
-    [direction, firstPanelSize, firstConfig, onResize]
+    [direction, firstPanelSize, firstConfig, onResize, setIsDragging]
   )
 
   // Save ratio on change
@@ -173,14 +191,14 @@ export function ResizablePanels({
   return (
     <div
       ref={containerRef}
-      className={`flex ${isHorizontal ? 'flex-row' : 'flex-col'} ${className}`}
+      className={`flex min-h-0 ${isHorizontal ? 'flex-row' : 'flex-col'} ${className}`}
       style={{ height: '100%', width: '100%' }}
     >
       {/* First Panel */}
       {firstActualSize > 0 && (
         <div
           style={{ [isHorizontal ? 'width' : 'height']: `${firstActualSize}%` }}
-          className="overflow-hidden"
+          className="min-h-0 flex-1 overflow-hidden"
         >
           {children[0]}
         </div>
@@ -211,16 +229,20 @@ export function ResizablePanels({
         </div>
       )}
 
-      {/* Divider */}
-      <div
-        onMouseDown={handleDividerMouseDown}
-        className={`${
-          isHorizontal
-            ? 'hover:bg-primary-300 w-1 cursor-col-resize'
-            : 'hover:bg-primary-300 h-1 cursor-row-resize'
-        } flex-shrink-0 select-none bg-neutral-200 transition-colors`}
-        style={{ [isHorizontal ? 'height' : 'width']: '100%' }}
-      />
+      {/* Divider - hidden when either panel is collapsed */}
+      {!firstPanelCollapsed && !secondPanelCollapsed && (
+        <div
+          onMouseDown={handleDividerMouseDown}
+          className={`${
+            isHorizontal
+              ? 'hover:bg-primary-300 w-1 cursor-col-resize'
+              : 'hover:bg-primary-300 h-1 cursor-row-resize'
+          } flex-shrink-0 select-none bg-neutral-200 transition-colors ${
+            isDragging ? 'bg-primary-400 cursor-grabbing' : ''
+          }`}
+          style={{ [isHorizontal ? 'height' : 'width']: '100%' }}
+        />
+      )}
 
       {/* Collapse Button for Second Panel */}
       {secondConfig?.collapsible && (
@@ -239,9 +261,9 @@ export function ResizablePanels({
                 <ChevronRight className="h-4 w-4" />
               )
             ) : secondPanelCollapsed ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
               <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
             )}
           </button>
         </div>
@@ -251,7 +273,7 @@ export function ResizablePanels({
       {secondActualSize > 0 && (
         <div
           style={{ [isHorizontal ? 'width' : 'height']: `${secondActualSize}%` }}
-          className="flex-1 overflow-hidden"
+          className="min-h-0 flex-1 overflow-hidden"
         >
           {children[1]}
         </div>
