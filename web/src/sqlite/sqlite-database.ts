@@ -83,7 +83,6 @@ export interface WorkspaceRow {
   name: string
   status: 'active' | 'archived'
   cache_size: number
-  pending_count: number
   undo_count: number
   modified_files: number
   created_at: number
@@ -796,8 +795,43 @@ if (typeof window !== 'undefined') {
     }
   }
 
+  // @ts-ignore
+  window.__queryPendingOps = async () => {
+    try {
+      const db = getSQLiteDB()
+      const rows = await db.queryAll(
+        `SELECT id, path, op_type, status, review_status, changeset_id FROM fs_ops ORDER BY updated_at DESC LIMIT 20`,
+        []
+      )
+      console.table(rows)
+      return rows
+    } catch (error) {
+      console.error('Error querying fs_ops:', error)
+      return []
+    }
+  }
+
+  // @ts-ignore
+  window.__queryPendingCounts = async () => {
+    try {
+      const db = getSQLiteDB()
+      const rows = await db.queryAll(
+        `SELECT workspace_id, COUNT(*) as count, review_status
+         FROM fs_ops
+         WHERE status = 'pending'
+         GROUP BY workspace_id, review_status`,
+        []
+      )
+      console.table(rows)
+      return rows
+    } catch (error) {
+      console.error('Error querying pending counts:', error)
+      return []
+    }
+  }
+
   console.log(
-    '[SQLite] Diagnostic functions available: window.__resetSQLiteDB(), window.__getSQLiteRecoveryStats(), window.__getSQLiteMode(), window.__checkSQLiteHealth(), window.__listSQLiteTables(), window.__checkDataIntegrity(), window.__enableSQLiteSQLLogging()'
+    '[SQLite] Diagnostic functions available: window.__resetSQLiteDB(), window.__getSQLiteRecoveryStats(), window.__getSQLiteMode(), window.__checkSQLiteHealth(), window.__listSQLiteTables(), window.__checkDataIntegrity(), window.__enableSQLiteSQLLogging(), window.__queryPendingOps(), window.__queryPendingCounts()'
   )
 }
 

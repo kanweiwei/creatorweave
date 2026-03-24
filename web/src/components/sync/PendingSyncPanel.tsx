@@ -326,6 +326,7 @@ export function PendingSyncPanel() {
       setSummaryError(null)
     } else {
       setSummaryError('AI 生成失败，请手动填写')
+      toast.warning('AI 生成快照描述失败，请手动填写')
     }
     setGeneratingSummary(false)
   }, [pendingChanges, isSyncing, selectedItems, generateSummaryWithLLM])

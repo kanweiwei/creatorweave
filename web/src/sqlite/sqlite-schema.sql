@@ -157,7 +157,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
     cache_size INTEGER NOT NULL DEFAULT 0,
-    pending_count INTEGER NOT NULL DEFAULT 0,
     undo_count INTEGER NOT NULL DEFAULT 0,
     modified_files INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
@@ -290,6 +289,7 @@ CREATE VIEW IF NOT EXISTS v_active_workspace AS
     WHERE w.status = 'active';
 
 -- Workspaces with file counts
+-- Note: pending_count is computed from fs_ops with review_status filter
 CREATE VIEW IF NOT EXISTS v_workspace_stats AS
     SELECT
         w.id,
@@ -300,11 +300,13 @@ CREATE VIEW IF NOT EXISTS v_workspace_stats AS
         w.last_accessed_at,
         COUNT(DISTINCT fm.id) as file_count,
         SUM(fm.size) as total_file_size,
-        COUNT(DISTINCT pc.id) as pending_count,
+        (SELECT COUNT(*) FROM fs_ops fo
+         WHERE fo.workspace_id = w.id
+           AND fo.status = 'pending'
+           AND (fo.review_status IS NULL OR fo.review_status = 'pending')) as pending_count,
         COUNT(DISTINCT ur.id) as undo_count
     FROM workspaces w
     LEFT JOIN file_metadata fm ON w.id = fm.workspace_id
-    LEFT JOIN pending_changes pc ON w.id = pc.workspace_id
     LEFT JOIN undo_records ur ON w.id = ur.workspace_id AND ur.undone = 0
     GROUP BY w.id;
 

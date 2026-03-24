@@ -64,6 +64,9 @@ interface OPFSState {
   /** Pending changes for current session */
   pendingChanges: PendingChange[]
 
+  /** File paths that are approved but not yet synced to disk */
+  approvedNotSyncedPaths: Set<string>
+
   /** Cached file paths for current session */
   cachedPaths: string[]
 
@@ -139,6 +142,7 @@ export const useOPFSStore = create<OPFSState>()(
     sessionId: null,
     initialized: false,
     pendingChanges: [],
+    approvedNotSyncedPaths: new Set(),
     cachedPaths: [],
     isLoading: false,
     error: null,
@@ -152,9 +156,18 @@ export const useOPFSStore = create<OPFSState>()(
         const workspace = await manager.getSession(workspaceId)
 
         if (workspace) {
+          // Get approved-not-synced paths (may fail if DB not ready)
+          let approvedNotSyncedPaths = new Set<string>()
+          try {
+            approvedNotSyncedPaths = await workspace.getApprovedNotSyncedPaths()
+          } catch (e) {
+            console.warn('[opfs.store] Failed to get approvedNotSyncedPaths during init:', e)
+          }
+
           set({
             sessionId: workspaceId,
             pendingChanges: workspace.getPendingChanges(),
+            approvedNotSyncedPaths,
             cachedPaths: workspace.getCachedPaths(),
             initialized: true,
             error: null,
@@ -295,6 +308,7 @@ export const useOPFSStore = create<OPFSState>()(
         // Update state
         set((state) => {
           state.pendingChanges = []
+          state.approvedNotSyncedPaths = new Set()
           state.cachedPaths = []
           state.isLoading = false
         })
@@ -321,9 +335,19 @@ export const useOPFSStore = create<OPFSState>()(
       try {
         const { workspace, workspaceId: newWorkspaceId } = await getActiveWorkspace()
 
+        // Fetch async data with error handling to prevent partial state updates
+        let approvedNotSyncedPaths: Set<string>
+        try {
+          approvedNotSyncedPaths = await workspace.getApprovedNotSyncedPaths()
+        } catch (e) {
+          console.warn('[opfs.store] Failed to get approvedNotSyncedPaths, using empty set:', e)
+          approvedNotSyncedPaths = new Set()
+        }
+
         set((state) => {
           state.sessionId = newWorkspaceId
           state.pendingChanges = workspace.getPendingChanges()
+          state.approvedNotSyncedPaths = approvedNotSyncedPaths
           state.cachedPaths = workspace.getCachedPaths()
           state.error = null
         })

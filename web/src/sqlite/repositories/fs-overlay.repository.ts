@@ -380,6 +380,7 @@ export class FSOverlayRepository {
        FROM fs_ops o
        LEFT JOIN fs_changesets c ON c.id = o.changeset_id
        WHERE o.workspace_id = ? AND o.status = 'pending'
+         AND (o.review_status IS NULL OR o.review_status = 'pending')
        ORDER BY updated_at ASC`,
       [workspaceId]
     )
@@ -823,6 +824,26 @@ export class FSOverlayRepository {
        WHERE id = ?`,
       [status, successCount, failedCount, skippedCount, Date.now(), batchId]
     )
+  }
+
+  /**
+   * Get file paths that are approved but not yet synced to disk
+   * These files exist in OPFS but haven't been written to the local filesystem
+   */
+  async getApprovedNotSyncedPaths(workspaceId: string): Promise<Set<string>> {
+    const db = getSQLiteDB()
+    const rows = await db.queryAll<{ path: string }>(
+      `SELECT DISTINCT o.path
+       FROM fs_ops o
+       INNER JOIN fs_changesets c ON c.id = o.changeset_id
+       WHERE o.workspace_id = ?
+         AND o.status = 'pending'
+         AND o.review_status = 'approved'
+         AND c.status = 'approved'
+         AND c.synced_at IS NULL`,
+      [workspaceId]
+    )
+    return new Set(rows.map((r) => r.path))
   }
 }
 

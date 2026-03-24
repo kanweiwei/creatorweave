@@ -557,6 +557,15 @@ export class SessionWorkspace {
   }
 
   /**
+   * Get file paths that are approved but not yet synced to disk
+   */
+  async getApprovedNotSyncedPaths(): Promise<Set<string>> {
+    if (!this.initialized) await this.initialize()
+    const repo = getFSOverlayRepository()
+    return await repo.getApprovedNotSyncedPaths(this.sessionId)
+  }
+
+  /**
    * Sync pending changes to real filesystem
    * @param directoryHandle Real filesystem directory handle
    * @returns Sync result
@@ -1522,6 +1531,9 @@ export class SessionWorkspace {
    * @returns Change detection result
    */
   async refreshPendingChanges(): Promise<ChangeDetectionResult> {
+    // Force reload from database to ensure we have latest state (including review_status)
+    await this.pendingManager.reload()
+
     const normalizeComparePath = (p: string): string => {
       // Worker scan keys are relative paths without leading slash.
       // Pending/cache records can be "/foo", "foo", "/mnt/foo", or "/mnt/foo/bar".
