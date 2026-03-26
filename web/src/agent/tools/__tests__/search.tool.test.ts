@@ -4,7 +4,7 @@ import { searchDefinition, searchExecutor } from '../search.tool'
 
 const searchInDirectoryMock = vi.fn()
 const getFilesDirMock = vi.fn()
-const getActiveWorkspaceMock = vi.fn()
+const getActiveConversationMock = vi.fn()
 
 vi.mock('@/workers/search-worker-manager', () => ({
   getSearchWorkerManager: () => ({
@@ -12,8 +12,8 @@ vi.mock('@/workers/search-worker-manager', () => ({
   }),
 }))
 
-vi.mock('@/store/workspace.store', () => ({
-  getActiveWorkspace: () => getActiveWorkspaceMock(),
+vi.mock('@/store/conversation-context.store', () => ({
+  getActiveConversation: () => getActiveConversationMock(),
 }))
 
 const directoryHandle = {
@@ -64,13 +64,13 @@ describe('search tool', () => {
     )
   })
 
-  it('falls back to active workspace files dir in opfs-only mode', async () => {
+  it('falls back to active conversation files dir in opfs-only mode', async () => {
     getFilesDirMock.mockResolvedValue(directoryHandle)
-    getActiveWorkspaceMock.mockResolvedValue({
-      workspace: {
+    getActiveConversationMock.mockResolvedValue({
+      conversation: {
         getFilesDir: getFilesDirMock,
       },
-      workspaceId: 'ws_1',
+      conversationId: 'conv_1',
     })
 
     const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
@@ -84,8 +84,8 @@ describe('search tool', () => {
     )
   })
 
-  it('returns error when no directory and no active workspace', async () => {
-    getActiveWorkspaceMock.mockResolvedValue(undefined)
+  it('returns error when no directory and no active conversation', async () => {
+    getActiveConversationMock.mockResolvedValue(undefined)
 
     const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
     const parsed = JSON.parse(result)

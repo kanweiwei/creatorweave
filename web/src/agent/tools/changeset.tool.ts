@@ -1,5 +1,5 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { getActiveWorkspace, useWorkspaceStore } from '@/store/workspace.store'
+import { getActiveConversation, useConversationContextStore } from '@/store/conversation-context.store'
 
 export const createSnapshotDefinition: ToolDefinition = {
   type: 'function',
@@ -23,14 +23,14 @@ export const createSnapshotDefinition: ToolDefinition = {
 
 export const createSnapshotExecutor: ToolExecutor = async (args) => {
   const summary = args.summary as string | undefined
-  const active = await getActiveWorkspace()
+  const active = await getActiveConversation()
   if (!active) {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
-  const result = await active.workspace.createDraftSnapshot(summary)
-  await useWorkspaceStore.getState().updateCurrentCounts()
-  await useWorkspaceStore.getState().refreshPendingChanges(true)
+  const result = await active.conversation.createDraftSnapshot(summary)
+  await useConversationContextStore.getState().updateCurrentCounts()
+  await useConversationContextStore.getState().refreshPendingChanges(true)
 
   if (!result) {
     return JSON.stringify({
@@ -76,14 +76,14 @@ export const rollbackSnapshotExecutor: ToolExecutor = async (args, context) => {
     return JSON.stringify({ error: 'snapshot_id is required' })
   }
 
-  const active = await getActiveWorkspace()
+  const active = await getActiveConversation()
   if (!active) {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
-  const result = await active.workspace.rollbackSnapshot(snapshotId, context.directoryHandle)
-  await useWorkspaceStore.getState().updateCurrentCounts()
-  await useWorkspaceStore.getState().refreshPendingChanges(true)
+  const result = await active.conversation.rollbackSnapshot(snapshotId, context.directoryHandle)
+  await useConversationContextStore.getState().updateCurrentCounts()
+  await useConversationContextStore.getState().refreshPendingChanges(true)
   const hasUnresolved = result.unresolved.length > 0
 
   return JSON.stringify({

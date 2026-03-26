@@ -9,7 +9,7 @@ const readFileMock = vi.fn<
   ) => Promise<{ content: string | ArrayBuffer; metadata: { size: number; contentType: string } }>
 >()
 const getNativeDirectoryHandleMock = vi.fn<() => Promise<FileSystemDirectoryHandle | null>>()
-const getActiveWorkspaceMock = vi.fn()
+const getActiveConversationMock = vi.fn()
 
 vi.mock('@/store/opfs.store', () => ({
   useOPFSStore: {
@@ -19,8 +19,8 @@ vi.mock('@/store/opfs.store', () => ({
   },
 }))
 
-vi.mock('@/store/workspace.store', () => ({
-  getActiveWorkspace: () => getActiveWorkspaceMock(),
+vi.mock('@/store/conversation-context.store', () => ({
+  getActiveConversation: () => getActiveConversationMock(),
 }))
 
 const context: ToolContext = {
@@ -111,11 +111,11 @@ describe('io read tool', () => {
         metadata: { size: 40, contentType: 'text' },
       })
     getNativeDirectoryHandleMock.mockResolvedValue(nativeHandle)
-    getActiveWorkspaceMock.mockResolvedValue({
-      workspace: {
+    getActiveConversationMock.mockResolvedValue({
+      conversation: {
         getNativeDirectoryHandle: getNativeDirectoryHandleMock,
       },
-      workspaceId: 'ws_1',
+      conversationId: 'conv_1',
     })
 
     const result = await readExecutor({ path: 'src/components/agent/ConversationView.tsx' }, { directoryHandle: null })
@@ -130,7 +130,7 @@ describe('io read tool', () => {
       content: 'line1\nline2',
       metadata: { size: 11, contentType: 'text' },
     })
-    getActiveWorkspaceMock.mockRejectedValueOnce(new Error('workspace unavailable'))
+    getActiveConversationMock.mockRejectedValueOnce(new Error('conversation context unavailable'))
 
     const result = await readExecutor({ paths: ['a.txt'] }, { directoryHandle: null })
     const parsed = JSON.parse(result)

@@ -7,7 +7,7 @@
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { pythonExecutor } from '@/python'
-import { getActiveWorkspace, useWorkspaceStore } from '@/store/workspace.store'
+import { getActiveConversation, useConversationContextStore } from '@/store/conversation-context.store'
 
 //=============================================================================
 // Tool Definition
@@ -72,13 +72,13 @@ export const executeExecutor: ToolExecutor = async (args, _context) => {
 //=============================================================================
 
 async function executePython(code: string, timeout: number): Promise<string> {
-  const active = await getActiveWorkspace()
+  const active = await getActiveConversation()
   if (!active) {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
   try {
-    const beforeSnapshot = await active.workspace.scanFilesWithCache()
+    const beforeSnapshot = await active.conversation.scanFilesWithCache()
 
     // Execute Python code
     const result = await pythonExecutor.execute({
@@ -87,12 +87,12 @@ async function executePython(code: string, timeout: number): Promise<string> {
     })
 
     // Register OPFS delta into overlay ledger for pending/review/sync.
-    await active.workspace.scanFilesWithCache()
-    const detected = active.workspace.detectChanges(beforeSnapshot)
+    await active.conversation.scanFilesWithCache()
+    const detected = active.conversation.detectChanges(beforeSnapshot)
     if (detected.changes.length > 0) {
-      await active.workspace.registerDetectedChanges(detected.changes)
+      await active.conversation.registerDetectedChanges(detected.changes)
     }
-    await useWorkspaceStore.getState().refreshPendingChanges(true)
+    await useConversationContextStore.getState().refreshPendingChanges(true)
 
     // Format result as string
     let output = ''
@@ -109,7 +109,7 @@ async function executePython(code: string, timeout: number): Promise<string> {
       output += '\n' + String(result.result)
     }
     if (detected.changes.length > 0) {
-      output += `\n[workspace] detected ${detected.changes.length} file change(s)`
+      output += `\n[conversation] detected ${detected.changes.length} file change(s)`
     }
 
     return output.trim() || 'Execution completed'

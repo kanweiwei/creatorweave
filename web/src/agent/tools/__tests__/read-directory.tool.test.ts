@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '../tool-types'
 import { readDirectoryExecutor } from '../read-directory.tool'
 
-const getActiveWorkspaceMock = vi.fn()
+const getActiveConversationMock = vi.fn()
 const getCurrentHandleMock = vi.fn()
 
-vi.mock('@/store/workspace.store', () => ({
-  getActiveWorkspace: () => getActiveWorkspaceMock(),
+vi.mock('@/store/conversation-context.store', () => ({
+  getActiveConversation: () => getActiveConversationMock(),
 }))
 
 vi.mock('@/store/folder-access.store', () => ({
@@ -31,7 +31,7 @@ function createEmptyDirectoryHandle(name = 'root'): FileSystemDirectoryHandle {
 describe('read_directory tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getActiveWorkspaceMock.mockResolvedValue(undefined)
+    getActiveConversationMock.mockResolvedValue(undefined)
     getCurrentHandleMock.mockReturnValue(null)
   })
 

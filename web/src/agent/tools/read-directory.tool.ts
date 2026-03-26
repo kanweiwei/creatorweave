@@ -10,7 +10,7 @@
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import micromatch from 'micromatch'
-import { getActiveWorkspace } from '@/store/workspace.store'
+import { getActiveConversation } from '@/store/conversation-context.store'
 import {
   getStaticGlobPrefix,
   normalizeSubPath,
@@ -121,7 +121,7 @@ export const readDirectoryExecutor: ToolExecutor = async (args, context) => {
   return executeListMode(args, context)
 }
 
-async function resolveDirectoryHandleWithWorkspaceFallback(
+async function resolveDirectoryHandleWithConversationFallback(
   handle: FileSystemDirectoryHandle | undefined
 ): Promise<FileSystemDirectoryHandle | null> {
   if (handle) return handle
@@ -132,9 +132,9 @@ async function resolveDirectoryHandleWithWorkspaceFallback(
   } catch {
     // ignore folder-access store loading failures and continue fallback chain
   }
-  const active = await getActiveWorkspace()
+  const active = await getActiveConversation()
   if (!active) return null
-  return active.workspace.getFilesDir()
+  return active.conversation.getFilesDir()
 }
 
 /**
@@ -163,7 +163,7 @@ async function executeListMode(args: Record<string, unknown>, context: unknown):
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  const rootHandle = await resolveDirectoryHandleWithWorkspaceFallback(toolContext.directoryHandle)
+  const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
   if (!rootHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
   }
@@ -302,7 +302,7 @@ async function executeGlobMode(
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  const rootHandle = await resolveDirectoryHandleWithWorkspaceFallback(toolContext.directoryHandle)
+  const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
   if (!rootHandle) {
     return JSON.stringify({ error: 'No directory selected.' })
   }

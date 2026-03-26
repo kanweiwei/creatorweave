@@ -6,9 +6,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PrefetchCache, getPrefetchCache } from '../prefetch-cache'
 import type { FilePrediction } from '../file-predictor'
 
-// Mock the session manager
+// Mock OPFS manager
 vi.mock('@/opfs', () => ({
-  getSessionManager: vi.fn(() => ({
+  getWorkspaceManager: vi.fn(() => ({
     getOrCreateWorkspace: vi.fn(async () => ({
       getCache: vi.fn(() => ({
         read: vi.fn(async (path: string) => ({

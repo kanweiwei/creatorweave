@@ -1123,8 +1123,8 @@ export class AgentLoop {
             try {
               const parsedResult = JSON.parse(rawResult)
               if (parsedResult.fileChanges) {
-                const { useWorkspaceStore } = await import('@/store/workspace.store')
-                useWorkspaceStore.getState().addChanges(parsedResult.fileChanges)
+                const { useConversationContextStore } = await import('@/store/conversation-context.store')
+                useConversationContextStore.getState().addChanges(parsedResult.fileChanges)
               }
             } catch {
               // ignore non-json outputs

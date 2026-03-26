@@ -12,7 +12,7 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
-import { getActiveWorkspace } from '@/store/workspace.store'
+import { getActiveConversation } from '@/store/conversation-context.store'
 
 //=============================================================================
 // Read Tool
@@ -141,9 +141,9 @@ async function resolveNativeDirectoryHandle(
   directoryHandle?: FileSystemDirectoryHandle | null
 ): Promise<FileSystemDirectoryHandle | null> {
   if (directoryHandle) return directoryHandle
-  const active = await getActiveWorkspace()
+  const active = await getActiveConversation()
   if (!active) return null
-  return await active.workspace.getNativeDirectoryHandle()
+  return await active.conversation.getNativeDirectoryHandle()
 }
 
 async function formatSingleReadResult(

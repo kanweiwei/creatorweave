@@ -1,5 +1,5 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { getActiveWorkspace } from '@/store/workspace.store'
+import { getActiveConversation } from '@/store/conversation-context.store'
 import { getSearchWorkerManager } from '@/workers/search-worker-manager'
 
 function looksRegexLikeQuery(query: string): boolean {
@@ -119,13 +119,16 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
 
   let directoryHandle: FileSystemDirectoryHandle | null = context.directoryHandle
 
-  // OPFS-only fallback: search in workspace files/ snapshot.
+  // OPFS-only fallback: search in active workspace files snapshot.
   if (!directoryHandle) {
-    const active = await getActiveWorkspace()
+    const active = await getActiveConversation()
     if (!active) {
       return JSON.stringify({ error: 'No active workspace' })
     }
-    directoryHandle = await active.workspace.getFilesDir()
+    directoryHandle = await active.conversation.getFilesDir()
+  }
+  if (!directoryHandle) {
+    return JSON.stringify({ error: 'No active workspace' })
   }
 
   try {

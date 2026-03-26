@@ -6,11 +6,11 @@ const createDraftSnapshotMock = vi.fn()
 const rollbackSnapshotMock = vi.fn()
 const updateCurrentCountsMock = vi.fn()
 const refreshPendingChangesMock = vi.fn()
-const getActiveWorkspaceMock = vi.fn()
+const getActiveConversationMock = vi.fn()
 
-vi.mock('@/store/workspace.store', () => ({
-  getActiveWorkspace: () => getActiveWorkspaceMock(),
-  useWorkspaceStore: {
+vi.mock('@/store/conversation-context.store', () => ({
+  getActiveConversation: () => getActiveConversationMock(),
+  useConversationContextStore: {
     getState: () => ({
       updateCurrentCounts: updateCurrentCountsMock,
       refreshPendingChanges: refreshPendingChangesMock,
@@ -31,8 +31,8 @@ describe('snapshot tools', () => {
 
   it('create_snapshot returns created payload when draft exists', async () => {
     createDraftSnapshotMock.mockResolvedValue({ snapshotId: 'snap_1', opCount: 3 })
-    getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { createDraftSnapshot: createDraftSnapshotMock },
+    getActiveConversationMock.mockResolvedValue({
+      conversation: { createDraftSnapshot: createDraftSnapshotMock },
     })
 
     const result = await createSnapshotExecutor({ summary: 'batch update' }, context)
@@ -46,8 +46,8 @@ describe('snapshot tools', () => {
 
   it('create_snapshot returns no-op when no draft exists', async () => {
     createDraftSnapshotMock.mockResolvedValue(null)
-    getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { createDraftSnapshot: createDraftSnapshotMock },
+    getActiveConversationMock.mockResolvedValue({
+      conversation: { createDraftSnapshot: createDraftSnapshotMock },
     })
 
     const result = await createSnapshotExecutor({}, context)
@@ -65,8 +65,8 @@ describe('snapshot tools', () => {
 
   it('rollback_snapshot returns unresolved paths', async () => {
     rollbackSnapshotMock.mockResolvedValue({ reverted: 1, unresolved: ['src/a.ts'] })
-    getActiveWorkspaceMock.mockResolvedValue({
-      workspace: { rollbackSnapshot: rollbackSnapshotMock },
+    getActiveConversationMock.mockResolvedValue({
+      conversation: { rollbackSnapshot: rollbackSnapshotMock },
     })
 
     const result = await rollbackSnapshotExecutor({ snapshot_id: 'snap_1' }, context)
