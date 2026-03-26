@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek, isThisMonth } from 'date-fns'
-import { zhCN } from 'date-fns/locale'
+import { zhCN, enUS, ja, ko } from 'date-fns/locale'
+import type { Locale as DateFnsLocale } from 'date-fns'
 import type { Project, ProjectStats } from '@/sqlite/repositories/project.repository'
 import {
   BrandButton,
@@ -31,9 +32,15 @@ import {
   Sparkles,
   Shield,
   RotateCcw,
+  Palette,
+  Sun,
+  Moon,
+  Globe,
 } from 'lucide-react'
+import { useTheme, ACCENT_COLORS, type AccentColor } from '@/store/theme.store'
+import { useT, useLocale, LOCALE_LABELS, type Locale } from '@/i18n'
 
-// 设计系统样式
+// Design system styles
 const designStyles = `
   /* 字体 - 使用独特的字体组合 */
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Noto+Serif+SC:wght@400;500;600&display=swap');
@@ -313,12 +320,23 @@ const designStyles = `
   }
 `
 
-// 格式化相对时间
-const formatRelativeTime = (date: number | Date) => {
-  return formatDistanceToNow(new Date(date), { addSuffix: true, locale: zhCN })
+// Get date-fns locale
+const getDateFnsLocale = (locale: string): DateFnsLocale => {
+  const localeMap: Record<string, DateFnsLocale> = {
+    'zh-CN': zhCN,
+    'en-US': enUS,
+    'ja-JP': ja,
+    'ko-KR': ko,
+  }
+  return localeMap[locale] || zhCN
 }
 
-// 时间分组
+// Format relative time - needs to be used inside component
+const formatRelativeTimeWithLocale = (date: number | Date, locale: DateFnsLocale) => {
+  return formatDistanceToNow(new Date(date), { addSuffix: true, locale })
+}
+
+// Time grouping
 type TimeGroup = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'older'
 
 const getTimeGroup = (date: number | Date): TimeGroup => {
@@ -328,14 +346,6 @@ const getTimeGroup = (date: number | Date): TimeGroup => {
   if (isThisWeek(d)) return 'thisWeek'
   if (isThisMonth(d)) return 'thisMonth'
   return 'older'
-}
-
-const timeGroupLabels: Record<TimeGroup, string> = {
-  today: '今天',
-  yesterday: '昨天',
-  thisWeek: '本周',
-  thisMonth: '本月',
-  older: '更早',
 }
 
 const timeGroupOrder: TimeGroup[] = ['today', 'thisWeek', 'thisMonth', 'older']
@@ -369,6 +379,30 @@ export function ProjectHome({
   onClearLocalData,
   isClearingLocalData = false,
 }: ProjectHomeProps) {
+  // Theme
+  const { mode: themeMode, setTheme, accentColor, setAccentColor } = useTheme()
+  const currentAccentColor = accentColor || 'teal'
+
+  // I18n
+  const t = useT()
+  const [locale, setLocale] = useLocale()
+  const dateFnsLocale = getDateFnsLocale(locale)
+
+  // Format relative time
+  const formatRelativeTime = (date: number | Date) => {
+    return formatRelativeTimeWithLocale(date, dateFnsLocale)
+  }
+
+  // Time group labels
+  const getTimeGroupLabels = (): Record<TimeGroup, string> => ({
+    today: t('projectHome.timeline.today'),
+    yesterday: t('projectHome.timeline.yesterday'),
+    thisWeek: t('projectHome.timeline.thisWeek'),
+    thisMonth: t('projectHome.timeline.thisMonth'),
+    older: t('projectHome.timeline.older'),
+  })
+  const timeGroupLabels = getTimeGroupLabels()
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all')
   const [isCreating, setIsCreating] = useState(false)
@@ -392,9 +426,12 @@ export function ProjectHome({
 
   const createInputRef = useRef<HTMLInputElement>(null)
 
-  // 清空本地数据确认
+  // Confirm text for clearing local data (needs to match translated placeholder)
+  const startFreshConfirmText = t('projectHome.dialogs.startFreshConfirmPlaceholder')
+
+  // Clear local data confirmation
   const handleClearDataConfirm = async () => {
-    if (clearDataConfirmText !== '重新开始') return
+    if (clearDataConfirmText !== startFreshConfirmText) return
     setIsActionSubmitting(true)
     try {
       await onClearLocalData()
@@ -411,25 +448,25 @@ export function ProjectHome({
     window.setTimeout(() => createInputRef.current?.focus(), 80)
   }
 
-  // 按时间分组的项目
+  // Projects grouped by time
   const groupedProjects = useMemo(() => {
     let filtered = [...projects]
 
-    // 应用状态过滤
+    // Apply status filter
     if (statusFilter === 'active') {
       filtered = filtered.filter((p) => p.status !== 'archived')
     } else if (statusFilter === 'archived') {
       filtered = filtered.filter((p) => p.status === 'archived')
     }
 
-    // 按更新时间排序
+    // Sort by update time
     const sorted = filtered.sort((a, b) => b.updatedAt - a.updatedAt)
 
-    // 应用搜索
+    // Apply search
     const keyword = search.trim().toLowerCase()
     const searched = keyword ? sorted.filter((p) => p.name.toLowerCase().includes(keyword)) : sorted
 
-    // 分组
+    // Group by time
     const groups: Record<TimeGroup, Project[]> = {
       today: [],
       yesterday: [],
@@ -446,13 +483,13 @@ export function ProjectHome({
     return groups
   }, [projects, search, statusFilter])
 
-  // 最近的项目
+  // Recent project
   const recentProject = useMemo(() => {
     const active = projects.filter((p) => p.status !== 'archived')
     return active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || null
   }, [projects])
 
-  // 项目统计
+  // Project stats
   const totalProjects = projects.filter((p) => p.status !== 'archived').length
   const totalWorkspaces = Object.values(projectStats).reduce(
     (sum, stats) => sum + (stats?.workspaceCount || 0),
@@ -487,7 +524,7 @@ export function ProjectHome({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [showCreateDialog, isLoading, isCreating])
 
-  // 从创建对话框提交
+  // Submit from create dialog
   const handleCreateFromDialog = async () => {
     const name = createDialogName.trim()
     if (!name) return
@@ -577,7 +614,7 @@ export function ProjectHome({
     }
   }
 
-  // 渲染项目时间线项
+  // Render project timeline item
   const renderProjectItem = (project: Project, index: number) => {
     const isActive = project.id === activeProjectId
     const stats = projectStats[project.id]
@@ -598,7 +635,7 @@ export function ProjectHome({
               </h3>
               {isArchived && (
                 <span className="home-mono text-[10px] uppercase tracking-wider text-tertiary dark:text-muted px-1.5 py-0.5 rounded bg-muted dark:bg-muted">
-                  已归档
+                  {t('projectHome.project.archived')}
                 </span>
               )}
             </div>
@@ -609,7 +646,7 @@ export function ProjectHome({
               </span>
               <span className="flex items-center gap-1">
                 <FolderOpen className="w-3 h-3" />
-                {stats?.workspaceCount || 0} 工作区
+                {t('projectHome.project.workspaceCount', { count: stats?.workspaceCount || 0 })}
               </span>
             </div>
           </div>
@@ -620,7 +657,7 @@ export function ProjectHome({
               disabled={isLoading || isActionSubmitting}
               className="home-body text-xs"
             >
-              打开
+              {t('projectHome.project.open')}
               <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </BrandButton>
             <DropdownMenu>
@@ -640,8 +677,8 @@ export function ProjectHome({
                 >
                   <Pencil className="mr-2 h-4 w-4" />
                   {isProjectActionPending && pendingProjectAction?.type === 'rename'
-                    ? '处理中...'
-                    : '重命名'}
+                    ? t('common.processing')
+                    : t('projectHome.project.rename')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => void handleArchiveClick(project, isArchived)}
@@ -650,12 +687,12 @@ export function ProjectHome({
                   {isArchived ? (
                     <>
                       <ArchiveRestore className="mr-2 h-4 w-4" />
-                      取消归档
+                      {t('projectHome.project.unarchive')}
                     </>
                   ) : (
                     <>
                       <Archive className="mr-2 h-4 w-4" />
-                      归档
+                      {t('projectHome.project.archive')}
                     </>
                   )}
                 </DropdownMenuItem>
@@ -669,7 +706,7 @@ export function ProjectHome({
                   className="text-danger focus:text-danger"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
-                  删除
+                  {t('projectHome.project.delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -692,7 +729,7 @@ export function ProjectHome({
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-50 border border-primary/10 dark:border-primary/20">
                 <Shield className="w-3.5 h-3.5 text-primary-600 dark:text-primary-600" />
                 <span className="home-body text-xs text-primary-600 dark:text-primary-600 font-medium">
-                  本地优先
+                  {t('projectHome.hero.badge')}
                 </span>
               </div>
             </div>
@@ -700,25 +737,25 @@ export function ProjectHome({
 
           <h1 className="home-title-serif home-reveal home-delay-1">
             <span className="block text-4xl sm:text-5xl lg:text-6xl text-primary dark:text-primary-foreground leading-tight">
-              创作从这里开始
+              {t('projectHome.hero.title')}
             </span>
           </h1>
 
           <p className="home-body home-reveal home-delay-2 mt-4 text-lg sm:text-xl text-secondary dark:text-secondary-foreground max-w-xl leading-relaxed">
-            在本地 AI 工作空间中，用自然语言与你的文件对话。
-            <span className="text-tertiary dark:text-muted">数据始终在你的设备上。</span>
+            {t('projectHome.hero.description')}
+            <span className="text-tertiary dark:text-muted">{t('projectHome.hero.descriptionSuffix')}</span>
           </p>
 
           {/* 快捷统计 */}
           <div className="home-reveal home-delay-3 mt-8 flex items-center gap-6">
             <div className="home-mono text-sm">
               <span className="text-primary dark:text-primary-foreground font-medium">{totalProjects}</span>
-              <span className="text-tertiary dark:text-muted ml-1">项目</span>
+              <span className="text-tertiary dark:text-muted ml-1">{t('projectHome.hero.projectCount', { count: '' }).trim()}</span>
             </div>
             <div className="w-px h-4 bg-border" />
             <div className="home-mono text-sm">
               <span className="text-primary dark:text-primary-foreground font-medium">{totalWorkspaces}</span>
-              <span className="text-tertiary dark:text-muted ml-1">工作区</span>
+              <span className="text-tertiary dark:text-muted ml-1">{t('projectHome.hero.workspaceCount', { count: '' }).trim()}</span>
             </div>
           </div>
         </div>
@@ -735,14 +772,14 @@ export function ProjectHome({
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles className="w-4 h-4 text-primary-600 dark:text-primary-600" />
                   <span className="home-mono text-xs uppercase tracking-wider text-tertiary dark:text-muted">
-                    继续工作
+                    {t('projectHome.sidebar.continueWork')}
                   </span>
                 </div>
                 <h3 className="home-title-sans text-base text-primary dark:text-primary-foreground mb-1 truncate">
                   {recentProject.name}
                 </h3>
                 <p className="home-body text-xs text-tertiary dark:text-muted mb-4">
-                  {formatRelativeTime(recentProject.updatedAt)} 更新
+                  {formatRelativeTime(recentProject.updatedAt)}
                 </p>
                 <BrandButton
                   onClick={() => void onOpenProject(recentProject.id)}
@@ -750,7 +787,7 @@ export function ProjectHome({
                   className="w-full"
                   disabled={isLoading}
                 >
-                  继续编辑
+                  {t('projectHome.sidebar.continueWork')}
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </BrandButton>
               </div>
@@ -761,7 +798,7 @@ export function ProjectHome({
               className="home-reveal home-delay-4 home-action-card rounded-xl border border-border bg-card p-5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               role="button"
               tabIndex={0}
-              aria-label="创建新项目"
+              aria-label={t('projectHome.dialogs.createProject')}
               onClick={openCreateDialog}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -773,13 +810,13 @@ export function ProjectHome({
               <div className="flex items-center gap-2 mb-3">
                 <Plus className="w-4 h-4 text-primary-600 dark:text-primary-600" />
                 <span className="home-mono text-xs uppercase tracking-wider text-tertiary dark:text-muted">
-                  新建
+                  {t('projectHome.sidebar.createNew')}
                 </span>
               </div>
               <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
-                创建一个新项目，开始你的创作之旅。
+                {t('projectHome.sidebar.createNewDescription')}
               </p>
-              <p className="home-mono text-[11px] text-tertiary dark:text-muted mb-3">快捷键: N</p>
+              <p className="home-mono text-[11px] text-tertiary dark:text-muted mb-3">{t('projectHome.sidebar.shortcutHint')}</p>
               <BrandButton
                 variant="outline"
                 className="w-full"
@@ -789,7 +826,7 @@ export function ProjectHome({
                 }}
                 disabled={isLoading || isCreating}
               >
-                创建项目
+                {t('projectHome.sidebar.createProject')}
               </BrandButton>
             </div>
 
@@ -798,11 +835,11 @@ export function ProjectHome({
               <div className="flex items-center gap-2 mb-3">
                 <RotateCcw className="w-4 h-4 text-tertiary" />
                 <span className="home-mono text-xs uppercase tracking-wider text-tertiary">
-                  重新开始
+                  {t('projectHome.sidebar.startFresh')}
                 </span>
               </div>
               <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
-                遇到问题？可以从头开始。这会删除所有项目和对话记录。
+                {t('projectHome.sidebar.startFreshDescription')}
               </p>
               <BrandButton
                 variant="ghost"
@@ -810,20 +847,109 @@ export function ProjectHome({
                 onClick={() => setShowClearDataDialog(true)}
                 disabled={isClearingLocalData || isLoading}
               >
-                {isClearingLocalData ? '重置中...' : '重置应用'}
+                {isClearingLocalData ? t('projectHome.sidebar.resetting') : t('projectHome.sidebar.resetApp')}
               </BrandButton>
+            </div>
+
+            {/* 外观设置 */}
+            <div className="home-reveal home-delay-6 rounded-xl border border-border/60 bg-card/50 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Palette className="w-4 h-4 text-tertiary" />
+                <span className="home-mono text-xs uppercase tracking-wider text-tertiary">
+                  {t('projectHome.sidebar.appearance')}
+                </span>
+              </div>
+
+              {/* 主题模式切换 */}
+              <div className="mb-4">
+                <p className="home-body text-xs text-tertiary dark:text-muted mb-2">{t('projectHome.theme.modeTitle')}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTheme('light')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                      themeMode === 'light'
+                        ? 'bg-primary-50 dark:bg-primary-50 text-primary-600 dark:text-primary-600 border border-primary/20'
+                        : 'bg-muted/30 dark:bg-muted/30 text-tertiary dark:text-muted hover:bg-muted/50'
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5" />
+                    <span>{t('projectHome.theme.light')}</span>
+                  </button>
+                  <button
+                    onClick={() => setTheme('dark')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                      themeMode === 'dark'
+                        ? 'bg-primary-50 dark:bg-primary-50 text-primary-600 dark:text-primary-600 border border-primary/20'
+                        : 'bg-muted/30 dark:bg-muted/30 text-tertiary dark:text-muted hover:bg-muted/50'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                    <span>{t('projectHome.theme.dark')}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 语言选择 */}
+              <div className="mb-4">
+                <p className="home-body text-xs text-tertiary dark:text-muted mb-2">{t('projectHome.theme.languageTitle')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as Locale[]).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setLocale(lang)}
+                      className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                        locale === lang
+                          ? 'bg-primary-50 dark:bg-primary-50 text-primary-600 dark:text-primary-600 border border-primary/20'
+                          : 'bg-muted/30 dark:bg-muted/30 text-tertiary dark:text-muted hover:bg-muted/50'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>{LOCALE_LABELS[lang]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 主题色选择 */}
+              <div>
+                <p className="home-body text-xs text-tertiary dark:text-muted mb-2">{t('projectHome.theme.accentColorTitle')}</p>
+                <div className="grid grid-cols-6 gap-2">
+                  {(Object.keys(ACCENT_COLORS) as AccentColor[]).map((color) => {
+                    const config = ACCENT_COLORS[color]
+                    const isSelected = currentAccentColor === color
+                    const colorName = t(`projectHome.accentColors.${color}`)
+                    return (
+                      <button
+                        key={color}
+                        onClick={() => setAccentColor(color)}
+                        className={`w-full aspect-square rounded-lg transition-all ${
+                          isSelected
+                            ? 'ring-2 ring-offset-2 ring-offset-background'
+                            : 'hover:scale-110'
+                        }`}
+                        style={{
+                          backgroundColor: `hsl(${config.hue}, ${config.saturation}%, ${config.lightness}%)`,
+                          ['--tw-ring-color' as string]: `hsl(${config.hue}, ${config.saturation}%, ${config.lightness}%)`,
+                        }}
+                        title={colorName}
+                        aria-label={colorName}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </aside>
 
-          {/* 右侧：项目列表 */}
+          {/* Right: Project list */}
           <section className="lg:col-span-8">
-            {/* 搜索和过滤 */}
+            {/* Search and filter */}
             <div className="home-reveal home-delay-4 flex flex-col sm:flex-row gap-3 mb-6">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索项目..."
+                placeholder={t('projectHome.filters.searchPlaceholder')}
                 className="home-search-input home-body flex-1 h-10 px-4 rounded-lg text-sm"
               />
               <div className="flex rounded-lg border border-border p-1 bg-muted/30 dark:bg-muted/30">
@@ -837,13 +963,13 @@ export function ProjectHome({
                         : 'text-tertiary dark:text-muted hover:text-secondary dark:hover:text-secondary-foreground'
                     }`}
                   >
-                    {filter === 'all' ? '全部' : filter === 'active' ? '活跃' : '已归档'}
+                    {t(`projectHome.filters.${filter}`)}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 项目时间线 */}
+            {/* Project timeline */}
             <div className="home-timeline">
               {timeGroupOrder.map((group) => {
                 const groupProjects = groupedProjects[group]
@@ -861,12 +987,12 @@ export function ProjectHome({
                 )
               })}
 
-              {/* 空状态 */}
+              {/* Empty state */}
               {timeGroupOrder.every((g) => groupedProjects[g].length === 0) && (
                 <div className="home-reveal home-delay-5 home-empty-state rounded-xl border border-dashed border-border py-16 text-center">
                   <div className="relative z-10">
                     <p className="home-body text-secondary dark:text-secondary-foreground mb-4">
-                      {search ? '没有找到匹配的项目' : '还没有项目'}
+                      {search ? t('projectHome.empty.noResults') : t('projectHome.empty.noProjects')}
                     </p>
                     {!search && projects.length === 0 && (
                       <BrandButton
@@ -874,7 +1000,7 @@ export function ProjectHome({
                         onClick={openCreateDialog}
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        创建第一个项目
+                        {t('projectHome.empty.createFirst')}
                       </BrandButton>
                     )}
                   </div>
@@ -885,7 +1011,7 @@ export function ProjectHome({
         </div>
       </main>
 
-      {/* 对话框们 */}
+      {/* Dialogs */}
       <BrandDialog
         open={!!renamingProjectId}
         onOpenChange={(open) => {
@@ -896,13 +1022,13 @@ export function ProjectHome({
       >
         <BrandDialogContent className="max-w-md">
           <BrandDialogHeader>
-            <BrandDialogTitle>重命名项目</BrandDialogTitle>
+            <BrandDialogTitle>{t('projectHome.dialogs.renameProject')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             <BrandInput
               value={renameDraft}
               onChange={(e) => setRenameDraft(e.target.value)}
-              placeholder="输入新的项目名称"
+              placeholder={t('projectHome.dialogs.renamePlaceholder')}
               disabled={isActionSubmitting}
             />
           </BrandDialogBody>
@@ -912,13 +1038,13 @@ export function ProjectHome({
               onClick={() => setRenamingProjectId(null)}
               disabled={isActionSubmitting}
             >
-              取消
+              {t('common.cancel')}
             </BrandButton>
             <BrandButton
               onClick={() => void handleRenameConfirm()}
               disabled={isActionSubmitting || !renameDraft.trim()}
             >
-              {isActionSubmitting ? '处理中...' : '保存'}
+              {isActionSubmitting ? t('common.processing') : t('common.save')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
@@ -934,11 +1060,11 @@ export function ProjectHome({
       >
         <BrandDialogContent className="max-w-md">
           <BrandDialogHeader>
-            <BrandDialogTitle>归档项目</BrandDialogTitle>
+            <BrandDialogTitle>{t('projectHome.dialogs.archiveProject')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             <p className="home-body text-sm text-secondary dark:text-secondary-foreground">
-              确认归档项目「{archivingProject?.name}」？归档后项目不会默认展示，但可随时取消归档。
+              {t('projectHome.dialogs.archiveConfirm', { name: archivingProject?.name || '' })}
             </p>
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-secondary dark:text-secondary-foreground">
               <BrandCheckbox
@@ -946,7 +1072,7 @@ export function ProjectHome({
                 onCheckedChange={(checked) => setArchiveDontAskAgain(Boolean(checked))}
                 disabled={isActionSubmitting}
               />
-              <span>下次不再提示</span>
+              <span>{t('projectHome.dialogs.dontAskAgain')}</span>
             </label>
           </BrandDialogBody>
           <BrandDialogFooter>
@@ -955,10 +1081,10 @@ export function ProjectHome({
               onClick={() => setArchivingProject(null)}
               disabled={isActionSubmitting}
             >
-              取消
+              {t('common.cancel')}
             </BrandButton>
             <BrandButton onClick={() => void handleArchiveConfirm()} disabled={isActionSubmitting}>
-              {isActionSubmitting ? '处理中...' : '确认归档'}
+              {isActionSubmitting ? t('common.processing') : t('projectHome.dialogs.archiveProject')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
@@ -976,13 +1102,13 @@ export function ProjectHome({
       >
         <BrandDialogContent className="max-w-md">
           <BrandDialogHeader>
-            <BrandDialogTitle>删除项目</BrandDialogTitle>
+            <BrandDialogTitle>{t('projectHome.dialogs.deleteProject')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             <p className="home-body text-sm text-secondary dark:text-secondary-foreground">
-              确认删除项目「{deletingProject?.name}」？该操作会删除项目关联的工作区记录，且不可撤销。
+              {t('projectHome.dialogs.deleteConfirm', { name: deletingProject?.name || '' })}
             </p>
-            <p className="home-mono mt-3 text-xs text-tertiary dark:text-muted">请输入项目名称以确认删除：</p>
+            <p className="home-mono mt-3 text-xs text-tertiary dark:text-muted">{t('projectHome.dialogs.deleteConfirmHint')}</p>
             <BrandInput
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
@@ -997,7 +1123,7 @@ export function ProjectHome({
               onClick={() => setDeletingProject(null)}
               disabled={isActionSubmitting}
             >
-              取消
+              {t('common.cancel')}
             </BrandButton>
             <BrandButton
               variant="danger"
@@ -1008,13 +1134,13 @@ export function ProjectHome({
                 deleteConfirmText !== deletingProject.name
               }
             >
-              {isActionSubmitting ? '处理中...' : '确认删除'}
+              {isActionSubmitting ? t('common.processing') : t('projectHome.dialogs.deleteProject')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
       </BrandDialog>
 
-      {/* 创建项目对话框 */}
+      {/* Create project dialog */}
       <BrandDialog
         modal
         open={showCreateDialog}
@@ -1027,17 +1153,17 @@ export function ProjectHome({
       >
         <BrandDialogContent className="max-w-md">
           <BrandDialogHeader>
-            <BrandDialogTitle>创建新项目</BrandDialogTitle>
+            <BrandDialogTitle>{t('projectHome.dialogs.createProject')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
-              为你的新项目起一个名字，用于组织和区分不同的工作区。
+              {t('projectHome.dialogs.createProjectDescription')}
             </p>
             <BrandInput
               ref={createInputRef}
               value={createDialogName}
               onChange={(e) => setCreateDialogName(e.target.value)}
-              placeholder="输入项目名称"
+              placeholder={t('projectHome.dialogs.projectNamePlaceholder')}
               onCompositionStart={() => setIsComposition(true)}
               onCompositionEnd={() => setIsComposition(false)}
               onKeyDown={(e) => {
@@ -1057,19 +1183,19 @@ export function ProjectHome({
               }}
               disabled={isCreating}
             >
-              取消
+              {t('common.cancel')}
             </BrandButton>
             <BrandButton
               onClick={() => void handleCreateFromDialog()}
               disabled={isCreating || !createDialogName.trim()}
             >
-              {isCreating ? '创建中...' : '创建项目'}
+              {isCreating ? t('projectHome.dialogs.creating') : t('projectHome.dialogs.createButton')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
       </BrandDialog>
 
-      {/* 重新开始确认对话框 */}
+      {/* Reset app dialog */}
       <BrandDialog
         modal
         open={showClearDataDialog}
@@ -1082,27 +1208,27 @@ export function ProjectHome({
       >
         <BrandDialogContent className="max-w-md">
           <BrandDialogHeader>
-            <BrandDialogTitle>重新开始</BrandDialogTitle>
+            <BrandDialogTitle>{t('projectHome.dialogs.startFreshTitle')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
-              这会删除你在这个应用中创建的所有内容：
+              {t('projectHome.dialogs.startFreshDescription')}
             </p>
             <ul className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4 space-y-2 pl-4">
-              <li>• 所有项目和工作区</li>
-              <li>• 所有对话记录</li>
-              <li>• 所有上传的文件</li>
+              <li>• {t('projectHome.dialogs.startFreshItems.projects')}</li>
+              <li>• {t('projectHome.dialogs.startFreshItems.conversations')}</li>
+              <li>• {t('projectHome.dialogs.startFreshItems.files')}</li>
             </ul>
             <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
-              就像第一次打开这个应用一样。
+              {t('projectHome.dialogs.startFreshNote')}
             </p>
             <p className="home-mono text-xs text-tertiary dark:text-muted mb-2">
-              输入 <span className="font-bold">重新开始</span> 确认：
+              {t('projectHome.dialogs.startFreshConfirmHint')}
             </p>
             <BrandInput
               value={clearDataConfirmText}
               onChange={(e) => setClearDataConfirmText(e.target.value)}
-              placeholder="重新开始"
+              placeholder={t('projectHome.dialogs.startFreshConfirmPlaceholder')}
               disabled={isClearingLocalData}
               className="mt-1"
             />
@@ -1116,14 +1242,14 @@ export function ProjectHome({
               }}
               disabled={isClearingLocalData}
             >
-              取消
+              {t('common.cancel')}
             </BrandButton>
             <BrandButton
               variant="danger"
               onClick={() => void handleClearDataConfirm()}
-              disabled={isClearingLocalData || clearDataConfirmText !== '重新开始'}
+              disabled={isClearingLocalData || clearDataConfirmText !== t('projectHome.dialogs.startFreshConfirmPlaceholder')}
             >
-              {isClearingLocalData ? '重置中...' : '确认重置'}
+              {isClearingLocalData ? t('projectHome.dialogs.resetting') : t('projectHome.dialogs.confirmReset')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>

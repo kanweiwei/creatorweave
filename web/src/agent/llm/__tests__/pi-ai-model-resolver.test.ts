@@ -26,5 +26,24 @@ describe('resolvePiAIModel', () => {
     expect(model.api).toBe('openai-completions')
     expect(model.provider).toBe('anthropic')
   })
-})
 
+  it('should resolve latest GLM models', () => {
+    const model = resolvePiAIModel('glm-coding', 'glm-5', 'https://open.bigmodel.cn/api/coding/paas/v4/')
+    expect(model.provider).toBe('zai')
+    expect(model.id).toBe('glm-5')
+  })
+
+  it('should map MiniMax M2.7 to custom fetch fallback for browser CORS safety', () => {
+    const model = resolvePiAIModel('minimax', 'MiniMax-M2.7', 'https://api.minimax.io/v1')
+    expect(model.provider).toBe('minimax')
+    expect(model.id).toBe('MiniMax-M2.7')
+    expect(model.api).toBe('cw-openai-fetch')
+  })
+
+  it('should map MiniMax M2.7 to custom fetch fallback for minimax-cn', () => {
+    const model = resolvePiAIModel('minimax-cn', 'MiniMax-M2.7', 'https://api.minimaxi.com/v1')
+    expect(model.provider).toBe('minimax-cn')
+    expect(model.id).toBe('MiniMax-M2.7')
+    expect(model.api).toBe('cw-openai-fetch')
+  })
+})

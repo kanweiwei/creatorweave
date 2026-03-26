@@ -1,6 +1,7 @@
 import { getModel } from '@mariozechner/pi-ai'
 import type { Api, KnownProvider, Model } from '@mariozechner/pi-ai'
 import type { LLMProviderType } from '@/agent/providers/types'
+import { CW_OPENAI_FETCH_API } from './pi-ai-custom-openai-fetch'
 
 const DEFAULT_CONTEXT_WINDOW = 128000
 const DEFAULT_MAX_TOKENS = 8192
@@ -11,7 +12,6 @@ const PROVIDER_MAP: Partial<Record<LLMProviderType, KnownProvider>> = {
   google: 'google',
   groq: 'groq',
   mistral: 'mistral',
-  minimax: 'minimax',
   kimi: 'kimi-coding',
   glm: 'zai',
   'glm-coding': 'zai',
@@ -22,10 +22,26 @@ const MODEL_ALIASES: Partial<Record<LLMProviderType, Record<string, string>>> = 
     'gemini-2.0-pro': 'gemini-2.0-flash',
   },
   minimax: {
-    'abab6.5s-chat': 'MiniMax-M2',
+    'abab6.5s-chat': 'MiniMax-M2.7',
+    'MiniMax-M2': 'MiniMax-M2.7',
+    'MiniMax-M2.1': 'MiniMax-M2.7',
+    'MiniMax-M2.5': 'MiniMax-M2.7',
+    'MiniMax-M2.5-highspeed': 'MiniMax-M2.7-highspeed',
+  },
+  'minimax-cn': {
+    'abab6.5s-chat': 'MiniMax-M2.7',
+    'MiniMax-M2': 'MiniMax-M2.7',
+    'MiniMax-M2.1': 'MiniMax-M2.7',
+    'MiniMax-M2.5': 'MiniMax-M2.7',
+    'MiniMax-M2.5-highspeed': 'MiniMax-M2.7-highspeed',
   },
   kimi: {
     'moonshot-v1-8k': 'k2p5',
+  },
+  glm: {
+    'glm-4-flash': 'glm-4.7-flash',
+    'glm-4': 'glm-4.7',
+    'glm-4-long': 'glm-4.7',
   },
   'glm-coding': {
     'glm-4-flash': 'glm-4.7-flash',
@@ -67,11 +83,16 @@ function createOpenAICompatibleFallback(
   providerType: LLMProviderType,
   modelName: string,
   baseUrl: string
-): Model<'openai-completions'> {
+): Model<Api> {
+  const fallbackApi: Api =
+    providerType === 'minimax' || providerType === 'minimax-cn'
+      ? CW_OPENAI_FETCH_API
+      : 'openai-completions'
+
   return {
     id: modelName,
     name: modelName,
-    api: 'openai-completions',
+    api: fallbackApi,
     provider: providerType,
     baseUrl: normalizeBaseUrl(baseUrl),
     reasoning: true,
@@ -94,5 +115,6 @@ export function resolvePiAIModel(
 ): Model<Api> {
   const native = tryGetNativeModel(providerType, modelName, baseUrl)
   if (native) return native
-  return createOpenAICompatibleFallback(providerType, modelName, baseUrl)
+  const resolvedModelName = MODEL_ALIASES[providerType]?.[modelName] || modelName
+  return createOpenAICompatibleFallback(providerType, resolvedModelName, baseUrl)
 }

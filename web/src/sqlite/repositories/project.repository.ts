@@ -136,7 +136,18 @@ export class ProjectRepository {
   }
 
   async setActiveProject(projectId: string): Promise<void> {
+    if (!projectId) {
+      throw new Error('Project ID is required')
+    }
+
     const db = getSQLiteDB()
+
+    // Avoid opaque FK errors by validating existence first.
+    const existing = await db.queryFirst<{ id: string }>('SELECT id FROM projects WHERE id = ?', [projectId])
+    if (!existing) {
+      throw new Error(`Project not found: ${projectId}`)
+    }
+
     await db.execute(
       `INSERT INTO active_project (singleton_id, project_id, last_modified)
        VALUES (0, ?, ?)

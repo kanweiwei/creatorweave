@@ -23,5 +23,6 @@ export function useLocale() {
   return [locale, setLocale] as const
 }
 
-// 重新导出类型
+// 重新导出类型和常量
 export type { Locale } from '@creatorweave/i18n'
+export { LOCALE_LABELS } from '@creatorweave/i18n'

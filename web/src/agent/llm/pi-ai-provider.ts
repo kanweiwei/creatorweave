@@ -10,6 +10,7 @@ import { complete, stream, type Api, type Context, type Message, type Model, typ
 import { estimateMessagesTokens } from './token-counter'
 import type { LLMProviderType } from '@/agent/providers/types'
 import { resolvePiAIModel } from './pi-ai-model-resolver'
+import { ensurePiAICustomProvidersRegistered } from './pi-ai-custom-openai-fetch'
 
 const MAX_CONTEXT_TOKENS = 128000
 
@@ -28,6 +29,7 @@ export class PiAIProvider implements LLMProvider {
   private model: Model<Api>
 
   constructor(config: PiAIProviderConfig) {
+    ensurePiAICustomProvidersRegistered()
     this.apiKey = config.apiKey
     this.model = resolvePiAIModel(config.providerType, config.model, config.baseUrl)
     this.maxContextTokens = this.model.contextWindow || MAX_CONTEXT_TOKENS

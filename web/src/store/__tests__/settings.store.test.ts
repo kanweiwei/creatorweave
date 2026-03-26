@@ -13,7 +13,7 @@ describe('useSettingsStore', () => {
     // Reset store state before each test
     useSettingsStore.setState({
       providerType: 'glm-coding',
-      modelName: 'glm-4-flash',
+      modelName: 'glm-4.7-flash',
       customBaseUrl: '',
       temperature: 0.7,
       maxTokens: 4096,
@@ -26,7 +26,7 @@ describe('useSettingsStore', () => {
       const state = useSettingsStore.getState()
 
       expect(state.providerType).toBe('glm-coding')
-      expect(state.modelName).toBe('glm-4-flash')
+      expect(state.modelName).toBe('glm-4.7-flash')
       expect(state.customBaseUrl).toBe('')
       expect(state.temperature).toBe(0.7)
       expect(state.maxTokens).toBe(4096)

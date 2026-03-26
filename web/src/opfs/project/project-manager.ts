@@ -62,25 +62,27 @@ export class ProjectManager {
   }
 
   /**
-   * 创建新项目
-   * @param path 项目路径（用于生成 ID）
+   * Ensure project directory structure exists for a concrete project ID.
+   * This aligns OPFS directory names with SQLite `projects.id`.
    */
-  async createProject(path: string): Promise<ProjectInfo> {
-    const projectId = this.hashPath(path)
+  async ensureProject(projectId: string): Promise<ProjectInfo> {
+    if (!projectId) {
+      throw new Error('projectId is required')
+    }
 
-    // 检查缓存
     if (this.projectCache.has(projectId)) {
       return this.projectCache.get(projectId)!
     }
 
-    // 创建项目目录结构
     const projectDir = await this.projectsDir.getDirectoryHandle(projectId, { create: true })
     const agentsDir = await projectDir.getDirectoryHandle(AGENTS_DIR, { create: true })
     await projectDir.getDirectoryHandle(WORKSPACES_DIR, { create: true })
 
-    // 创建 AgentManager 并初始化默认 agent
     const agentManager = new AgentManager(agentsDir)
-    await agentManager.createAgent('default', getDefaultAgentTemplate())
+    const hasDefault = await agentManager.hasAgent('default')
+    if (!hasDefault) {
+      await agentManager.createAgent('default', getDefaultAgentTemplate())
+    }
 
     const projectInfo: ProjectInfo = {
       id: projectId,
@@ -89,6 +91,16 @@ export class ProjectManager {
 
     this.projectCache.set(projectId, projectInfo)
     return projectInfo
+  }
+
+  /**
+   * 创建新项目
+   * @param path 项目路径（用于生成 ID）
+   */
+  async createProject(path: string): Promise<ProjectInfo> {
+    // Legacy behavior: keep path hashing for backward compatibility.
+    const hashedProjectId = this.hashPath(path)
+    return this.ensureProject(hashedProjectId)
   }
 
   /**
@@ -102,8 +114,14 @@ export class ProjectManager {
 
     try {
       const projectDir = await this.projectsDir.getDirectoryHandle(id)
-      const agentsDir = await projectDir.getDirectoryHandle(AGENTS_DIR)
+      const agentsDir = await projectDir.getDirectoryHandle(AGENTS_DIR, { create: true })
+      await projectDir.getDirectoryHandle(WORKSPACES_DIR, { create: true })
       const agentManager = new AgentManager(agentsDir)
+
+      const hasDefault = await agentManager.hasAgent('default')
+      if (!hasDefault) {
+        await agentManager.createAgent('default', getDefaultAgentTemplate())
+      }
 
       const projectInfo: ProjectInfo = {
         id,
@@ -132,7 +150,16 @@ export class ProjectManager {
     const id = this.hashPath(path)
     const existing = await this.getProject(id)
     if (existing) return existing
-    return this.createProject(path)
+    return this.ensureProject(id)
+  }
+
+  /**
+   * Get or create project by concrete project ID.
+   */
+  async getOrCreateProjectById(projectId: string): Promise<ProjectInfo> {
+    const existing = await this.getProject(projectId)
+    if (existing) return existing
+    return this.ensureProject(projectId)
   }
 
   /**

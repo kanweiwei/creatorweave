@@ -281,6 +281,13 @@ export function ModelSettings({ open }: ModelSettingsProps) {
     () => availableModels.find((m) => m.id === modelName),
     [availableModels, modelName]
   )
+  const effectiveBaseUrl = useMemo(() => {
+    if (providerType === 'custom') {
+      if (activeCustomProvider?.baseUrl) return activeCustomProvider.baseUrl
+      return customBaseUrl.trim()
+    }
+    return LLM_PROVIDER_CONFIGS[providerType]?.baseURL || ''
+  }, [providerType, activeCustomProvider, customBaseUrl])
 
   // Load existing API key on mount and when dialog opens or provider changes
   useEffect(() => {
@@ -472,6 +479,13 @@ export function ModelSettings({ open }: ModelSettingsProps) {
             <ExternalLink className="h-3 w-3" />
           </a>
         )}
+
+        <div className="rounded-md border border bg-muted/30 p-2 dark:border-border dark:bg-muted/30">
+          <p className="text-[11px] font-medium text-secondary">API Base URL</p>
+          <p className="mt-1 break-all font-mono text-[11px] text-tertiary">
+            {effectiveBaseUrl || '未配置'}
+          </p>
+        </div>
       </div>
 
       {/* ── Custom Provider Management ── */}

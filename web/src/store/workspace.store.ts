@@ -362,6 +362,23 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           // Prevent concurrent switch operations
           const switchingId = get().switchingWorkspaceId
+          if (switchingId === id) {
+            // Another switch to the same workspace is already in-flight.
+            // Wait for it to finish and reuse its result.
+            await new Promise<void>((resolve) => {
+              const checkInterval = setInterval(() => {
+                if (get().switchingWorkspaceId !== id) {
+                  clearInterval(checkInterval)
+                  resolve()
+                }
+              }, 100)
+            })
+            if (get().activeWorkspaceId === id) {
+              return
+            }
+            const message = get().error || `Failed to switch workspace: ${id}`
+            throw new Error(message)
+          }
           if (switchingId && switchingId !== id) {
             console.warn(`[WorkspaceStore] Switching to ${id} while already switching to ${switchingId}, waiting...`)
             // Wait for the current switch to complete, then check if we need to switch again
@@ -549,6 +566,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               switchingWorkspaceId: null,
             })
             throw new Error(message)
+          } finally {
+            // Always release switching lock for this target workspace.
+            // Some early-return success paths (e.g. first-time workspace creation)
+            // can otherwise leave the lock stuck and block runAgent forever.
+            if (get().switchingWorkspaceId === id) {
+              set({
+                switchingWorkspaceId: null,
+                isLoading: false,
+              })
+            }
           }
         },
 

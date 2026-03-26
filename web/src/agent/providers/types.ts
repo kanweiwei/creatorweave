@@ -48,6 +48,7 @@ export type LLMProviderType =
   | 'glm-coding'
   | 'kimi'
   | 'minimax'
+  | 'minimax-cn'
   | 'qwen'
   // Custom
   | 'custom'
@@ -82,12 +83,12 @@ export const LLM_PROVIDER_CONFIGS: Record<LLMProviderType, Omit<LLMProviderConfi
   // Chinese providers
   glm: {
     baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
-    modelName: 'glm-4.7',
+    modelName: 'glm-5',
     headers: {},
   },
   'glm-coding': {
     baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4/',
-    modelName: 'glm-4-flash',
+    modelName: 'glm-4.7-flash',
     headers: {},
   },
   kimi: {
@@ -96,8 +97,13 @@ export const LLM_PROVIDER_CONFIGS: Record<LLMProviderType, Omit<LLMProviderConfi
     headers: {},
   },
   minimax: {
-    baseURL: 'https://api.minimax.chat/v1',
-    modelName: 'abab6.5s-chat',
+    baseURL: 'https://api.minimax.io/v1',
+    modelName: 'MiniMax-M2.7',
+    headers: {},
+  },
+  'minimax-cn': {
+    baseURL: 'https://api.minimaxi.com/v1',
+    modelName: 'MiniMax-M2.7',
     headers: {},
   },
   qwen: {
@@ -253,28 +259,22 @@ export const PROVIDER_META: Record<LLMProviderType, ProviderMeta> = {
     website: 'https://open.bigmodel.cn',
     models: [
       {
+        id: 'glm-5',
+        name: 'GLM-5',
+        capabilities: ['code', 'writing', 'reasoning'],
+        contextWindow: 200000,
+      },
+      {
         id: 'glm-4.7',
         name: 'GLM-4.7',
         capabilities: ['code', 'writing', 'reasoning', 'vision'],
         contextWindow: 200000,
       },
       {
-        id: 'glm-4-flash',
-        name: 'GLM-4 Flash',
+        id: 'glm-4.7-flash',
+        name: 'GLM-4.7 Flash',
         capabilities: ['code', 'writing', 'fast'],
         contextWindow: 128000,
-      },
-      {
-        id: 'glm-4',
-        name: 'GLM-4',
-        capabilities: ['code', 'writing', 'reasoning'],
-        contextWindow: 128000,
-      },
-      {
-        id: 'glm-4-long',
-        name: 'GLM-4 Long',
-        capabilities: ['writing', 'long-context'],
-        contextWindow: 1000000,
       },
     ],
   },
@@ -284,14 +284,20 @@ export const PROVIDER_META: Record<LLMProviderType, ProviderMeta> = {
     website: 'https://open.bigmodel.cn',
     models: [
       {
+        id: 'glm-5',
+        name: 'GLM-5 (Code)',
+        capabilities: ['code', 'reasoning'],
+        contextWindow: 200000,
+      },
+      {
         id: 'glm-4.7',
         name: 'GLM-4.7 (Code)',
         capabilities: ['code', 'reasoning'],
         contextWindow: 200000,
       },
       {
-        id: 'glm-4-flash',
-        name: 'GLM-4 Flash (Code)',
+        id: 'glm-4.7-flash',
+        name: 'GLM-4.7 Flash (Code)',
         capabilities: ['code', 'fast'],
         contextWindow: 128000,
       },
@@ -323,15 +329,40 @@ export const PROVIDER_META: Record<LLMProviderType, ProviderMeta> = {
     ],
   },
   minimax: {
+    category: 'international',
+    displayName: 'MiniMax (International)',
+    website: 'https://www.minimax.io',
+    models: [
+      {
+        id: 'MiniMax-M2.7',
+        name: 'MiniMax M2.7',
+        capabilities: ['code', 'reasoning'],
+        contextWindow: 128000,
+      },
+      {
+        id: 'MiniMax-M2.7-highspeed',
+        name: 'MiniMax M2.7 Highspeed',
+        capabilities: ['code', 'fast'],
+        contextWindow: 128000,
+      },
+    ],
+  },
+  'minimax-cn': {
     category: 'chinese',
-    displayName: 'MiniMax',
+    displayName: 'MiniMax (国内版)',
     website: 'https://www.minimaxi.com',
     models: [
       {
-        id: 'abab6.5s-chat',
-        name: 'ABAB 6.5s',
-        capabilities: ['writing', 'fast'],
-        contextWindow: 8000,
+        id: 'MiniMax-M2.7',
+        name: 'MiniMax M2.7',
+        capabilities: ['code', 'reasoning'],
+        contextWindow: 128000,
+      },
+      {
+        id: 'MiniMax-M2.7-highspeed',
+        name: 'MiniMax M2.7 Highspeed',
+        capabilities: ['code', 'fast'],
+        contextWindow: 128000,
       },
     ],
   },

@@ -129,6 +129,7 @@ function App() {
   const projectLoading = useProjectStore((s) => s.isLoading)
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const activeWorkspaceId = useConversationContextStore((s) => s.activeWorkspaceId)
+  const switchingWorkspaceId = useConversationContextStore((s) => s.switchingWorkspaceId)
   const activeConversationId = useConversationStore((s) => s.activeConversationId)
   const conversations = useConversationStore((s) => s.conversations)
   const t = useT() // i18n hook
@@ -662,6 +663,7 @@ function App() {
 
       const convState = useConversationStore.getState()
       const isTransientActiveConversation =
+        switchingWorkspaceId === workspaceId &&
         convState.activeConversationId === workspaceId &&
         convState.conversations.some((conversation) => conversation.id === workspaceId)
       if (isTransientActiveConversation) {
@@ -689,7 +691,17 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [isStorageReady, projectLoading, currentRoute, projects, activeProjectId, activeWorkspaceId, setActiveProject])
+  }, [
+    isStorageReady,
+    projectLoading,
+    currentRoute,
+    projects,
+    activeProjectId,
+    activeWorkspaceId,
+    activeConversationId,
+    switchingWorkspaceId,
+    setActiveProject,
+  ])
 
   useEffect(() => {
     if (!isStorageReady || currentRoute.kind !== 'projectWorkspace') return

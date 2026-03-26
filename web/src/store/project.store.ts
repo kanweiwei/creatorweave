@@ -12,6 +12,7 @@ import {
   type ProjectStats,
   DEFAULT_PROJECT_ID,
 } from '@/sqlite/repositories/project.repository'
+import { ProjectManager } from '@/opfs'
 
 interface ProjectState {
   activeProjectId: string
@@ -28,6 +29,19 @@ interface ProjectState {
   renameProject: (projectId: string, name: string) => Promise<boolean>
   setProjectArchived: (projectId: string, archived: boolean) => Promise<boolean>
   deleteProject: (projectId: string) => Promise<boolean>
+}
+
+async function bootstrapProjectOpfs(projectId: string): Promise<void> {
+  if (!projectId) return
+  if (typeof navigator === 'undefined') return
+  if (!navigator.storage || typeof navigator.storage.getDirectory !== 'function') return
+
+  try {
+    const pm = await ProjectManager.create()
+    await pm.getOrCreateProjectById(projectId)
+  } catch (error) {
+    console.warn('[ProjectStore] Failed to bootstrap OPFS project:', error)
+  }
 }
 
 export const useProjectStore = create<ProjectState>()(
@@ -76,6 +90,10 @@ export const useProjectStore = create<ProjectState>()(
           await repo.clearActiveProject()
         }
 
+        if (normalizedActiveProjectId) {
+          await bootstrapProjectOpfs(normalizedActiveProjectId)
+        }
+
         const projectStats = Object.fromEntries(
           normalizedStats.map((entry) => [entry.projectId, entry])
         )
@@ -109,7 +127,19 @@ export const useProjectStore = create<ProjectState>()(
       set({ isLoading: true, error: null })
       try {
         const repo = getProjectRepository()
+
+        const targetProject = await repo.findById(projectId)
+        if (!targetProject) {
+          await get().refreshProjects()
+          set({
+            error: `Project not found: ${projectId}`,
+            isLoading: false,
+          })
+          return false
+        }
+
         await repo.setActiveProject(projectId)
+        await bootstrapProjectOpfs(projectId)
 
         set({
           activeProjectId: projectId,
@@ -147,9 +177,29 @@ export const useProjectStore = create<ProjectState>()(
     refreshProjects: async () => {
       try {
         const repo = getProjectRepository()
-        const [projects, stats] = await Promise.all([repo.findAllProjects(), repo.findProjectStats()])
+        const [projects, stats, persistedActiveProject] = await Promise.all([
+          repo.findAllProjects(),
+          repo.findProjectStats(),
+          repo.findActiveProject(),
+        ])
         const projectStats = Object.fromEntries(stats.map((entry) => [entry.projectId, entry]))
-        set({ projects, projectStats })
+        const projectIds = new Set(projects.map((project) => project.id))
+
+        let activeProjectId = get().activeProjectId
+        if (persistedActiveProject?.id && projectIds.has(persistedActiveProject.id)) {
+          activeProjectId = persistedActiveProject.id
+        } else if (!projectIds.has(activeProjectId)) {
+          activeProjectId = projects[0]?.id || ''
+        }
+
+        const persistedActiveId = persistedActiveProject?.id || ''
+        if (activeProjectId && activeProjectId !== persistedActiveId) {
+          await repo.setActiveProject(activeProjectId)
+        } else if (!activeProjectId && persistedActiveId) {
+          await repo.clearActiveProject()
+        }
+
+        set({ projects, projectStats, activeProjectId })
       } catch (e) {
         console.error('[ProjectStore] Failed to refresh projects:', e)
       }
@@ -163,6 +213,7 @@ export const useProjectStore = create<ProjectState>()(
       try {
         const repo = getProjectRepository()
         const project = await repo.createProject({ name: trimmed })
+        await bootstrapProjectOpfs(project.id)
         const [projects, stats] = await Promise.all([repo.findAllProjects(), repo.findProjectStats()])
         const projectStats = Object.fromEntries(stats.map((entry) => [entry.projectId, entry]))
         set({

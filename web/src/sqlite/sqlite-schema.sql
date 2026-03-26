@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     title TEXT NOT NULL DEFAULT 'New Chat',
     title_mode TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual'
     messages_json TEXT NOT NULL DEFAULT '[]',
+    context_usage_json TEXT,               -- JSON object for context window usage
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000)
 );
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     root_directory TEXT NOT NULL UNIQUE,  -- OPFS path like workspaces/{id}
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
+    current_snapshot_id TEXT,       -- Points to fs_changesets.id
     cache_size INTEGER NOT NULL DEFAULT 0,
     undo_count INTEGER NOT NULL DEFAULT 0,
     modified_files INTEGER NOT NULL DEFAULT 0,
@@ -168,6 +170,105 @@ CREATE INDEX IF NOT EXISTS idx_workspaces_root_directory ON workspaces(root_dire
 CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);
 CREATE INDEX IF NOT EXISTS idx_workspaces_last_accessed ON workspaces(last_accessed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_workspaces_project_access ON workspaces(project_id, last_accessed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workspaces_current_snapshot ON workspaces(current_snapshot_id);
+
+-- ============================================================================
+-- FS Overlay Tables (snapshots / pending ops / sync history)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS fs_changesets (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'tool',  -- 'tool' | 'review' | 'system'
+    status TEXT NOT NULL DEFAULT 'draft', -- 'draft' | 'committed' | 'approved' | 'rolled_back'
+    summary TEXT,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    committed_at INTEGER,
+    synced_at INTEGER,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_changesets_workspace_id ON fs_changesets(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_fs_changesets_workspace_status ON fs_changesets(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_fs_changesets_workspace_created ON fs_changesets(workspace_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS fs_ops (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    changeset_id TEXT,
+    path TEXT NOT NULL,
+    op_type TEXT NOT NULL,          -- 'create' | 'modify' | 'delete'
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'synced' | 'discarded' | 'failed'
+    review_status TEXT DEFAULT 'pending',    -- 'pending' | 'approved' | 'rejected'
+    fs_mtime INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    approved_at INTEGER,
+    error_message TEXT,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (changeset_id) REFERENCES fs_changesets(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_ops_workspace_status ON fs_ops(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_fs_ops_workspace_review_status ON fs_ops(workspace_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_fs_ops_workspace_path_status ON fs_ops(workspace_id, path, status);
+CREATE INDEX IF NOT EXISTS idx_fs_ops_changeset_id ON fs_ops(changeset_id);
+CREATE INDEX IF NOT EXISTS idx_fs_ops_updated_at ON fs_ops(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS fs_snapshot_files (
+    id TEXT PRIMARY KEY,
+    snapshot_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    op_type TEXT NOT NULL,          -- 'create' | 'modify' | 'delete'
+    before_content_kind TEXT NOT NULL DEFAULT 'none', -- 'text' | 'binary' | 'none'
+    before_content_text TEXT,
+    before_content_blob BLOB,
+    after_content_kind TEXT NOT NULL DEFAULT 'none',  -- 'text' | 'binary' | 'none'
+    after_content_text TEXT,
+    after_content_blob BLOB,
+    content_kind TEXT NOT NULL DEFAULT 'none',        -- legacy compatibility
+    content_text TEXT,                                 -- legacy compatibility
+    content_blob BLOB,                                 -- legacy compatibility
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    FOREIGN KEY (snapshot_id) REFERENCES fs_changesets(id) ON DELETE CASCADE,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_snapshot_files_snapshot_path
+    ON fs_snapshot_files(snapshot_id, path);
+CREATE INDEX IF NOT EXISTS idx_fs_snapshot_files_workspace_id
+    ON fs_snapshot_files(workspace_id);
+
+CREATE TABLE IF NOT EXISTS fs_sync_batches (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', -- 'running' | 'success' | 'failed' | 'partial'
+    total_ops INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    skipped_count INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    completed_at INTEGER,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_sync_batches_workspace_started
+    ON fs_sync_batches(workspace_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS fs_sync_items (
+    id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL,
+    op_id TEXT,
+    path TEXT NOT NULL,
+    status TEXT NOT NULL,           -- 'success' | 'failed' | 'skipped'
+    error_message TEXT,
+    synced_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    FOREIGN KEY (batch_id) REFERENCES fs_sync_batches(id) ON DELETE CASCADE,
+    FOREIGN KEY (op_id) REFERENCES fs_ops(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_sync_items_batch_id ON fs_sync_items(batch_id);
+CREATE INDEX IF NOT EXISTS idx_fs_sync_items_op_id ON fs_sync_items(op_id);
 
 -- Active workspace tracking
 CREATE TABLE IF NOT EXISTS active_workspace (

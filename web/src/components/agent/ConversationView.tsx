@@ -123,6 +123,20 @@ export function ConversationView({
     if (!initialMessage || !convId || isRunning) return
     const key = `${convId}:${initialMessage}`
     if (initialMessageKeyRef.current === key || initialMessageHandled.current) return
+
+    // StrictMode in dev can re-run mount effects. If the same initial message
+    // has already been appended to this conversation, do not send it again.
+    const currentConv = useConversationStore
+      .getState()
+      .conversations.find((c) => c.id === convId)
+    const lastMessage = currentConv?.messages[currentConv.messages.length - 1]
+    if (lastMessage?.role === 'user' && lastMessage.content === initialMessage) {
+      initialMessageHandled.current = true
+      initialMessageKeyRef.current = key
+      onInitialMessageConsumed?.()
+      return
+    }
+
     initialMessageKeyRef.current = key
     if (!initialMessageHandled.current) {
       initialMessageHandled.current = true

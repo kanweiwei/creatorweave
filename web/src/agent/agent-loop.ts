@@ -30,7 +30,7 @@ import {
 import { getIntelligenceCoordinator } from './intelligence-coordinator'
 // Phase 2 P1: Predictive file loading
 import { triggerPrefetch } from './prefetch'
-import { agentLoopContinue, type AgentTool } from '@mariozechner/pi-agent-core'
+import { agentLoopContinue, type AgentTool, type StreamFn } from '@mariozechner/pi-agent-core'
 import type {
   AgentEvent as PiAgentEvent,
   AgentMessage as PiAgentMessage,
@@ -40,6 +40,7 @@ import type {
   Message as PiMessage,
   ToolResultMessage as PiToolResultMessage,
 } from '@mariozechner/pi-ai'
+import { streamSimple as piAiStreamSimple } from '@mariozechner/pi-ai'
 import { PiAIProvider } from './llm/pi-ai-provider'
 
 const MAX_ITERATIONS = 20
@@ -1150,6 +1151,8 @@ export class AgentLoop {
       tools: agentTools,
     }
 
+    const streamFn = piAiStreamSimple as unknown as StreamFn
+
     const loop = agentLoopContinue(
       context,
       {
@@ -1262,7 +1265,8 @@ export class AgentLoop {
           )
         },
       },
-      signal
+      signal,
+      streamFn
     )
 
     try {

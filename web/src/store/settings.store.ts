@@ -80,7 +80,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       providerType: 'glm-coding',
-      modelName: 'glm-4-flash',
+      modelName: 'glm-4.7-flash',
       customBaseUrl: '',
       customProviders: [],
       activeCustomProviderId: '',

@@ -142,6 +142,34 @@ class SQLiteWorkerClient {
     total: number
   }) => void
 
+  private resetClientState(reason?: Error): void {
+    const resetReason = reason || new Error('SQLite worker state reset')
+    for (const pending of this.pendingRequests.values()) {
+      try {
+        pending.reject(resetReason)
+      } catch {
+        // Ignore individual rejection handler errors during teardown.
+      }
+    }
+    this.pendingRequests.clear()
+    this.initialized = false
+    this.initPromise = null
+    this.initializing = false
+    this.dbMode = null
+    this.recovering = false
+  }
+
+  private terminateWorker(): void {
+    if (!this.worker) return
+    try {
+      this.worker.terminate()
+    } catch (error) {
+      console.warn('[SQLite] Failed to terminate worker cleanly:', error)
+    } finally {
+      this.worker = null
+    }
+  }
+
   async initialize(
     onMigrationProgress?: (progress: {
       step: string
@@ -292,8 +320,9 @@ class SQLiteWorkerClient {
         this.initializing = false
       } catch (error) {
         console.error('[SQLite] Failed to initialize worker:', error)
-        this.initPromise = null
-        this.initializing = false
+        const reason = error instanceof Error ? error : new Error(String(error))
+        this.terminateWorker()
+        this.resetClientState(reason)
         throw error
       }
     })()
@@ -385,12 +414,14 @@ class SQLiteWorkerClient {
 
   async close(): Promise<void> {
     if (this.worker) {
-      await this.sendRequest<void>({ type: 'close', id: this.nextRequestId('close') })
-      this.worker.terminate()
-      this.worker = null
-      this.initialized = false
-      this.initPromise = null
-      this.dbMode = null
+      try {
+        await this.sendRequest<void>({ type: 'close', id: this.nextRequestId('close') })
+      } catch (error) {
+        // Worker may be unresponsive after init/query failures; terminate anyway.
+        console.warn('[SQLite] close request failed, forcing worker termination:', error)
+      }
+      this.terminateWorker()
+      this.resetClientState(new Error('SQLite worker closed'))
       console.log('[SQLite] Worker closed')
     }
   }
@@ -538,6 +569,12 @@ class SQLiteDatabaseManager {
         this.initializing = false
       } catch (error) {
         console.error('[SQLite] Failed to initialize:', error)
+        try {
+          await this.workerClient?.close()
+        } catch {
+          // Ignore cleanup failures; we'll recreate worker on next init.
+        }
+        this.workerClient = null
         this.initPromise = null
         this.initializing = false
         throw error

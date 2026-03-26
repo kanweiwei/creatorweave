@@ -12,11 +12,11 @@ import type { LLMProviderType } from '@/agent/providers/types'
 /** Flash model configs for each provider type */
 const FLASH_MODEL_CONFIGS: Partial<Record<LLMProviderType, { model: string; baseURL: string }>> = {
   glm: {
-    model: 'glm-4-flash',
+    model: 'glm-4.7-flash',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
   },
   'glm-coding': {
-    model: 'glm-4-flash',
+    model: 'glm-4.7-flash',
     baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4/',
   },
   kimi: {
@@ -24,8 +24,12 @@ const FLASH_MODEL_CONFIGS: Partial<Record<LLMProviderType, { model: string; base
     baseURL: 'https://api.moonshot.cn/v1',
   },
   minimax: {
-    model: 'abab6.5s-chat',
-    baseURL: 'https://api.minimax.chat/v1',
+    model: 'MiniMax-M2.7',
+    baseURL: 'https://api.minimax.io/v1',
+  },
+  'minimax-cn': {
+    model: 'MiniMax-M2.7',
+    baseURL: 'https://api.minimaxi.com/v1',
   },
   qwen: {
     model: 'qwen-turbo',

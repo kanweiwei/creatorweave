@@ -1,9 +1,10 @@
 /**
- * Theme Store - manages application theme (light/dark mode).
+ * Theme Store - manages application theme (light/dark mode and accent colors).
  *
  * Features:
  * - Light/dark mode toggle
  * - System preference detection
+ * - Accent color customization
  * - Persisted to localStorage
  * - Applies theme classes to document root
  */
@@ -13,13 +14,69 @@ import { persist } from 'zustand/middleware'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type AccentColor =
+  | 'teal' // 默认青色
+  | 'rose' // 玫瑰红
+  | 'amber' // 琥珀橙
+  | 'violet' // 紫罗兰
+  | 'emerald' // 翡翠绿
+  | 'slate' // 石板灰
+
+export interface AccentColorConfig {
+  name: string
+  hue: number
+  saturation: number
+  lightness: number
+}
+
+export const ACCENT_COLORS: Record<AccentColor, AccentColorConfig> = {
+  teal: {
+    name: '青色',
+    hue: 170,
+    saturation: 35,
+    lightness: 45,
+  },
+  rose: {
+    name: '玫瑰',
+    hue: 350,
+    saturation: 50,
+    lightness: 50,
+  },
+  amber: {
+    name: '琥珀',
+    hue: 38,
+    saturation: 60,
+    lightness: 50,
+  },
+  violet: {
+    name: '紫罗兰',
+    hue: 270,
+    saturation: 45,
+    lightness: 55,
+  },
+  emerald: {
+    name: '翡翠',
+    hue: 150,
+    saturation: 45,
+    lightness: 40,
+  },
+  slate: {
+    name: '石墨',
+    hue: 215,
+    saturation: 15,
+    lightness: 40,
+  },
+}
+
 /**
  * Theme store state
  */
 interface ThemeState {
   mode: ThemeMode
   resolvedTheme: 'light' | 'dark'
+  accentColor: AccentColor
   setTheme: (mode: ThemeMode) => void
+  setAccentColor: (color: AccentColor) => void
 }
 
 /**
@@ -48,6 +105,50 @@ function applyTheme(theme: 'light' | 'dark') {
 }
 
 /**
+ * Apply accent color to document root
+ * Updates CSS custom properties for the primary color palette
+ */
+function applyAccentColor(accentColor: AccentColor, theme: 'light' | 'dark') {
+  if (typeof document === 'undefined') return
+
+  const config = ACCENT_COLORS[accentColor]
+  const { hue, saturation } = config
+
+  // Light theme values
+  const lightValues = {
+    '--primary': `${hue} ${saturation}% 45%`,
+    '--primary-foreground': '0 0% 100%',
+    '--primary-50': `${hue} ${Math.max(10, saturation - 15)}% 97%`,
+    '--primary-100': `${hue} ${Math.max(15, saturation - 15)}% 93%`,
+    '--primary-500': `${hue} ${saturation}% 45%`,
+    '--primary-600': `${hue} ${Math.max(25, saturation - 5)}% 38%`,
+    '--primary-700': `${hue} ${Math.max(20, saturation - 10)}% 32%`,
+    '--primary-800': `${hue} ${Math.max(15, saturation - 15)}% 28%`,
+    '--ring': `${hue} ${saturation}% 45%`,
+  }
+
+  // Dark theme values
+  const darkValues = {
+    '--primary': `${hue} ${saturation}% 55%`,
+    '--primary-foreground': '210 10% 95%',
+    '--primary-50': `${hue} ${Math.max(15, saturation - 10)}% 12%`,
+    '--primary-100': `${hue} ${Math.max(20, saturation - 7)}% 18%`,
+    '--primary-500': `${hue} ${saturation}% 45%`,
+    '--primary-600': `${hue} ${saturation}% 55%`,
+    '--primary-700': `${hue} ${Math.max(25, saturation - 5)}% 62%`,
+    '--primary-800': `${hue} ${Math.max(20, saturation - 10)}% 58%`,
+    '--ring': `${hue} ${Math.max(25, saturation - 5)}% 50%`,
+  }
+
+  const values = theme === 'dark' ? darkValues : lightValues
+  const root = document.documentElement
+
+  Object.entries(values).forEach(([property, value]) => {
+    root.style.setProperty(property, value)
+  })
+}
+
+/**
  * Resolve theme mode to actual theme
  */
 function resolveThemeMode(mode: ThemeMode): 'light' | 'dark' {
@@ -59,14 +160,23 @@ function resolveThemeMode(mode: ThemeMode): 'light' | 'dark' {
 
 export const useThemeStore = create<ThemeState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       mode: 'system',
       resolvedTheme: resolveThemeMode('system'),
+      accentColor: 'teal',
 
       setTheme: (mode) => {
         const resolvedTheme = resolveThemeMode(mode)
         applyTheme(resolvedTheme)
+        // Re-apply accent color when theme changes
+        applyAccentColor(get().accentColor, resolvedTheme)
         set({ mode, resolvedTheme })
+      },
+
+      setAccentColor: (color) => {
+        const { resolvedTheme } = get()
+        applyAccentColor(color, resolvedTheme)
+        set({ accentColor: color })
       },
     }),
     {
@@ -77,6 +187,10 @@ export const useThemeStore = create<ThemeState>()(
           const resolvedTheme = resolveThemeMode(state.mode)
           applyTheme(resolvedTheme)
           state.resolvedTheme = resolvedTheme
+          // Apply accent color
+          if (state.accentColor) {
+            applyAccentColor(state.accentColor, resolvedTheme)
+          }
         }
       },
     }
@@ -86,14 +200,17 @@ export const useThemeStore = create<ThemeState>()(
 /**
  * Initialize theme system
  * - Listen for system theme changes when in system mode
- * - Apply initial theme
+ * - Apply initial theme and accent color
  */
 export function initializeTheme() {
-  const { mode } = useThemeStore.getState()
+  const { mode, accentColor } = useThemeStore.getState()
 
   // Apply initial theme
   const resolvedTheme = resolveThemeMode(mode)
   applyTheme(resolvedTheme)
+
+  // Apply accent color
+  applyAccentColor(accentColor || 'teal', resolvedTheme)
 
   // Listen for system theme changes
   if (typeof window !== 'undefined') {
@@ -104,6 +221,8 @@ export function initializeTheme() {
       if (currentMode === 'system') {
         const newTheme = e.matches ? 'dark' : 'light'
         applyTheme(newTheme)
+        const currentAccent = useThemeStore.getState().accentColor
+        applyAccentColor(currentAccent, newTheme)
         useThemeStore.setState({ resolvedTheme: newTheme })
       }
     }
@@ -133,7 +252,7 @@ export function initializeTheme() {
  * Hook to get current theme and toggle function
  */
 export function useTheme() {
-  const { mode, resolvedTheme, setTheme } = useThemeStore()
+  const { mode, resolvedTheme, accentColor, setTheme, setAccentColor } = useThemeStore()
 
   const toggleTheme = () => {
     // If current mode is 'system', toggle to light, then dark
@@ -145,7 +264,9 @@ export function useTheme() {
   return {
     mode,
     theme: resolvedTheme,
+    accentColor,
     setTheme,
+    setAccentColor,
     toggleTheme,
     isDark: resolvedTheme === 'dark',
     isLight: resolvedTheme === 'light',

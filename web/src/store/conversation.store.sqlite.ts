@@ -371,9 +371,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
       useConversationContextStore
         .getState()
-        .createWorkspace(conversation.id, `workspaces/${conversation.id}`, title || '新对话')
+        .switchWorkspace(conversation.id)
         .catch((e) => {
-          console.error('[conversation.store] Failed to create workspace:', e)
+          console.error('[conversation.store] Failed to switch workspace for new conversation:', e)
         })
 
       return conversation
@@ -701,6 +701,14 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       }
 
       try {
+        // Ensure workspace exists and is active before the agent starts.
+        // This avoids write/edit/delete tools failing with "No active workspace"
+        // on first-turn chats where workspace creation/switch is still in-flight.
+        const workspaceStore = useConversationContextStore.getState()
+        if (workspaceStore.activeWorkspaceId !== conversationId) {
+          await workspaceStore.switchWorkspace(conversationId)
+        }
+
         const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
         let runEpoch = 0
         let latestMessages: Message[] = conv.messages
