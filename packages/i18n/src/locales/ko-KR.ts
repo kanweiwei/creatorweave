@@ -1,13 +1,5 @@
 export const koKR = {
-  // 应用
-  app: {
-    productName: 'AI Workspace',
-    initializing: '초기화 중...',
-    loadProgress: '로딩 진행률',
-    preparing: '준비 중...',
-  },
-
-  // 通用
+  // 공통
   common: {
     save: '저장',
     cancel: '취소',
@@ -17,13 +9,30 @@ export const koKR = {
     search: '검색',
     refresh: '새로고침',
     loading: '로딩 중...',
+    processing: '처리 중...',
     error: '오류',
     success: '성공',
     copy: '복사',
     copied: '복사됨',
   },
 
-  // 顶部导航
+  // 앱 초기화
+  app: {
+    initializing: '초기화 중...',
+    preparing: '준비 중...',
+    loadProgress: '로딩 진행률',
+    firstLoadHint: '첫 로딩은 몇 초 정도 걸릴 수 있습니다',
+    productName: 'AI Workspace',
+    initComplete: '초기화 완료',
+    initFailed: '초기화 실패',
+    sessionStorageOnly: '데이터는 현재 세션에만 저장되며, 새로고침 시 사라집니다',
+    localStorageMode: '로컬 스토리지 모드 사용 중',
+    migrationInProgress: '데이터 마이그레이션 중',
+    migrationComplete: '마이그레이션 완료',
+    conversationsMigrated: '{count}개 대화',
+  },
+
+  // 상단 바
   topbar: {
     productName: 'AI Workspace',
     openFolder: '폴더 열기',
@@ -33,12 +42,6 @@ export const koKR = {
     skillsManagement: '스킬 관리',
     projectLabel: '프로젝트: {name}',
     workspaceLabel: '워크스페이스: {name}',
-    // 영구 저장소
-    storageWarning: '캐시',
-    storageTooltip: '영구 저장소가 허용되지 않았습니다. 클릭하여 재시도. 새로고침 시 캐시가 삭제될 수 있습니다.',
-    storageSuccess: '저장소가 영구화되었습니다',
-    storageFailed: '영구 저장소를 가져올 수 없습니다',
-    storageRequestFailed: '요청 실패',
     tooltips: {
       backToProjects: '프로젝트 목록으로 돌아가기',
       menu: '메뉴',
@@ -52,7 +55,22 @@ export const koKR = {
     },
   },
 
-  // 设置对话框
+  // 폴더 선택
+  folderSelector: {
+    openFolder: '폴더 선택',
+    switchFolder: '폴더 전환',
+    releaseHandle: '핸들 해제',
+    copyPath: '폴더 이름 복사',
+    permissionDenied: '권한 거부됨',
+    selectionFailed: '선택 실패',
+    storageWarning: '캐시',
+    storageTooltip: '영구 저장소가 허용되지 않았습니다. 클릭하여 재시도. 새로고침 시 캐시가 삭제될 수 있습니다.',
+    storageSuccess: '저장소가 영구화되었습니다',
+    storageFailed: '영구 저장소를 가져올 수 없습니다',
+    storageRequestFailed: '요청 실패',
+  },
+
+  // 설정 대화상자
   settings: {
     title: '설정',
     llmProvider: 'LLM 공급자',
@@ -145,7 +163,7 @@ export const koKR = {
     },
   },
 
-  // 欢迎页
+  // 환영 페이지
   welcome: {
     title: 'AI Workspace',
     tagline: '지식베이스와 멀티 에이전트 오케스트레이션을 위한 AI 네이티브 Creator Workspace',
@@ -154,9 +172,48 @@ export const koKR = {
     send: '전송',
     openLocalFolder: '로컬 폴더 열기',
     recentHint: '왼쪽에서 기존 대화를 선택하거나, 메시지를 입력하여 새 대화를 시작하세요',
+    viewCapabilities: '기능 보기',
+    personas: {
+      developer: {
+        title: '개발자',
+        description: '코드 이해, 디버깅, 리팩터링',
+        examples: {
+          0: '이 함수가 어떻게 작동하는지 설명해줘',
+          1: '이 코드에서 버그를 찾아줘',
+          2: '성능 향상을 위해 리팩터링해줘',
+        },
+      },
+      analyst: {
+        title: '데이터 분석가',
+        description: '데이터 처리, 시각화, 인사이트',
+        examples: {
+          0: 'CSV 판매 데이터를 분석해줘',
+          1: 'Excel에서 차트를 만들어줘',
+          2: '주요 지표를 요약해줘',
+        },
+      },
+      researcher: {
+        title: '학생 / 연구원',
+        description: '문서 읽기, 학습, 지식 정리',
+        examples: {
+          0: '이 문서를 요약해줘',
+          1: '기술 개념을 설명해줘',
+          2: '파일 간에 정보를 찾아줘',
+        },
+      },
+      office: {
+        title: '사무직',
+        description: '문서 처리, 보고서, 콘텐츠 제작',
+        examples: {
+          0: '데이터로부터 보고서 초안을 작성해줘',
+          1: '문서를 정리하고 포맷팅해줘',
+          2: '여러 파일을 처리해줘',
+        },
+      },
+    },
   },
 
-  // 技能管理
+  // 스킬 관리
   skills: {
     title: '스킬 관리',
     searchPlaceholder: '스킬 이름, 설명, 태그 검색...',
@@ -174,7 +231,6 @@ export const koKR = {
     enabled: '활성화됨',
     disabled: '비활성화됨',
     empty: '스킬 없음',
-    // 스킬 카테고리
     categories: {
       codeReview: '코드 리뷰',
       testing: '테스트',
@@ -186,7 +242,6 @@ export const koKR = {
       architecture: '아키텍처',
       general: '일반',
     },
-    // 프로젝트 스킬 발견 다이얼로그
     projectDialog: {
       title: '프로젝트 스킬 발견',
       description: '프로젝트에서 {count}개의 스킬을 발견했습니다. 워크스페이스에 로드하시겠습니까?',
@@ -199,17 +254,30 @@ export const koKR = {
     },
   },
 
-  // 远程控制
+  // 원격 제어
   remote: {
     title: '원격 제어',
+    label: '원격',
     host: 'HOST',
     remote: 'REMOTE',
     disconnect: '연결 해제',
     showQrCode: 'QR 코드 표시',
     waitingForRemote: '원격 장치 연결 대기 중...',
+    relayServer: '릴레이 서버',
+    scanToConnect: '모바일로 스캔하여 연결',
+    scanHint: 'QR 코드를 스캔하거나 모바일 기기에서 링크를 열어주세요',
+    copySessionId: '세션 ID 복사',
+    copied: '복사됨!',
+    clickToCreate: '"세션 생성"을 클릭하여 QR 코드 생성',
+    connected: '연결됨',
+    connecting: '연결 중...',
+    peers: '{count}대 기기',
+    createSession: '세션 생성',
+    cancel: '취소',
+    direct: '직접 연결',
   },
 
-  // 会话管理
+  // 세션 관리
   session: {
     current: '현재 세션',
     switch: '세션 전환',
@@ -217,7 +285,6 @@ export const koKR = {
     delete: '세션 삭제',
     deleteConfirm: '이 세션을 삭제하시겠습니까?',
     storageLocation: '저장 위치',
-    // 상태
     notInitialized: '초기화되지 않음',
     unknownSession: '알 수 없는 세션',
     initializing: '초기화 중...',
@@ -229,47 +296,41 @@ export const koKR = {
     noChanges: '변경 없음',
   },
 
-  // 文件查看器
+  // 파일 뷰어
   fileViewer: {
     pendingFiles: '보류 중인 파일',
     undoChanges: '변경 실행 취소',
     noFiles: '파일 없음',
   },
 
-  // 对话相关
+  // 대화
   conversation: {
     thinking: '생각 중...',
     reasoning: '추론 과정',
     toolCall: '도구 호출',
     regenerate: '재생성',
-    // 빈 상태
     empty: {
       title: '새 대화 시작',
       description: '코드, 데이터 분석, 문서 작성 등 다양한 작업을 도와드립니다. 질문을 입력하세요!',
       onlineStatus: '항상 온라인',
       smartConversation: '스마트 대화',
     },
-    // 입력
     input: {
       placeholder: '메시지 입력... (Shift+Enter 줄바꿈)',
       placeholderNoKey: '먼저 설정에서 API Key를 구성하세요',
       ariaLabel: '메시지 입력',
     },
-    // 버튼
     buttons: {
       stop: '중지',
       send: '전송',
     },
-    // 알림
     toast: {
       noApiKey: '먼저 설정에서 API Key를 구성하세요',
       deletedTurn: '완전한 대화 턴 삭제됨',
     },
-    // 오류
     error: {
       requestFailed: '요청 실패:',
     },
-    // 토큰 사용
     usage: {
       highRisk: '고위험',
       nearLimit: '한계 근접',
@@ -277,13 +338,12 @@ export const koKR = {
     },
   },
 
-  // 移动端专属
+  // 모바일 전용
   mobile: {
     menu: '메뉴',
     back: '뒤로',
     home: '홈',
     profile: '프로필',
-    // 설정页
     settings: {
       connectionStatus: '연결 상태',
       status: '상태',
@@ -303,7 +363,6 @@ export const koKR = {
       about: '정보',
       disconnect: '연결 해제',
     },
-    // 세션 입력 페이지
     sessionInput: {
       title: '원격 세션 참여',
       subtitle: 'PC에 표시된 세션 ID를 입력하세요',
@@ -317,6 +376,181 @@ export const koKR = {
       errorInvalidFormat: '잘못된 세션 ID 형식, UUID 형식이어야 합니다 (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)',
       formatHint: '세션 ID 형식: UUID (8-4-4-4-12)',
       qrHint: '또는 iOS 카메라로 QR 코드를 스캔하여 자동 참여',
+    },
+  },
+
+  // 최근 파일
+  recentFiles: {
+    title: '최근 파일',
+    empty: '최근 파일 없음',
+    emptyHint: '연 파일이 여기에 표시됩니다',
+    remove: '최근에서 제거',
+    confirmClear: '모든 최근 파일을 지우시겠습니까?',
+    count: '{count}개 최근 파일',
+  },
+
+  // 명령 팔레트
+  commandPalette: {
+    title: '명령 팔레트',
+    placeholder: '명령을 입력하거나 검색...',
+    noResults: '"{query}"와 일치하는 명령을 찾을 수 없습니다',
+    navigate: '탐색',
+    select: '선택',
+    close: '닫기',
+    general: '일반',
+    categories: {
+      conversations: '대화',
+      files: '파일',
+      developer: '개발자',
+      dataAnalyst: '데이터 분석가',
+      student: '학생',
+      office: '사무',
+      view: '보기',
+      tools: '도구',
+      settings: '설정',
+      help: '도움말',
+    },
+    commands: {
+      'new-conversation': {
+        label: '새 대화',
+        description: '새 대화를 시작합니다',
+      },
+      'continue-last': {
+        label: '이전 대화 계속하기',
+        description: '가장 최근 대화로 돌아갑니다',
+      },
+      'open-file': {
+        label: '파일 열기...',
+        description: '워크스페이스에서 파일을 엽니다',
+      },
+      'recent-files': {
+        label: '최근 파일',
+        description: '최근에 접근한 파일을 봅니다',
+      },
+      'analyze-code': {
+        label: '코드 분석',
+        description: '코드 구조와 품질을 분석합니다',
+      },
+      'find-bugs': {
+        label: '잠재적 버그 찾기',
+        description: '코드 스멜과 잠재적 문제를 검색합니다',
+      },
+      'refactor-code': {
+        label: '리팩터링 제안',
+        description: '선택한 코드의 리팩터링 제안을 받습니다',
+      },
+      'explain-code': {
+        label: '코드 설명',
+        description: '코드 기능에 대한 자세한 설명을 받습니다',
+      },
+      'search-code': {
+        label: '코드베이스 검색',
+        description: '파일 간 패턴과 참조를 찾습니다',
+      },
+      'analyze-data': {
+        label: '데이터 분석',
+        description: '로드된 데이터를 처리하고 분석합니다',
+      },
+      'generate-chart': {
+        label: '시각화 생성',
+        description: '데이터에서 차트를 만듭니다',
+      },
+      'run-statistics': {
+        label: '통계 검정 실행',
+        description: '통계 분석을 수행합니다',
+      },
+      'data-summary': {
+        label: '데이터 요약',
+        description: '요약 통계를 생성합니다',
+      },
+      'export-data': {
+        label: '결과 내보내기',
+        description: '분석 결과를 내보냅니다',
+      },
+      'export-csv': {
+        label: 'CSV로 내보내기',
+        description: '데이터를 CSV 형식으로 내보냅니다',
+      },
+      'export-json': {
+        label: 'JSON으로 내보내기',
+        description: '데이터를 JSON 형식으로 내보냅니다',
+      },
+      'export-excel': {
+        label: 'Excel로 내보내기',
+        description: '데이터를 Excel 통합 문서로 내보냅니다',
+      },
+      'export-chart-image': {
+        label: '차트를 이미지로 내보내기',
+        description: '차트를 PNG 이미지로 내보냅니다',
+      },
+      'export-pdf': {
+        label: 'PDF로 내보내기',
+        description: '보고서를 PDF 형식으로 내보냅니다',
+      },
+      'export-code-review-pdf': {
+        label: '코드 리뷰를 PDF로 내보내기',
+        description: '코드 리뷰 결과를 PDF로 내보냅니다',
+      },
+      'export-test-report-pdf': {
+        label: '테스트 보고서를 PDF로 내보내기',
+        description: '테스트 생성 결과를 PDF로 내보냅니다',
+      },
+      'export-project-analysis-pdf': {
+        label: '프로젝트 분석을 PDF로 내보내기',
+        description: '프로젝트 분석을 PDF로 내보냅니다',
+      },
+      'explain-concept': {
+        label: '개념 설명',
+        description: '개념에 대한 교육적 설명을 받습니다',
+      },
+      'create-study-plan': {
+        label: '학습 계획 생성',
+        description: '개인화된 학습 계획을 생성합니다',
+      },
+      'solve-problem': {
+        label: '단계별로 해결',
+        description: '가이드와 함께 문제를 해결합니다',
+      },
+      'process-excel': {
+        label: 'Excel 파일 처리',
+        description: 'Excel 스프레드시트를 읽고 처리합니다',
+      },
+      'query-data': {
+        label: '데이터 쿼리',
+        description: '자연어로 데이터를 쿼리합니다',
+      },
+      'transform-data': {
+        label: '데이터 변환',
+        description: '데이터를 정제하고 변환합니다',
+      },
+      'toggle-sidebar': {
+        label: '사이드바 전환',
+        description: '사이드바를 표시하거나 숨깁니다',
+      },
+      'toggle-theme': {
+        label: '테마 전환',
+        description: '라이트 모드와 다크 모드를 전환합니다',
+      },
+      'open-skills': {
+        label: '스킬 관리',
+        description: '스킬을 관리합니다',
+      },
+      'open-tools': {
+        label: '도구 패널',
+        description: '도구 패널을 엽니다',
+      },
+      'open-mcp': {
+        label: 'MCP 서비스',
+        description: 'MCP 서비스를 관리합니다',
+      },
+      'workspace-settings': {
+        label: '워크스페이스 설정',
+        description: '워크스페이스 환경설정을 구성합니다',
+      },
+      'keyboard-shortcuts': {
+        label: '키보드 단축키',
+        description: '모든 키보드 단축키를 봅니다',
+      },
     },
   },
 
@@ -361,7 +595,7 @@ export const koKR = {
       nameRequired: '서버 이름을 입력하세요',
       urlRequired: '서버 URL을 입력하세요',
       urlInvalid: '유효한 URL을 입력하세요',
-      timeoutRange: '시간 제한은 1000-300000ms 범위여야 합니다',
+      timeoutRange: '타임아웃은 1000-300000ms 범위여야 합니다',
       serverIdExists: '서버 ID가 이미 존재합니다',
       serverIdValid: 'ID 형식이 올바릅니다',
     },
@@ -385,8 +619,137 @@ export const koKR = {
     },
   },
 
+  // 온보딩
+  onboarding: {
+    dontShowAgain: '다시 표시 안 함',
+    previous: '이전',
+    next: '다음',
+    complete: '완료',
+    stepProgress: '{current} / {total} 단계',
+    steps: {
+      welcome: {
+        title: 'AI Workspace에 오신 것을 환영합니다!',
+        description: '주요 기능을 안내해 드리겠습니다.',
+      },
+      conversations: {
+        title: '대화',
+        description: 'AI와 채팅하여 코드베이스를 분석합니다. 각 대화에는 전용 워크스페이스가 있습니다.',
+      },
+      fileTree: {
+        title: '파일 브라우저',
+        description: '프로젝트 파일과 폴더를 탐색합니다. 파일을 클릭하여 내용을 미리 봅니다.',
+      },
+      skills: {
+        title: '스킬',
+        description: '일반적인 작업을 위한 재사용 가능한 스킬을 관리하고 실행합니다.',
+      },
+      tools: {
+        title: '도구 패널',
+        description: '빠른 작업, 추론 시각화, 스마트 제안에 액세스합니다.',
+      },
+      complete: {
+        title: '준비 완료!',
+        description: '이러한 기능은 언제든지 도구 모음이나 키보드 단축키에서 액세스할 수 있습니다.',
+      },
+    },
+  },
+
   workspace: {
     title: '워크스페이스',
+  },
+
+  // 프로젝트 홈
+  projectHome: {
+    hero: {
+      badge: '로컬 우선',
+      title: '여기서 창작을 시작하세요',
+      description: '로컬 AI 워크스페이스에서 자연어로 파일과 대화하세요.',
+      descriptionSuffix: '데이터는 당신의 기기에 남습니다.',
+      projectCount: '{count} 프로젝트',
+      workspaceCount: '{count} 워크스페이스',
+    },
+    sidebar: {
+      continueWork: '계속하기',
+      createNew: '새로 만들기',
+      createNewDescription: '새 프로젝트를 만들어 창작 여정을 시작하세요.',
+      shortcutHint: '단축키: N',
+      createProject: '프로젝트 생성',
+      startFresh: '처음부터 시작',
+      startFreshDescription: '문제가 있나요? 처음부터 시작할 수 있습니다. 모든 프로젝트와 대화가 삭제됩니다.',
+      resetApp: '앱 초기화',
+      resetting: '초기화 중...',
+      appearance: '외관',
+    },
+    theme: {
+      modeTitle: '테마 모드',
+      light: '라이트',
+      dark: '다크',
+      system: '시스템',
+      accentColorTitle: '강조 색상',
+      languageTitle: '언어',
+    },
+    accentColors: {
+      teal: '틸',
+      rose: '로즈',
+      amber: '앰버',
+      violet: '바이올렛',
+      emerald: '에메랄드',
+      slate: '슬레이트',
+    },
+    timeline: {
+      today: '오늘',
+      yesterday: '어제',
+      thisWeek: '이번 주',
+      thisMonth: '이번 달',
+      older: '이전',
+    },
+    filters: {
+      searchPlaceholder: '프로젝트 검색...',
+      all: '전체',
+      active: '활성',
+      archived: '보관됨',
+    },
+    project: {
+      archived: '보관됨',
+      workspaceCount: '{count} 워크스페이스',
+      open: '열기',
+      rename: '이름 변경',
+      archive: '보관',
+      unarchive: '보관 해제',
+      delete: '삭제',
+    },
+    dialogs: {
+      createProject: '새 프로젝트 생성',
+      createProjectDescription: '새 프로젝트의 이름을 지정하여 다른 워크스페이스를 구성하고 구별하세요.',
+      projectNamePlaceholder: '프로젝트 이름 입력',
+      createButton: '프로젝트 생성',
+      creating: '생성 중...',
+      renameProject: '프로젝트 이름 변경',
+      renamePlaceholder: '새 프로젝트 이름 입력',
+      archiveProject: '프로젝트 보관',
+      archiveConfirm: '프로젝트 "{name}"을(를) 보관하시겠습니까? 보관된 프로젝트는 기본적으로 표시되지 않지만 언제든지 보관 해제할 수 있습니다.',
+      dontAskAgain: '다시 묻지 않기',
+      deleteProject: '프로젝트 삭제',
+      deleteConfirm: '프로젝트 "{name}"을(를) 삭제하시겠습니까? 연관된 워크스페이스 레코드도 삭제되며 되돌릴 수 없습니다.',
+      deleteConfirmHint: '확인을 위해 프로젝트 이름을 입력하세요:',
+      startFreshTitle: '처음부터 시작',
+      startFreshDescription: '이 앱에서 만든 모든 것이 삭제됩니다:',
+      startFreshItems: {
+        projects: '모든 프로젝트와 워크스페이스',
+        conversations: '모든 대화 기록',
+        files: '모든 업로드된 파일',
+      },
+      startFreshNote: '처음 앱을 열었을 때와 같은 상태가 됩니다.',
+      startFreshConfirmHint: '확인을 위해 "처음부터 시작"을 입력하세요:',
+      startFreshConfirmPlaceholder: '처음부터 시작',
+      confirmReset: '초기화 확인',
+      resetting: '초기화 중...',
+    },
+    empty: {
+      noProjects: '아직 프로젝트가 없습니다',
+      noResults: '일치하는 프로젝트를 찾을 수 없습니다',
+      createFirst: '첫 번째 프로젝트 생성',
+    },
   },
 
   // 파일 트리

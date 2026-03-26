@@ -1,13 +1,5 @@
 export const jaJP = {
-  // 应用
-  app: {
-    productName: 'AI Workspace',
-    initializing: '初期化中...',
-    loadProgress: '読み込み進捗',
-    preparing: '準備中...',
-  },
-
-  // 通用
+  // 共通
   common: {
     save: '保存',
     cancel: 'キャンセル',
@@ -17,13 +9,30 @@ export const jaJP = {
     search: '検索',
     refresh: '更新',
     loading: '読み込み中...',
+    processing: '処理中...',
     error: 'エラー',
     success: '成功',
     copy: 'コピー',
     copied: 'コピーしました',
   },
 
-  // 顶部导航
+  // アプリ初期化
+  app: {
+    initializing: '初期化中...',
+    preparing: '準備中...',
+    loadProgress: '読み込み進捗',
+    firstLoadHint: '初回読み込みには数秒かかる場合があります',
+    productName: 'AI Workspace',
+    initComplete: '初期化完了',
+    initFailed: '初期化に失敗しました',
+    sessionStorageOnly: 'データは現在のセッションのみ保存され、更新時に失われます',
+    localStorageMode: 'ローカルストレージモードを使用中',
+    migrationInProgress: 'データを移行中',
+    migrationComplete: '移行完了',
+    conversationsMigrated: '{count} 件の会話',
+  },
+
+  // トップバー
   topbar: {
     productName: 'AI Workspace',
     openFolder: 'フォルダを開く',
@@ -33,12 +42,6 @@ export const jaJP = {
     skillsManagement: 'スキル管理',
     projectLabel: 'プロジェクト: {name}',
     workspaceLabel: 'ワークスペース: {name}',
-    // 永続化ストレージ
-    storageWarning: 'キャッシュ',
-    storageTooltip: '永続化ストレージが許可されていません。クリックして再試行。キャッシュは更新時にクリアされる可能性があります。',
-    storageSuccess: 'ストレージが永続化されました',
-    storageFailed: '永続化ストレージを取得できません',
-    storageRequestFailed: 'リクエスト失敗',
     tooltips: {
       backToProjects: 'プロジェクト一覧に戻る',
       menu: 'メニュー',
@@ -52,7 +55,22 @@ export const jaJP = {
     },
   },
 
-  // 设置对话框
+  // フォルダ選択
+  folderSelector: {
+    openFolder: 'フォルダを選択',
+    switchFolder: 'フォルダを切り替え',
+    releaseHandle: 'ハンドルを解放',
+    copyPath: 'フォルダ名をコピー',
+    permissionDenied: '権限が拒否されました',
+    selectionFailed: '選択に失敗しました',
+    storageWarning: 'キャッシュ',
+    storageTooltip: '永続ストレージが許可されていません。クリックして再試行。キャッシュは更新時にクリアされる可能性があります。',
+    storageSuccess: 'ストレージが永続化されました',
+    storageFailed: '永続ストレージを取得できません',
+    storageRequestFailed: 'リクエストに失敗しました',
+  },
+
+  // 設定ダイアログ
   settings: {
     title: '設定',
     llmProvider: 'LLM プロバイダ',
@@ -123,7 +141,7 @@ export const jaJP = {
       title: 'ショートカット',
       description: 'キーボードショートカットを管理・確認します',
       showAllTitle: 'すべてのショートカットを表示',
-      showAllDescription: 'ショートカットヘルプを開きます',
+      showAllDescription: 'ショートカットヘルプパネルを開きます',
       view: '表示',
       tipLabel: 'ヒント:',
       tipCommand: '/key',
@@ -145,7 +163,7 @@ export const jaJP = {
     },
   },
 
-  // 欢迎页
+  // ウェルカムページ
   welcome: {
     title: 'AI Workspace',
     tagline: 'ナレッジベースとマルチエージェント編成のための AI ネイティブ Creator Workspace',
@@ -154,9 +172,48 @@ export const jaJP = {
     send: '送信',
     openLocalFolder: 'ローカルフォルダを開く',
     recentHint: '左側から既存の会話を選択するか、メッセージを入力して新しい会話を開始してください',
+    viewCapabilities: '機能を見る',
+    personas: {
+      developer: {
+        title: '開発者',
+        description: 'コード理解、デバッグ、リファクタリング',
+        examples: {
+          0: 'この関数の動作を説明して',
+          1: 'このコードのバグを見つけて',
+          2: 'パフォーマンス改善のためにリファクタリングして',
+        },
+      },
+      analyst: {
+        title: 'データアナリスト',
+        description: 'データ処理、可視化、インサイト',
+        examples: {
+          0: 'CSVの売上データを分析して',
+          1: 'Excelからチャートを作成して',
+          2: '主要な指標をまとめて',
+        },
+      },
+      researcher: {
+        title: '学生 / 研究者',
+        description: 'ドキュメント読解、学習、知識整理',
+        examples: {
+          0: 'このドキュメントを要約して',
+          1: '技術的な概念を説明して',
+          2: 'ファイル間で情報を探して',
+        },
+      },
+      office: {
+        title: 'オフィスワーカー',
+        description: 'ドキュメント処理、レポート作成、コンテンツ制作',
+        examples: {
+          0: 'データからレポートを下書きして',
+          1: 'ドキュメントを整理・フォーマットして',
+          2: '複数のファイルを処理して',
+        },
+      },
+    },
   },
 
-  // 技能管理
+  // スキル管理
   skills: {
     title: 'スキル管理',
     searchPlaceholder: 'スキル名、説明、タグを検索...',
@@ -174,7 +231,6 @@ export const jaJP = {
     enabled: '有効',
     disabled: '無効',
     empty: 'スキルがありません',
-    // スキルカテゴリ
     categories: {
       codeReview: 'コードレビュー',
       testing: 'テスト',
@@ -186,7 +242,6 @@ export const jaJP = {
       architecture: 'アーキテクチャ',
       general: '汎用',
     },
-    // プロジェクトスキル発見ダイアログ
     projectDialog: {
       title: 'プロジェクトスキルを発見',
       description: 'プロジェクトで {count} 個のスキルを発見しました。ワークスペースに読み込みますか？',
@@ -199,17 +254,30 @@ export const jaJP = {
     },
   },
 
-  // 远程控制
+  // リモートコントロール
   remote: {
     title: 'リモートコントロール',
+    label: 'リモート',
     host: 'HOST',
     remote: 'REMOTE',
-    disconnect: 'Disconnect',
+    disconnect: '切断',
     showQrCode: 'QRコードを表示',
     waitingForRemote: 'リモートデバイスの接続を待っています...',
+    relayServer: 'リレーサーバー',
+    scanToConnect: 'モバイルでスキャンして接続',
+    scanHint: 'QRコードをスキャンするか、モバイルデバイスでリンクを開いてください',
+    copySessionId: 'セッションIDをコピー',
+    copied: 'コピーしました！',
+    clickToCreate: '「セッション作成」をクリックしてQRコードを生成',
+    connected: '接続済み',
+    connecting: '接続中...',
+    peers: '{count} 台のデバイス',
+    createSession: 'セッション作成',
+    cancel: 'キャンセル',
+    direct: '直接接続',
   },
 
-  // 会话管理
+  // セッション管理
   session: {
     current: '現在のセッション',
     switch: 'セッション切り替え',
@@ -217,7 +285,6 @@ export const jaJP = {
     delete: 'セッション削除',
     deleteConfirm: 'このセッションを削除してもよろしいですか？',
     storageLocation: '保存場所',
-    // 状态
     notInitialized: '未初期化',
     unknownSession: '不明なセッション',
     initializing: '初期化中...',
@@ -229,47 +296,41 @@ export const jaJP = {
     noChanges: '変更なし',
   },
 
-  // 文件查看器
+  // ファイルビューア
   fileViewer: {
     pendingFiles: '保留中のファイル',
     undoChanges: '変更を取り消す',
     noFiles: 'ファイルなし',
   },
 
-  // 对话相关
+  // 会話
   conversation: {
     thinking: '思考中...',
     reasoning: '推論プロセス',
     toolCall: 'ツール呼び出し',
     regenerate: '再生成',
-    // 空状态
     empty: {
       title: '新しい会話を開始',
       description: 'コード、データ分析、ドキュメント作成など、様々なタスクをお手伝いします。質問を入力してください！',
       onlineStatus: '常時オンライン',
       smartConversation: 'スマート会話',
     },
-    // 入力框
     input: {
       placeholder: 'メッセージを入力... (Shift+Enter で改行)',
       placeholderNoKey: 'まず設定で API Key を設定してください',
       ariaLabel: 'メッセージを入力',
     },
-    // 按钮
     buttons: {
       stop: '停止',
       send: '送信',
     },
-    // 提示
     toast: {
       noApiKey: 'まず設定で API Key を設定してください',
       deletedTurn: '完全な会話ターンを削除しました',
     },
-    // 错误
     error: {
       requestFailed: 'リクエスト失敗：',
     },
-    // Token 使用
     usage: {
       highRisk: '高リスク',
       nearLimit: '上限に近い',
@@ -277,13 +338,12 @@ export const jaJP = {
     },
   },
 
-  // 移动端专属
+  // モバイル専用
   mobile: {
     menu: 'メニュー',
     back: '戻る',
     home: 'ホーム',
     profile: 'プロフィール',
-    // 设置页
     settings: {
       connectionStatus: '接続状態',
       status: 'ステータス',
@@ -292,7 +352,7 @@ export const jaJP = {
       statusDisconnected: '未接続',
       directory: 'ディレクトリ',
       encryption: '暗号化',
-      encryptionReady: 'エンドツーエ暗号化が有効',
+      encryptionReady: 'エンドツーエンド暗号化が有効',
       encryptionExchanging: '鍵交換中...',
       encryptionError: '暗号化エラー',
       encryptionNone: '暗号化なし',
@@ -303,7 +363,6 @@ export const jaJP = {
       about: 'について',
       disconnect: '切断',
     },
-    // 会话输入页
     sessionInput: {
       title: 'リモートセッションに参加',
       subtitle: 'PC に表示されているセッション ID を入力してください',
@@ -317,6 +376,181 @@ export const jaJP = {
       errorInvalidFormat: '無効なセッション ID 形式、UUID 形式である必要があります (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)',
       formatHint: 'セッション ID 形式: UUID (8-4-4-4-12)',
       qrHint: 'または iOS カメラで QR コードをスキャンして自動参加',
+    },
+  },
+
+  // 最近使ったファイル
+  recentFiles: {
+    title: '最近使ったファイル',
+    empty: '最近使ったファイルはありません',
+    emptyHint: '開いたファイルがここに表示されます',
+    remove: '最近から削除',
+    confirmClear: '最近使ったファイルをすべてクリアしますか？',
+    count: '{count} 件の最近使ったファイル',
+  },
+
+  // コマンドパレット
+  commandPalette: {
+    title: 'コマンドパレット',
+    placeholder: 'コマンドを入力または検索...',
+    noResults: '「{query}」に一致するコマンドが見つかりません',
+    navigate: '移動',
+    select: '選択',
+    close: '閉じる',
+    general: '一般',
+    categories: {
+      conversations: '会話',
+      files: 'ファイル',
+      developer: '開発者',
+      dataAnalyst: 'データアナリスト',
+      student: '学生',
+      office: 'オフィス',
+      view: '表示',
+      tools: 'ツール',
+      settings: '設定',
+      help: 'ヘルプ',
+    },
+    commands: {
+      'new-conversation': {
+        label: '新しい会話',
+        description: '新しい会話を開始',
+      },
+      'continue-last': {
+        label: '前回の会話を続ける',
+        description: '最近の会話に戻る',
+      },
+      'open-file': {
+        label: 'ファイルを開く...',
+        description: 'ワークスペースからファイルを開く',
+      },
+      'recent-files': {
+        label: '最近使ったファイル',
+        description: '最近アクセスしたファイルを表示',
+      },
+      'analyze-code': {
+        label: 'コードを分析',
+        description: 'コードの構造と品質を分析',
+      },
+      'find-bugs': {
+        label: '潜在的なバグを検出',
+        description: 'コードの不吉な匂いと潜在的な問題を検索',
+      },
+      'refactor-code': {
+        label: 'リファクタリングを提案',
+        description: '選択したコードのリファクタリング提案を取得',
+      },
+      'explain-code': {
+        label: 'コードを説明',
+        description: 'コード機能の詳細な説明を取得',
+      },
+      'search-code': {
+        label: 'コードベースを検索',
+        description: 'ファイル間でパターンと参照を検索',
+      },
+      'analyze-data': {
+        label: 'データを分析',
+        description: '読み込んだデータを処理・分析',
+      },
+      'generate-chart': {
+        label: '可視化を生成',
+        description: 'データからチャートを作成',
+      },
+      'run-statistics': {
+        label: '統計検定を実行',
+        description: '統計分析を実行',
+      },
+      'data-summary': {
+        label: 'データサマリー',
+        description: '要約統計量を生成',
+      },
+      'export-data': {
+        label: '結果をエクスポート',
+        description: '分析結果をエクスポート',
+      },
+      'export-csv': {
+        label: 'CSVでエクスポート',
+        description: 'データをCSV形式でエクスポート',
+      },
+      'export-json': {
+        label: 'JSONでエクスポート',
+        description: 'データをJSON形式でエクスポート',
+      },
+      'export-excel': {
+        label: 'Excelでエクスポート',
+        description: 'データをExcelワークブックにエクスポート',
+      },
+      'export-chart-image': {
+        label: 'チャートを画像でエクスポート',
+        description: 'チャートをPNG画像にエクスポート',
+      },
+      'export-pdf': {
+        label: 'PDFでエクスポート',
+        description: 'レポートをPDF形式でエクスポート',
+      },
+      'export-code-review-pdf': {
+        label: 'コードレビューをPDFでエクスポート',
+        description: 'コードレビュー結果をPDFにエクスポート',
+      },
+      'export-test-report-pdf': {
+        label: 'テストレポートをPDFでエクスポート',
+        description: 'テスト生成結果をPDFにエクスポート',
+      },
+      'export-project-analysis-pdf': {
+        label: 'プロジェクト分析をPDFでエクスポート',
+        description: 'プロジェクト分析をPDFにエクスポート',
+      },
+      'explain-concept': {
+        label: '概念を説明',
+        description: '概念の教育的な説明を取得',
+      },
+      'create-study-plan': {
+        label: '学習計画を作成',
+        description: 'パーソナライズされた学習計画を生成',
+      },
+      'solve-problem': {
+        label: 'ステップバイステップで解決',
+        description: 'ガイド付きで問題に取り組む',
+      },
+      'process-excel': {
+        label: 'Excelファイルを処理',
+        description: 'Excelスプレッドシートを読み込み・処理',
+      },
+      'query-data': {
+        label: 'データをクエリ',
+        description: '自然言語でデータをクエリ',
+      },
+      'transform-data': {
+        label: 'データを変換',
+        description: 'データをクリーニング・変換',
+      },
+      'toggle-sidebar': {
+        label: 'サイドバーを切り替え',
+        description: 'サイドバーの表示/非表示',
+      },
+      'toggle-theme': {
+        label: 'テーマを切り替え',
+        description: 'ライトモードとダークモードを切り替え',
+      },
+      'open-skills': {
+        label: 'スキル管理',
+        description: 'スキルを管理',
+      },
+      'open-tools': {
+        label: 'ツールパネル',
+        description: 'ツールパネルを開く',
+      },
+      'open-mcp': {
+        label: 'MCPサービス',
+        description: 'MCPサービスを管理',
+      },
+      'workspace-settings': {
+        label: 'ワークスペース設定',
+        description: 'ワークスペースの設定を構成',
+      },
+      'keyboard-shortcuts': {
+        label: 'キーボードショートカット',
+        description: 'すべてのキーボードショートカットを表示',
+      },
     },
   },
 
@@ -385,8 +619,137 @@ export const jaJP = {
     },
   },
 
+  // オンボーディング
+  onboarding: {
+    dontShowAgain: '今後表示しない',
+    previous: '前へ',
+    next: '次へ',
+    complete: '完了',
+    stepProgress: 'ステップ {current} / {total}',
+    steps: {
+      welcome: {
+        title: 'AI Workspace へようこそ！',
+        description: '主な機能をご紹介します。',
+      },
+      conversations: {
+        title: '会話',
+        description: 'AI とチャットしてコードベースを分析します。各会話には専用のワークスペースがあります。',
+      },
+      fileTree: {
+        title: 'ファイルブラウザ',
+        description: 'プロジェクトのファイルとフォルダを閲覧します。ファイルをクリックして内容をプレビュー。',
+      },
+      skills: {
+        title: 'スキル',
+        description: '一般的なタスクのための再利用可能なスキルを管理・実行します。',
+      },
+      tools: {
+        title: 'ツールパネル',
+        description: 'クイックアクション、推論の可視化、スマートな提案にアクセスします。',
+      },
+      complete: {
+        title: '準備完了！',
+        description: 'これらの機能はツールバーまたはキーボードショートカットからいつでもアクセスできます。',
+      },
+    },
+  },
+
   workspace: {
     title: 'ワークスペース',
+  },
+
+  // プロジェクトホーム
+  projectHome: {
+    hero: {
+      badge: 'ローカルファースト',
+      title: 'ここから創作を始める',
+      description: 'ローカル AI ワークスペースで、自然言語でファイルと会話しましょう。',
+      descriptionSuffix: 'データはあなたのデバイスに残ります。',
+      projectCount: '{count} プロジェクト',
+      workspaceCount: '{count} ワークスペース',
+    },
+    sidebar: {
+      continueWork: '続ける',
+      createNew: '新規',
+      createNewDescription: '新しいプロジェクトを作成して、クリエイティブな旅を始めましょう。',
+      shortcutHint: 'ショートカット: N',
+      createProject: 'プロジェクト作成',
+      startFresh: '最初からやり直す',
+      startFreshDescription: '問題がありますか？最初からやり直せます。すべてのプロジェクトと会話が削除されます。',
+      resetApp: 'アプリをリセット',
+      resetting: 'リセット中...',
+      appearance: '外観',
+    },
+    theme: {
+      modeTitle: 'テーマモード',
+      light: 'ライト',
+      dark: 'ダーク',
+      system: 'システム',
+      accentColorTitle: 'アクセントカラー',
+      languageTitle: '言語',
+    },
+    accentColors: {
+      teal: 'ティール',
+      rose: 'ローズ',
+      amber: 'アンバー',
+      violet: 'バイオレット',
+      emerald: 'エメラルド',
+      slate: 'スレート',
+    },
+    timeline: {
+      today: '今日',
+      yesterday: '昨日',
+      thisWeek: '今週',
+      thisMonth: '今月',
+      older: '以前',
+    },
+    filters: {
+      searchPlaceholder: 'プロジェクトを検索...',
+      all: 'すべて',
+      active: 'アクティブ',
+      archived: 'アーカイブ済み',
+    },
+    project: {
+      archived: 'アーカイブ済み',
+      workspaceCount: '{count} ワークスペース',
+      open: '開く',
+      rename: '名前を変更',
+      archive: 'アーカイブ',
+      unarchive: 'アーカイブ解除',
+      delete: '削除',
+    },
+    dialogs: {
+      createProject: '新しいプロジェクトを作成',
+      createProjectDescription: '新しいプロジェクトに名前を付けて、異なるワークスペースを整理・区別しましょう。',
+      projectNamePlaceholder: 'プロジェクト名を入力',
+      createButton: 'プロジェクトを作成',
+      creating: '作成中...',
+      renameProject: 'プロジェクト名を変更',
+      renamePlaceholder: '新しいプロジェクト名を入力',
+      archiveProject: 'プロジェクトをアーカイブ',
+      archiveConfirm: 'プロジェクト「{name}」をアーカイブしますか？アーカイブされたプロジェクトはデフォルトで表示されませんが、いつでもアーカイブ解除できます。',
+      dontAskAgain: '今後確認しない',
+      deleteProject: 'プロジェクトを削除',
+      deleteConfirm: 'プロジェクト「{name}」を削除しますか？関連するワークスペースレコードも削除され、元に戻せません。',
+      deleteConfirmHint: '確認のためプロジェクト名を入力してください：',
+      startFreshTitle: '最初からやり直す',
+      startFreshDescription: 'このアプリで作成したすべての内容が削除されます：',
+      startFreshItems: {
+        projects: 'すべてのプロジェクトとワークスペース',
+        conversations: 'すべての会話履歴',
+        files: 'すべてのアップロードファイル',
+      },
+      startFreshNote: '初めてアプリを開いた時と同じ状態になります。',
+      startFreshConfirmHint: '確認のため「最初からやり直す」と入力してください：',
+      startFreshConfirmPlaceholder: '最初からやり直す',
+      confirmReset: 'リセットを確認',
+      resetting: 'リセット中...',
+    },
+    empty: {
+      noProjects: 'まだプロジェクトがありません',
+      noResults: '一致するプロジェクトが見つかりません',
+      createFirst: '最初のプロジェクトを作成',
+    },
   },
 
   // ファイルツリー
