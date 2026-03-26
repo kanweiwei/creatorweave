@@ -1,0 +1,179 @@
+import { ProjectManager, type AgentManager } from '@/opfs'
+import { useAgentsStore } from '@/store/agents.store'
+import type { ToolContext } from './tool-types'
+
+export type VfsAction = 'read' | 'write' | 'delete' | 'list'
+
+export interface WorkspaceTarget {
+  kind: 'workspace'
+  path: string
+}
+
+export interface AgentTarget {
+  kind: 'agent'
+  path: string
+  agentId: string
+  projectId: string
+  agentManager: AgentManager
+}
+
+export type ResolvedVfsTarget = WorkspaceTarget | AgentTarget
+
+interface ParsedPath {
+  namespace: 'workspace' | 'agents'
+  path: string
+  agentId?: string
+}
+
+let projectManagerPromise: Promise<ProjectManager> | null = null
+
+function isValidAgentId(input: string): boolean {
+  return /^[a-z0-9_-]+$/i.test(input)
+}
+
+function normalizeRelativePath(path: string, options?: { allowEmpty?: boolean }): string {
+  const allowEmpty = options?.allowEmpty ?? false
+  const normalized = path.replace(/\\/g, '/').trim()
+  const withoutQuery = normalized.split('?')[0].split('#')[0]
+  const withoutMnt =
+    withoutQuery.startsWith('/mnt/')
+      ? withoutQuery.slice('/mnt/'.length)
+      : withoutQuery === '/mnt'
+        ? ''
+        : withoutQuery
+  const withoutLeading = withoutMnt.replace(/^\/+/, '')
+  const parts = withoutLeading.split('/').filter(Boolean)
+
+  if (parts.length === 0) {
+    if (allowEmpty) return ''
+    throw new Error('Path cannot be empty')
+  }
+  if (parts.some((part) => part === '.' || part === '..')) {
+    throw new Error('Path cannot include "." or ".."')
+  }
+
+  return parts.join('/')
+}
+
+function parseVfsPath(rawPath: string, options?: { allowEmptyPath?: boolean }): ParsedPath {
+  const allowEmptyPath = options?.allowEmptyPath ?? false
+  if (!rawPath.startsWith('vfs://')) {
+    return {
+      namespace: 'workspace',
+      path: normalizeRelativePath(rawPath, { allowEmpty: allowEmptyPath }),
+    }
+  }
+
+  const raw = rawPath.slice('vfs://'.length).split('?')[0].split('#')[0]
+  const parts = raw.split('/').filter(Boolean)
+  const namespace = parts[0]
+
+  if (namespace === 'workspace') {
+    return {
+      namespace: 'workspace',
+      path: normalizeRelativePath(parts.slice(1).join('/'), { allowEmpty: allowEmptyPath }),
+    }
+  }
+
+  if (namespace === 'agents' || namespace === 'agent') {
+    const agentId = parts[1] || ''
+    if (!agentId || !isValidAgentId(agentId)) {
+      throw new Error('Invalid agent id in vfs path')
+    }
+    return {
+      namespace: 'agents',
+      agentId,
+      path: normalizeRelativePath(parts.slice(2).join('/'), { allowEmpty: allowEmptyPath }),
+    }
+  }
+
+  throw new Error(`Unsupported vfs namespace: ${namespace || '(empty)'}`)
+}
+
+function resolveProjectId(context: ToolContext): string | null {
+  if (context.projectId && context.projectId.trim()) {
+    return context.projectId
+  }
+  if (typeof localStorage !== 'undefined') {
+    const fromStorage = localStorage.getItem('activeProjectId')
+    if (fromStorage && fromStorage.trim()) return fromStorage
+  }
+  return null
+}
+
+function resolveActorAgentId(context: ToolContext): string | null {
+  if (context.currentAgentId && context.currentAgentId.trim()) {
+    return context.currentAgentId
+  }
+  const fromStore = useAgentsStore.getState().activeAgentId
+  if (fromStore && fromStore.trim()) return fromStore
+  return 'default'
+}
+
+async function getProjectManager(): Promise<ProjectManager> {
+  if (!projectManagerPromise) {
+    projectManagerPromise = ProjectManager.create()
+  }
+  return projectManagerPromise
+}
+
+function canWriteAgentPath(actorAgentId: string | null, targetAgentId: string): boolean {
+  if (!actorAgentId) return false
+  if (actorAgentId === 'default') return true
+  return actorAgentId === targetAgentId
+}
+
+export function isProtectedAgentCoreFile(path: string): boolean {
+  return (
+    path === 'SOUL.md' ||
+    path === 'IDENTITY.md' ||
+    path === 'AGENTS.md' ||
+    path === 'USER.md' ||
+    path === 'MEMORY.md'
+  )
+}
+
+export async function resolveVfsTarget(
+  rawPath: string,
+  context: ToolContext,
+  action: VfsAction,
+  options?: { allowEmptyPath?: boolean }
+): Promise<ResolvedVfsTarget> {
+  const parsed = parseVfsPath(rawPath, options)
+  if (parsed.namespace === 'workspace') {
+    return {
+      kind: 'workspace',
+      path: parsed.path,
+    }
+  }
+
+  const projectId = resolveProjectId(context)
+  if (!projectId) {
+    throw new Error('No active project for agent namespace path')
+  }
+
+  const projectManager = await getProjectManager()
+  const project = await projectManager.getProject(projectId)
+  if (!project) {
+    throw new Error(`Project not found: ${projectId}`)
+  }
+
+  if (action !== 'read' && action !== 'list') {
+    const actorAgentId = resolveActorAgentId(context)
+    if (!canWriteAgentPath(actorAgentId, parsed.agentId!)) {
+      throw new Error(`Forbidden: agent "${actorAgentId || 'unknown'}" cannot ${action} agent "${parsed.agentId}"`)
+    }
+  }
+
+  return {
+    kind: 'agent',
+    path: parsed.path,
+    agentId: parsed.agentId!,
+    projectId,
+    agentManager: project.agentManager,
+  }
+}
+
+export function isVfsPath(path: string): boolean {
+  return path.startsWith('vfs://')
+}

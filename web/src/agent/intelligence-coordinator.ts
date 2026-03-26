@@ -27,6 +27,7 @@ import {
 } from './context-memory'
 import { ProjectManager, type AgentInfo } from '@/opfs'
 import { buildAgentPrompt, type PromptOptions } from './prompt-builder'
+import { getProjectRepository } from '@/sqlite/repositories/project.repository'
 
 // Re-export AgentInfo for use in this module
 export type { AgentInfo } from '@/opfs'
@@ -159,7 +160,7 @@ export class IntelligenceCoordinator {
   private async loadDefaultAgent(): Promise<AgentInfo | null> {
     try {
       const projectManager = await ProjectManager.create()
-      const currentProjectId = localStorage.getItem('activeProjectId')
+      const currentProjectId = await this.resolveActiveProjectId()
 
       if (!currentProjectId) {
         return null
@@ -183,7 +184,7 @@ export class IntelligenceCoordinator {
   private async loadTodayLog(agentId: string): Promise<string | null> {
     try {
       const projectManager = await ProjectManager.create()
-      const currentProjectId = localStorage.getItem('activeProjectId')
+      const currentProjectId = await this.resolveActiveProjectId()
 
       if (!currentProjectId) {
         return null
@@ -199,6 +200,39 @@ export class IntelligenceCoordinator {
       console.warn('[IntelligenceCoordinator] Failed to load today log:', error)
       return null
     }
+  }
+
+  private async resolveActiveProjectId(): Promise<string | null> {
+    // 1) Prefer in-memory project store (current session source of truth)
+    try {
+      const { useProjectStore } = await import('@/store/project.store')
+      const fromStore = useProjectStore.getState().activeProjectId
+      if (fromStore && fromStore.trim()) {
+        return fromStore
+      }
+    } catch {
+      // Ignore dynamic-import or store read failures; continue fallbacks.
+    }
+
+    // 2) Fallback to SQLite active_project pointer
+    try {
+      const activeProject = await getProjectRepository().findActiveProject()
+      if (activeProject?.id) {
+        return activeProject.id
+      }
+    } catch {
+      // Ignore DB access errors; continue fallback.
+    }
+
+    // 3) Legacy fallback for old flows
+    if (typeof localStorage !== 'undefined') {
+      const fromStorage = localStorage.getItem('activeProjectId')
+      if (fromStorage && fromStorage.trim()) {
+        return fromStorage
+      }
+    }
+
+    return null
   }
 
   /**

@@ -34,6 +34,10 @@ export interface ToolDefinition {
 export interface ToolContext {
   /** Root directory handle for file operations */
   directoryHandle: FileSystemDirectoryHandle | null
+  /** Active project ID for cross-namespace VFS routing */
+  projectId?: string | null
+  /** Current acting agent ID for VFS ACL checks */
+  currentAgentId?: string | null
   /** Abort signal for cancellation */
   abortSignal?: AbortSignal
   /** Current context token usage (optional, for tools to self-regulate) */

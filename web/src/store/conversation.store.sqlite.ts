@@ -540,24 +540,21 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       const userMsgIndex = conv.messages.findIndex((m) => m.id === userMessageId)
       if (userMsgIndex < 0 || conv.messages[userMsgIndex].role !== 'user') return
 
-      // 找到该用户消息之后的第一个 AI 回复
-      let assistantMsgIdToDelete: string | null = null
+      // 找到该用户消息所属轮次中，需要清理的所有后续消息（直到下一个 user）
+      const idsToDelete = new Set<string>()
       for (let i = userMsgIndex + 1; i < conv.messages.length; i++) {
         const msg = conv.messages[i]
-        if (msg.role === 'assistant') {
-          assistantMsgIdToDelete = msg.id
-          break
-        }
-        if (msg.role === 'user') break // 遇到下一个用户消息，停止
+        if (msg.role === 'user') break
+        idsToDelete.add(msg.id)
       }
 
       set((draft) => {
         const conv = draft.conversations.find((c) => c.id === conversationId)
         if (!conv) return
 
-        // 删除对应的 AI 回复
-        if (assistantMsgIdToDelete) {
-          conv.messages = conv.messages.filter((m) => m.id !== assistantMsgIdToDelete)
+        // 删除该 user 消息后、下一个 user 之前的所有非 user 消息
+        if (idsToDelete.size > 0) {
+          conv.messages = conv.messages.filter((m) => !idsToDelete.has(m.id))
         }
         // 重置流式状态
         conv.status = 'idle'
@@ -812,12 +809,38 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
         const toolRegistry = getToolRegistry()
         const toolPolicyHooks = createToolPolicyHooks()
+        let activeProjectId: string | null = null
+        let activeAgentId: string | null = null
+
+        try {
+          const { useProjectStore } = await import('./project.store')
+          activeProjectId = useProjectStore.getState().activeProjectId || null
+        } catch {
+          // Ignore project-store read failures and fallback below.
+        }
+        if (!activeProjectId && typeof localStorage !== 'undefined') {
+          activeProjectId = localStorage.getItem('activeProjectId')
+        }
+
+        try {
+          const { useAgentsStore } = await import('./agents.store')
+          activeAgentId = useAgentsStore.getState().activeAgentId || null
+        } catch {
+          // Ignore agents-store read failures and fallback to default.
+        }
+        if (!activeAgentId) {
+          activeAgentId = 'default'
+        }
 
         const agentLoop = new AgentLoop({
           provider,
           toolRegistry,
           contextManager,
-          toolContext: { directoryHandle },
+          toolContext: {
+            directoryHandle,
+            projectId: activeProjectId,
+            currentAgentId: activeAgentId,
+          },
           maxIterations: 20,
           beforeToolCall: toolPolicyHooks.beforeToolCall,
           afterToolCall: async (context) => {

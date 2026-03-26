@@ -271,6 +271,67 @@ export class AgentManager {
     await this.writeFile(agentDir, AGENTS_FILE, content)
   }
 
+  /**
+   * 读取 Agent 相对路径文件（支持子目录）
+   */
+  async readPath(id: string, relativePath: string): Promise<string | null> {
+    const normalized = this.normalizeRelativePath(relativePath)
+    const agentDir = await this.agentsDir.getDirectoryHandle(id)
+    const { dir, fileName } = await this.resolvePath(agentDir, normalized, false)
+    return this.readFile(dir, fileName)
+  }
+
+  /**
+   * 写入 Agent 相对路径文件（支持子目录）
+   */
+  async writePath(id: string, relativePath: string, content: string): Promise<void> {
+    const normalized = this.normalizeRelativePath(relativePath)
+    const agentDir = await this.agentsDir.getDirectoryHandle(id)
+    const { dir, fileName } = await this.resolvePath(agentDir, normalized, true)
+    await this.writeFile(dir, fileName, content)
+  }
+
+  /**
+   * 删除 Agent 相对路径文件（支持子目录）
+   */
+  async deletePath(id: string, relativePath: string): Promise<void> {
+    const normalized = this.normalizeRelativePath(relativePath)
+    const agentDir = await this.agentsDir.getDirectoryHandle(id)
+    const { dir, fileName } = await this.resolvePath(agentDir, normalized, false)
+    await dir.removeEntry(fileName)
+  }
+
+  /**
+   * 解析 Agent 目录相对路径并返回目录句柄（支持空路径返回 agent 根目录）
+   */
+  async getDirectoryHandle(
+    id: string,
+    relativeDirPath = '',
+    options?: { allowMissing?: boolean }
+  ): Promise<{ handle: FileSystemDirectoryHandle; exists: boolean }> {
+    const allowMissing = options?.allowMissing ?? false
+    const normalizedPath = this.normalizeDirectoryPath(relativeDirPath)
+    const agentDir = await this.agentsDir.getDirectoryHandle(id)
+
+    if (!normalizedPath) {
+      return { handle: agentDir, exists: true }
+    }
+
+    let current = agentDir
+    for (const part of normalizedPath.split('/')) {
+      try {
+        current = await current.getDirectoryHandle(part)
+      } catch (error) {
+        if (allowMissing) {
+          return { handle: agentDir, exists: false }
+        }
+        throw error
+      }
+    }
+
+    return { handle: current, exists: true }
+  }
+
   // ==================== 日记记忆 ====================
 
   /**
@@ -399,5 +460,43 @@ export class AgentManager {
 
   private async writeMeta(agentDir: FileSystemDirectoryHandle, meta: AgentMeta): Promise<void> {
     await this.writeFile(agentDir, 'meta.json', JSON.stringify(meta, null, 2))
+  }
+
+  private normalizeRelativePath(path: string): string {
+    const normalized = path.replace(/\\/g, '/').trim().replace(/^\/+/, '')
+    const parts = normalized.split('/').filter(Boolean)
+    if (parts.length === 0) {
+      throw new Error('Path cannot be empty')
+    }
+    if (parts.some((part) => part === '.' || part === '..')) {
+      throw new Error('Path cannot include "." or ".."')
+    }
+    return parts.join('/')
+  }
+
+  private normalizeDirectoryPath(path: string): string {
+    const normalized = path.replace(/\\/g, '/').trim().replace(/^\/+/, '')
+    if (!normalized) return ''
+    const parts = normalized.split('/').filter(Boolean)
+    if (parts.some((part) => part === '.' || part === '..')) {
+      throw new Error('Path cannot include "." or ".."')
+    }
+    return parts.join('/')
+  }
+
+  private async resolvePath(
+    agentDir: FileSystemDirectoryHandle,
+    normalizedPath: string,
+    createDirs: boolean
+  ): Promise<{ dir: FileSystemDirectoryHandle; fileName: string }> {
+    const parts = normalizedPath.split('/')
+    const fileName = parts[parts.length - 1]
+    let dir = agentDir
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      dir = await dir.getDirectoryHandle(parts[i], { create: createDirs })
+    }
+
+    return { dir, fileName }
   }
 }

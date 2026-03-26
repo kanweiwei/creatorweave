@@ -17,6 +17,7 @@ import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
 import micromatch from 'micromatch'
 import { traverseDirectory } from '@/services/traversal.service'
+import { isVfsPath, resolveVfsTarget } from './vfs-resolver'
 
 export const editDefinition: ToolDefinition = {
   type: 'function',
@@ -26,7 +27,7 @@ export const editDefinition: ToolDefinition = {
       'Apply text replacements to file(s). ' +
       'Single mode: path + old_text + new_text for exact replacement. ' +
       'Batch mode: file_pattern + find + replace for regex-based multi-file editing. ' +
-      'Uses cached content if file has pending modifications.',
+      'Uses cached content if file has pending modifications. Single mode supports vfs://workspace/... and vfs://agents/{id}/....',
     parameters: {
       type: 'object',
       properties: {
@@ -86,6 +87,12 @@ export const editExecutor: ToolExecutor = async (args, context) => {
   const maxFiles = args.max_files as number | undefined
   const isBatchMode = find !== undefined || useRegex === true || isGlobPattern(path)
 
+  if (isBatchMode && isVfsPath(path)) {
+    return JSON.stringify({
+      error: 'Batch edit does not support vfs:// paths. Use single-file edit with path + old_text + new_text.',
+    })
+  }
+
   if (isBatchMode) {
     return executeBatchEdit(args, context, { find, replace, useRegex, dryRun, maxFiles })
   }
@@ -110,20 +117,37 @@ async function executeSingleEdit(
   opts: { oldText: string; newText: string; path: string }
 ): Promise<string> {
   const { oldText, newText, path } = opts
-  const toolContext = context as { directoryHandle?: FileSystemDirectoryHandle }
+  const toolContext = context as {
+    directoryHandle?: FileSystemDirectoryHandle
+    projectId?: string | null
+    currentAgentId?: string | null
+  }
 
   try {
     const { readFile, writeFile, getPendingChanges } = useOPFSStore.getState()
-
-    const { content } = await readFile(path, toolContext.directoryHandle)
-
-    if (typeof content !== 'string') {
-      return JSON.stringify({
-        error: `Cannot edit binary file: ${path}. Use write to replace the entire file.`,
-      })
+    const vfsContext = {
+      directoryHandle: toolContext.directoryHandle ?? null,
+      projectId: toolContext.projectId ?? null,
+      currentAgentId: toolContext.currentAgentId ?? null,
     }
+    const target = await resolveVfsTarget(path, vfsContext, 'write')
+    let fileContent: string
 
-    const fileContent = content
+    if (target.kind === 'workspace') {
+      const { content } = await readFile(target.path, toolContext.directoryHandle)
+      if (typeof content !== 'string') {
+        return JSON.stringify({
+          error: `Cannot edit binary file: ${path}. Use write to replace the entire file.`,
+        })
+      }
+      fileContent = content
+    } else {
+      const content = await target.agentManager.readPath(target.agentId, target.path)
+      if (content == null) {
+        return JSON.stringify({ error: `File not found: ${path}` })
+      }
+      fileContent = content
+    }
 
     const firstIndex = fileContent.indexOf(oldText)
     if (firstIndex === -1) {
@@ -141,7 +165,11 @@ async function executeSingleEdit(
 
     const newContent = fileContent.replace(oldText, newText)
 
-    await writeFile(path, newContent, toolContext.directoryHandle)
+    if (target.kind === 'workspace') {
+      await writeFile(target.path, newContent, toolContext.directoryHandle)
+    } else {
+      await target.agentManager.writePath(target.agentId, target.path, newContent)
+    }
 
     const pendingChanges = getPendingChanges()
 
@@ -155,9 +183,12 @@ async function executeSingleEdit(
       success: true,
       path,
       action: 'edited',
-      status: 'pending',
+      status: target.kind === 'workspace' ? 'pending' : 'saved',
       pendingCount: pendingChanges.length,
-      message: `File "${path}" edited. ${pendingChanges.length} change(s) pending review.`,
+      message:
+        target.kind === 'workspace'
+          ? `File "${path}" edited. ${pendingChanges.length} change(s) pending review.`
+          : `File "${path}" edited.`,
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'NotFoundError') {

@@ -4,6 +4,7 @@ import { readDirectoryExecutor } from '../read-directory.tool'
 
 const getActiveConversationMock = vi.fn()
 const getCurrentHandleMock = vi.fn()
+const resolveVfsTargetMock = vi.fn()
 
 vi.mock('@/store/conversation-context.store', () => ({
   getActiveConversation: () => getActiveConversationMock(),
@@ -15,6 +16,10 @@ vi.mock('@/store/folder-access.store', () => ({
       getCurrentHandle: () => getCurrentHandleMock(),
     }),
   },
+}))
+
+vi.mock('../vfs-resolver', () => ({
+  resolveVfsTarget: (...args: unknown[]) => resolveVfsTargetMock(...args),
 }))
 
 function createEmptyDirectoryHandle(name = 'root'): FileSystemDirectoryHandle {
@@ -55,5 +60,29 @@ describe('read_directory tool', () => {
 
     const parsed = JSON.parse(result)
     expect(parsed.error).toContain('No directory selected.')
+  })
+
+  it('supports glob scans on vfs agents namespace', async () => {
+    const getDirectoryHandle = vi.fn(async () => ({
+      handle: createEmptyDirectoryHandle('agent-root'),
+      exists: false,
+    }))
+    resolveVfsTargetMock.mockResolvedValueOnce({
+      kind: 'agent',
+      path: '',
+      agentId: 'default',
+      projectId: 'project-1',
+      agentManager: {
+        getDirectoryHandle,
+      },
+    })
+
+    const result = await readDirectoryExecutor(
+      { path: 'vfs://agents/default', pattern: 'src/**/*.ts' },
+      { directoryHandle: null } as unknown as ToolContext
+    )
+
+    expect(result).toContain('No files matching pattern')
+    expect(getDirectoryHandle).toHaveBeenCalledWith('default', 'src', { allowMissing: true })
   })
 })

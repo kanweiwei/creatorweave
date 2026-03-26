@@ -8,9 +8,10 @@
  * Smart mode detection based on parameters.
  */
 
-import type { ToolDefinition, ToolExecutor } from './tool-types'
+import type { ToolContext, ToolDefinition, ToolExecutor } from './tool-types'
 import micromatch from 'micromatch'
 import { getActiveConversation } from '@/store/conversation-context.store'
+import { resolveVfsTarget } from './vfs-resolver'
 import {
   getStaticGlobPrefix,
   normalizeSubPath,
@@ -26,7 +27,7 @@ export const readDirectoryDefinition: ToolDefinition = {
   function: {
     name: 'read_directory',
     description:
-      'Read directory contents. With pattern: search files matching glob. Without pattern: list tree structure.',
+      'Read directory contents. With pattern: search files matching glob. Without pattern: list tree structure. Supports workspace relative paths and vfs://workspace/... or vfs://agents/{id}/... in path.',
     parameters: {
       type: 'object',
       properties: {
@@ -122,7 +123,7 @@ export const readDirectoryExecutor: ToolExecutor = async (args, context) => {
 }
 
 async function resolveDirectoryHandleWithConversationFallback(
-  handle: FileSystemDirectoryHandle | undefined
+  handle: FileSystemDirectoryHandle | null | undefined
 ): Promise<FileSystemDirectoryHandle | null> {
   if (handle) return handle
   try {
@@ -137,18 +138,85 @@ async function resolveDirectoryHandleWithConversationFallback(
   return active.conversation.getFilesDir()
 }
 
+type DiscoveryScope =
+  | {
+      kind: 'workspace'
+      subPath: string
+      resolveHandle: (
+        path: string,
+        options?: { allowMissing?: boolean }
+      ) => Promise<{ handle: FileSystemDirectoryHandle; exists: boolean }>
+    }
+  | {
+      kind: 'agent'
+      subPath: string
+      resolveHandle: (
+        path: string,
+        options?: { allowMissing?: boolean }
+      ) => Promise<{ handle: FileSystemDirectoryHandle; exists: boolean }>
+    }
+
+async function resolveDiscoveryScope(
+  rawPath: unknown,
+  toolContext: ToolContext,
+  mode: 'list' | 'glob'
+): Promise<DiscoveryScope> {
+  if (typeof rawPath === 'string' && rawPath.trim().startsWith('vfs://')) {
+    const resolved = await resolveVfsTarget(rawPath.trim(), toolContext, 'list', { allowEmptyPath: true })
+    if (resolved.kind === 'workspace') {
+      const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
+      if (!rootHandle) {
+        throw new Error('No directory selected.')
+      }
+      return {
+        kind: 'workspace',
+        subPath: resolved.path,
+        resolveHandle: (path, options) => resolveDirectoryHandle(rootHandle, path, options),
+      }
+    }
+
+    return {
+      kind: 'agent',
+      subPath: resolved.path,
+      resolveHandle: (path, options) => resolved.agentManager.getDirectoryHandle(resolved.agentId, path, options),
+    }
+  }
+
+  let subPath = ''
+  try {
+    subPath = normalizeSubPath(rawPath)
+  } catch {
+    throw new Error(`${mode === 'list' ? 'List' : 'Glob search'} failed: path cannot include ".."`)
+  }
+
+  const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
+  if (!rootHandle) {
+    throw new Error('No directory selected.')
+  }
+
+  return {
+    kind: 'workspace',
+    subPath,
+    resolveHandle: (path, options) => resolveDirectoryHandle(rootHandle, path, options),
+  }
+}
+
 /**
  * List mode - directory tree listing (from original list_files)
  */
 async function executeListMode(args: Record<string, unknown>, context: unknown): Promise<string> {
-  const toolContext = context as { directoryHandle?: FileSystemDirectoryHandle; abortSignal?: AbortSignal }
+  const toolContext = context as ToolContext
   const abortSignal = toolContext.abortSignal
 
-  let subPath = ''
+  let scope: DiscoveryScope
   try {
-    subPath = normalizeSubPath(args.path)
-  } catch {
-    return JSON.stringify({ error: 'List failed: path cannot include ".."' })
+    scope = await resolveDiscoveryScope(args.path, toolContext, 'list')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message === 'No directory selected.') {
+      return JSON.stringify({ error: message })
+    }
+    return JSON.stringify({ error: message.startsWith('List failed:') ? message : `List failed: ${message}` })
   }
 
   const rawMaxDepth = args.max_depth ?? args.maxDepth
@@ -163,13 +231,8 @@ async function executeListMode(args: Record<string, unknown>, context: unknown):
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
-  if (!rootHandle) {
-    return JSON.stringify({ error: 'No directory selected.' })
-  }
-
   try {
-    const { handle: searchHandle } = await resolveDirectoryHandle(rootHandle, subPath)
+    const { handle: searchHandle } = await scope.resolveHandle(scope.subPath)
     const startedAt = Date.now()
     const deadlineAt = startedAt + deadlineMs
     const entries: Array<{ path: string; type: 'file' | 'directory'; size: number; depth: number }> = []
@@ -245,7 +308,7 @@ async function executeListMode(args: Record<string, unknown>, context: unknown):
     }
 
     if (entries.length === 0) {
-      return subPath ? `Directory "${subPath}" is empty` : 'Project directory is empty'
+      return scope.subPath ? `Directory "${scope.subPath}" is empty` : 'Project directory is empty'
     }
 
     // Build tree output
@@ -282,14 +345,20 @@ async function executeGlobMode(
   context: unknown,
   pattern: string
 ): Promise<string> {
-  const toolContext = context as { directoryHandle?: FileSystemDirectoryHandle; abortSignal?: AbortSignal }
+  const toolContext = context as ToolContext
   const abortSignal = toolContext.abortSignal
 
-  let subPath = ''
+  let scope: DiscoveryScope
   try {
-    subPath = normalizeSubPath(args.path)
-  } catch {
-    return JSON.stringify({ error: 'Glob search failed: path cannot include ".."' })
+    scope = await resolveDiscoveryScope(args.path, toolContext, 'glob')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message === 'No directory selected.') {
+      return JSON.stringify({ error: message })
+    }
+    return JSON.stringify({
+      error: message.startsWith('Glob search failed:') ? message : `Glob search failed: ${message}`,
+    })
   }
 
   const maxResultsRaw = args.max_results ?? args.maxResults ?? args.max_entries ?? args.maxEntries
@@ -302,16 +371,11 @@ async function executeGlobMode(
   const includeIgnored = args.include_ignored === true || args.includeIgnored === true
   const extraExcludes = parseStringList(args.exclude_dirs ?? args.excludeDirs)
 
-  const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
-  if (!rootHandle) {
-    return JSON.stringify({ error: 'No directory selected.' })
-  }
-
   try {
-    const staticPrefix = subPath ? '' : getStaticGlobPrefix(pattern)
-    const effectiveRoot = subPath || staticPrefix
-    const { handle: searchHandle, exists } = await resolveDirectoryHandle(rootHandle, effectiveRoot, {
-      allowMissing: !subPath && !!staticPrefix,
+    const staticPrefix = scope.subPath ? '' : getStaticGlobPrefix(pattern)
+    const effectiveRoot = scope.subPath || staticPrefix
+    const { handle: searchHandle, exists } = await scope.resolveHandle(effectiveRoot, {
+      allowMissing: !scope.subPath && !!staticPrefix,
     })
     if (!exists) {
       return `No files matching pattern "${pattern}"`
@@ -382,7 +446,7 @@ async function executeGlobMode(
     }
 
     if (matches.length === 0) {
-      return `No files matching pattern "${pattern}"${subPath ? ` in ${subPath}` : ''}`
+      return `No files matching pattern "${pattern}"${scope.subPath ? ` in ${scope.subPath}` : ''}`
     }
 
     const suffixes: string[] = []

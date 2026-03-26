@@ -9,10 +9,11 @@
  * Smart mode detection: paths array = batch, single path = single
  */
 
-import type { ToolDefinition, ToolExecutor } from './tool-types'
+import type { ToolDefinition, ToolExecutor, ToolContext } from './tool-types'
 import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
 import { getActiveConversation } from '@/store/conversation-context.store'
+import { resolveVfsTarget, type AgentTarget } from './vfs-resolver'
 
 //=============================================================================
 // Read Tool
@@ -23,7 +24,7 @@ export const readDefinition: ToolDefinition = {
   function: {
     name: 'read',
     description:
-      'Read file contents. With path: read single file. With paths: read multiple files. Uses cached version if file has pending modifications.',
+      'Read file contents. With path: read single file. With paths: read multiple files. Uses cached version if file has pending modifications. Supports workspace relative paths and vfs://workspace/... or vfs://agents/{id}/....',
     parameters: {
       type: 'object',
       properties: {
@@ -108,7 +109,7 @@ export const readExecutor: ToolExecutor = async (args, context) => {
 
   // Batch mode: multiple files
   if (paths && Array.isArray(paths) && paths.length > 0) {
-    return executeBatchRead(paths.map((p) => ({ path: p })), maxSize, context.directoryHandle)
+    return executeBatchRead(paths.map((p) => ({ path: p })), maxSize, context)
   }
 
   if (reads && Array.isArray(reads) && reads.length > 0) {
@@ -122,11 +123,11 @@ export const readExecutor: ToolExecutor = async (args, context) => {
       })
       if (err) return JSON.stringify({ error: `Invalid reads for "${read.path}": ${err}` })
     }
-    return executeBatchRead(reads, maxSize, context.directoryHandle)
+    return executeBatchRead(reads, maxSize, context)
   }
 
   // Single file mode
-  return executeSingleRead(path!, context.directoryHandle, rangeOptions, maxSize)
+  return executeSingleRead(path!, context, rangeOptions, maxSize)
 }
 
 function isOPFSWorkspaceMiss(error: unknown): boolean {
@@ -147,7 +148,7 @@ async function resolveNativeDirectoryHandle(
 }
 
 async function formatSingleReadResult(
-  path: string,
+  originalPath: string,
   readResult: Awaited<ReturnType<ReturnType<typeof useOPFSStore.getState>['readFile']>>,
   options: ReadRangeOptions,
   maxSize?: number
@@ -156,7 +157,7 @@ async function formatSingleReadResult(
   if (maxSize && metadata.size > maxSize) {
     return JSON.stringify({
       error: 'too_large',
-      path,
+      path: originalPath,
       fileSize: metadata.size,
       maxSize,
       message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
@@ -170,7 +171,7 @@ async function formatSingleReadResult(
   if (hasRangeOptions(options)) {
     return JSON.stringify({
       error: 'range_not_supported_for_binary',
-      path,
+      path: originalPath,
       message: 'offset/limit/start_line/line_count can only be used for text files.',
     })
   }
@@ -186,23 +187,57 @@ async function formatSingleReadResult(
   })
 }
 
+function formatAgentTextReadResult(
+  originalPath: string,
+  content: string,
+  options: ReadRangeOptions,
+  maxSize?: number
+): string {
+  const size = new TextEncoder().encode(content).length
+  if (maxSize && size > maxSize) {
+    return JSON.stringify({
+      error: 'too_large',
+      path: originalPath,
+      fileSize: size,
+      maxSize,
+      message: `File size ${size} exceeds requested max_size ${maxSize}.`,
+    })
+  }
+
+  return applyTextRange(content, options)
+}
+
 async function executeSingleRead(
   path: string,
-  directoryHandle?: FileSystemDirectoryHandle | null,
+  context: ToolContext,
   options: ReadRangeOptions = {},
   maxSize?: number
 ): Promise<string> {
   const { readFile } = useOPFSStore.getState()
 
   try {
-    const result = await readFile(path, directoryHandle)
+    const target = await resolveVfsTarget(path, context, 'read')
+
+    if (target.kind === 'agent') {
+      const content = await target.agentManager.readPath(target.agentId, target.path)
+      if (content == null) {
+        return JSON.stringify({ error: `File not found: ${path}` })
+      }
+      return formatAgentTextReadResult(path, content, options, maxSize)
+    }
+
+    const result = await readFile(target.path, context.directoryHandle)
     return formatSingleReadResult(path, result, options, maxSize)
   } catch (error) {
     if (isOPFSWorkspaceMiss(error)) {
       try {
-        const nativeHandle = await resolveNativeDirectoryHandle(directoryHandle)
+        const target = await resolveVfsTarget(path, context, 'read')
+        if (target.kind !== 'workspace') {
+          throw error
+        }
+        const nativeHandle = await resolveNativeDirectoryHandle(context.directoryHandle)
         if (nativeHandle) {
-          const result = await readFile(path, nativeHandle)
+          const result = await readFile(target.path, nativeHandle)
           return formatSingleReadResult(path, result, options, maxSize)
         }
       } catch (fallbackError) {
@@ -221,14 +256,14 @@ async function executeSingleRead(
 async function executeBatchRead(
   reads: ReadRequest[],
   maxSize: number | undefined,
-  directoryHandle?: FileSystemDirectoryHandle | null
+  context: ToolContext
 ): Promise<string> {
   const { readFile } = useOPFSStore.getState()
   let nativeFallbackHandle: FileSystemDirectoryHandle | null | undefined
   const getNativeFallbackHandle = async (): Promise<FileSystemDirectoryHandle | null> => {
     if (nativeFallbackHandle !== undefined) return nativeFallbackHandle
     try {
-      nativeFallbackHandle = await resolveNativeDirectoryHandle(directoryHandle)
+      nativeFallbackHandle = await resolveNativeDirectoryHandle(context.directoryHandle)
     } catch {
       nativeFallbackHandle = null
     }
@@ -242,9 +277,42 @@ async function executeBatchRead(
   for (const read of reads) {
     const filePath = read.path
     try {
+      const target = await resolveVfsTarget(filePath, context, 'read')
+
+      if (target.kind === 'agent') {
+        const agentContent = await target.agentManager.readPath(target.agentId, target.path)
+        if (agentContent == null) {
+          throw new Error(`File not found: ${filePath}`)
+        }
+        const size = new TextEncoder().encode(agentContent).length
+
+        if (maxSize && size > maxSize) {
+          results.push({
+            path: filePath,
+            success: false,
+            error: `too_large: file size ${size} exceeds requested max_size ${maxSize}`,
+            metadata: { size, contentType: 'text' },
+          })
+          errorCount++
+          continue
+        }
+
+        results.push({
+          path: filePath,
+          success: true,
+          content: applyTextRange(agentContent, {
+            startLine: read.start_line,
+            lineCount: read.line_count,
+          }),
+          metadata: { size, contentType: 'text' },
+        })
+        successCount++
+        continue
+      }
+
       let readResult: Awaited<ReturnType<ReturnType<typeof useOPFSStore.getState>['readFile']>>
       try {
-        readResult = await readFile(filePath, directoryHandle)
+        readResult = await readFile(target.path, context.directoryHandle)
       } catch (error) {
         if (!isOPFSWorkspaceMiss(error)) {
           throw error
@@ -253,7 +321,7 @@ async function executeBatchRead(
         if (!fallbackHandle) {
           throw error
         }
-        readResult = await readFile(filePath, fallbackHandle)
+        readResult = await readFile(target.path, fallbackHandle)
       }
       const { content, metadata } = readResult
 
@@ -330,10 +398,7 @@ async function executeBatchRead(
 }
 
 function hasRangeOptions(options: ReadRangeOptions): boolean {
-  return (
-    options.startLine !== undefined ||
-    options.lineCount !== undefined
-  )
+  return options.startLine !== undefined || options.lineCount !== undefined
 }
 
 function validateReadRange(options: ReadRangeOptions): string | null {
@@ -367,7 +432,7 @@ export const writeDefinition: ToolDefinition = {
   function: {
     name: 'write',
     description:
-      'Write content to file(s). Single: path + content. Batch: files array [{path, content}]. Creates directories if needed. Returns confirmation.',
+      'Write content to file(s). Single: path + content. Batch: files array [{path, content}]. Creates directories if needed. Returns confirmation. Supports workspace relative paths and vfs://workspace/... or vfs://agents/{id}/....',
     parameters: {
       type: 'object',
       properties: {
@@ -408,28 +473,47 @@ export const writeExecutor: ToolExecutor = async (args, context) => {
 
   // Batch mode: files array
   if (files && Array.isArray(files) && files.length > 0) {
-    return executeBatchWrite(files, context.directoryHandle)
+    return executeBatchWrite(files, context)
   }
 
   // Single file mode
   if (!path || content === undefined) {
     return JSON.stringify({ error: 'Either (path + content) or files must be provided' })
   }
-  return executeSingleWrite(path, content, context.directoryHandle)
+  return executeSingleWrite(path, content, context)
 }
 
 async function executeSingleWrite(
   path: string,
   content: string,
-  directoryHandle?: FileSystemDirectoryHandle | null
+  context: ToolContext
 ): Promise<string> {
   const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
 
   try {
-    const isNew = !hasCachedFile(path)
-    await writeFile(path, content, directoryHandle)
+    const target = await resolveVfsTarget(path, context, 'write')
+    let isNew = false
+    let pendingCount = 0
+    let status: 'pending' | 'saved' = 'saved'
+    let message = ''
 
-    const pendingChanges = getPendingChanges()
+    if (target.kind === 'workspace') {
+      isNew = !hasCachedFile(target.path)
+      await writeFile(target.path, content, context.directoryHandle)
+      pendingCount = getPendingChanges().length
+      status = 'pending'
+      message = isNew
+        ? `File "${path}" created. ${pendingCount} change(s) pending review.`
+        : `File "${path}" updated. ${pendingCount} change(s) pending review.`
+    } else {
+      await ensureAgentExistsForWrite(target)
+      const existing = await target.agentManager.readPath(target.agentId, target.path)
+      isNew = existing == null
+      await target.agentManager.writePath(target.agentId, target.path, content)
+      pendingCount = getPendingChanges().length
+      status = 'saved'
+      message = isNew ? `File "${path}" created.` : `File "${path}" updated.`
+    }
 
     const session = useRemoteStore.getState().session
     if (session) {
@@ -442,11 +526,9 @@ async function executeSingleWrite(
       path,
       action: isNew ? 'created' : 'updated',
       size: content.length,
-      status: 'pending',
-      pendingCount: pendingChanges.length,
-      message: isNew
-        ? `File "${path}" created. ${pendingChanges.length} change(s) pending review.`
-        : `File "${path}" updated. ${pendingChanges.length} change(s) pending review.`,
+      status,
+      pendingCount,
+      message,
     })
   } catch (error) {
     return JSON.stringify({
@@ -457,17 +539,30 @@ async function executeSingleWrite(
 
 async function executeBatchWrite(
   files: FileItem[],
-  directoryHandle?: FileSystemDirectoryHandle | null
+  context: ToolContext
 ): Promise<string> {
   const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
   const results: Array<{ path: string; success: boolean; error?: string }> = []
   let created = 0
   let updated = 0
+  let hasWorkspaceWrites = false
+  const ensuredAgentIds = new Set<string>()
 
   for (const file of files) {
     try {
-      const isNew = !hasCachedFile(file.path)
-      await writeFile(file.path, file.content, directoryHandle)
+      const target = await resolveVfsTarget(file.path, context, 'write')
+      let isNew = false
+
+      if (target.kind === 'workspace') {
+        isNew = !hasCachedFile(target.path)
+        await writeFile(target.path, file.content, context.directoryHandle)
+        hasWorkspaceWrites = true
+      } else {
+        await ensureAgentExistsForWrite(target, ensuredAgentIds)
+        const existing = await target.agentManager.readPath(target.agentId, target.path)
+        isNew = existing == null
+        await target.agentManager.writePath(target.agentId, target.path, file.content)
+      }
 
       results.push({ path: file.path, success: true })
       if (isNew) created++
@@ -494,7 +589,20 @@ async function executeBatchWrite(
     updated,
     failed: files.length - created - updated,
     results,
+    status: hasWorkspaceWrites ? 'pending' : 'saved',
     pendingCount: pendingChanges.length,
     message: `${files.length} files processed. ${pendingChanges.length} change(s) pending review.`,
   })
+}
+
+async function ensureAgentExistsForWrite(target: AgentTarget, cache?: Set<string>): Promise<void> {
+  const cacheKey = `${target.projectId}:${target.agentId}`
+  if (cache?.has(cacheKey)) return
+
+  const exists = await target.agentManager.hasAgent(target.agentId)
+  if (!exists) {
+    await target.agentManager.createAgent(target.agentId)
+  }
+
+  cache?.add(cacheKey)
 }

@@ -638,23 +638,84 @@ export class WorkspaceRuntime {
 
   /**
    * Discard all pending changes without syncing to native filesystem.
-   * Keeps OPFS cache/files as-is, but clears overlay pending ledger.
+   * For newly created files (type=create), also remove file bodies from OPFS files/.
+   * For modified files (type=modify), restore file content from native filesystem baseline.
    */
   async discardAllPendingChanges(): Promise<void> {
     if (!this.initialized) await this.initialize()
-    await this.pendingManager.clear()
+    const pending = this.pendingManager.getAll()
+    const restoreFailures: string[] = []
+
+    for (const change of pending) {
+      const normalizedPath = this.normalizeWorkspacePath(change.path)
+      if (change.type === 'create') {
+        await this.deleteFromFilesDirIfExists(normalizedPath)
+      } else if (change.type === 'modify') {
+        const restored = await this.restorePendingModifyFromNative(normalizedPath)
+        if (!restored) {
+          restoreFailures.push(change.path)
+          continue
+        }
+      }
+      await this.pendingManager.removeByPath(change.path)
+    }
+
+    if (restoreFailures.length > 0) {
+      throw new Error(
+        `无法拒绝 ${restoreFailures.length} 个修改（缺少本地文件基线）: ${restoreFailures.slice(0, 3).join(', ')}${restoreFailures.length > 3 ? ' ...' : ''}`
+      )
+    }
+
     this.metadata.lastAccessedAt = Date.now()
     await this.saveMetadata()
   }
 
   /**
    * Discard one pending path without syncing to native filesystem.
+   * If the pending op is a newly created file, remove it from OPFS files/.
+   * If the pending op is a modify, restore content from native filesystem baseline.
    */
   async discardPendingPath(path: string): Promise<void> {
     if (!this.initialized) await this.initialize()
-    await this.pendingManager.removeByPath(path)
+    const normalizedTargetPath = this.normalizeWorkspacePath(path)
+    const existing = this.pendingManager
+      .getAll()
+      .find((change) => this.normalizeWorkspacePath(change.path) === normalizedTargetPath)
+    if (existing?.type === 'create') {
+      await this.deleteFromFilesDirIfExists(normalizedTargetPath)
+    } else if (existing?.type === 'modify') {
+      const restored = await this.restorePendingModifyFromNative(normalizedTargetPath)
+      if (!restored) {
+        throw new Error(`无法拒绝修改 "${path}"：缺少本地文件基线，请先恢复目录访问权限`)
+      }
+    }
+    await this.pendingManager.removeByPath(existing?.path || path)
     this.metadata.lastAccessedAt = Date.now()
     await this.saveMetadata()
+  }
+
+  private normalizeWorkspacePath(path: string): string {
+    let normalized = path.replace(/\\/g, '/')
+    if (normalized.startsWith('/mnt/')) {
+      normalized = normalized.slice('/mnt/'.length)
+    } else if (normalized === '/mnt') {
+      normalized = ''
+    } else if (normalized.startsWith('/')) {
+      normalized = normalized.slice(1)
+    }
+    return normalized
+  }
+
+  private async restorePendingModifyFromNative(path: string): Promise<boolean> {
+    const nativeDir = await this.getNativeDirectoryHandle()
+    if (!nativeDir) return false
+    try {
+      const native = await this.readFromNativeFS(path, nativeDir)
+      await this.writeToFilesDir(path, native.content)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

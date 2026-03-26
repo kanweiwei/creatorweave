@@ -351,6 +351,26 @@ describe('conversation.store.sqlite tool-call routing', () => {
     expect(updated?.title).toBe('first title source')
   })
 
+  it('should regenerate by clearing all non-user messages in the target turn', () => {
+    const store = useConversationStore.getState()
+    const conv = store.createNew('regen-clear-turn')
+
+    const u1 = createUserMessage('u1')
+    const a1 = createAssistantMessage('a1')
+    const t1 = createToolMessage({ toolCallId: 'tc-1', name: 'read', content: 'r1' })
+    const t2 = createToolMessage({ toolCallId: 'tc-2', name: 'search', content: 'r2' })
+    const u2 = createUserMessage('u2')
+    const a2 = createAssistantMessage('a2')
+
+    useConversationStore.getState().updateMessages(conv.id, [u1, a1, t1, t2, u2, a2])
+
+    useConversationStore.getState().regenerateUserMessage(conv.id, u1.id)
+
+    const updated = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
+    expect(updated?.messages.map((m) => m.id)).toEqual([u1.id, u2.id, a2.id])
+    expect(updated?.messages[0]?.role).toBe('user')
+  })
+
   it('should set status to pending when compression starts and status is not streaming/tool_calling', async () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('compression-pending')

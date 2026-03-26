@@ -9,6 +9,7 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
+import { isProtectedAgentCoreFile, resolveVfsTarget } from './vfs-resolver'
 
 export const deleteDefinition: ToolDefinition = {
   type: 'function',
@@ -17,7 +18,8 @@ export const deleteDefinition: ToolDefinition = {
     description:
       'Soft delete file(s). Marks files as pending deletion in OPFS workspace. ' +
       'Use path for single file, or paths for batch. ' +
-      'IMPORTANT: Files are not removed from real disk until sync is executed.',
+      'IMPORTANT: Files are not removed from real disk until sync is executed. ' +
+      'Supports vfs://workspace/... and vfs://agents/{id}/... paths.',
     parameters: {
       type: 'object',
       properties: {
@@ -44,11 +46,19 @@ function normalizeTargetPath(raw: string): string {
   const normalized = raw.trim().replace(/\\/g, '/').replace(/^\.\//, '')
   if (!normalized) throw new Error('Path cannot be empty')
 
+  if (normalized.startsWith('vfs://')) {
+    const suffix = normalized.slice('vfs://'.length)
+    const parts = suffix.split('/').filter(Boolean)
+    if (parts.some((part) => part === '..')) {
+      throw new Error('Path cannot include ".."')
+    }
+    return `vfs://${parts.join('/')}`
+  }
+
   const parts = normalized.split('/').filter(Boolean)
   if (parts.some((part) => part === '..')) {
     throw new Error('Path cannot include ".."')
   }
-
   return parts.join('/')
 }
 
@@ -97,7 +107,15 @@ export const deleteExecutor: ToolExecutor = async (args, context) => {
 
   for (const target of targets) {
     try {
-      await deleteFile(target, context.directoryHandle)
+      const resolved = await resolveVfsTarget(target, context, 'delete')
+      if (resolved.kind === 'workspace') {
+        await deleteFile(resolved.path, context.directoryHandle)
+      } else {
+        if (isProtectedAgentCoreFile(resolved.path)) {
+          throw new Error(`Protected agent file cannot be deleted: ${resolved.path}`)
+        }
+        await resolved.agentManager.deletePath(resolved.agentId, resolved.path)
+      }
 
       const session = useRemoteStore.getState().session
       if (session) {
