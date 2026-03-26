@@ -271,10 +271,7 @@ export class WorkspaceRepository {
       'SELECT SUM(size) as total FROM file_metadata WHERE workspace_id = ?',
       [workspaceId]
     )
-    const pendingRow = await db.queryFirst<{ count: number }>(
-      'SELECT COUNT(*) as count FROM pending_changes WHERE workspace_id = ?',
-      [workspaceId]
-    )
+    const pendingCount = await this.getRealPendingCount(workspaceId)
 
     if (!fileCountRow) return null
 
@@ -282,7 +279,7 @@ export class WorkspaceRepository {
       workspaceId,
       fileCount: fileCountRow.count,
       totalFileSize: fileSizeRow?.total || 0,
-      pendingCount: pendingRow?.count || 0,
+      pendingCount,
     }
   }
 
@@ -362,7 +359,7 @@ export class WorkspaceRepository {
   }
 
   //===========================================================================
-  // Pending Changes Operations
+  // Pending Changes Operations (legacy compatibility only)
   //===========================================================================
 
   /**

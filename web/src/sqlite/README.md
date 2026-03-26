@@ -36,10 +36,10 @@ server: {
 | `bfosa-skills.skills`               | `skills`          | `SkillRepository`        | `skill-storage.sqlite.ts`          |
 | `bfosa-plugins.plugins`             | `plugins`         | `PluginRepository`       | `plugin-storage.service.sqlite.ts` |
 | `bfosa-security.api-keys`           | `api_keys`        | `ApiKeyRepository`       | `api-key-store.sqlite.ts`          |
-| _(OPFS sessions.json)_              | `sessions`        | `SessionRepository`      | (new)                              |
-| _(OPFS file_metadata)_              | `file_metadata`   | `SessionRepository`      | (new)                              |
-| _(OPFS pending_changes)_            | `pending_changes` | `SessionRepository`      | (new)                              |
-| _(OPFS undo_records)_               | `undo_records`    | `SessionRepository`      | (new)                              |
+| _(OPFS projects/{projectId}/workspaces/{workspaceId})_ | `workspaces` | `WorkspaceRepository` | `workspace.repository.ts` |
+| _(OPFS file_metadata)_              | `file_metadata`   | `WorkspaceRepository`    | `workspace.repository.ts`          |
+| _(OPFS pending_changes)_            | `pending_changes` | `WorkspaceRepository`    | `workspace.repository.ts`          |
+| _(OPFS undo_records)_               | `undo_records`    | `WorkspaceRepository`    | `workspace.repository.ts`          |
 
 **Still using IndexedDB**: `FileSystemDirectoryHandle` (requires structured clone algorithm)
 
@@ -57,7 +57,7 @@ web/src/
 │   └── repositories/
 │       ├── conversation.repository.ts  # 对话存储
 │       ├── skill.repository.ts         # 技能存储
-│       ├── session.repository.ts       # 会话/OPFS 存储
+│       ├── workspace.repository.ts     # 工作区/OPFS 存储
 │       ├── api-key.repository.ts       # API 密钥存储
 │       └── plugin.repository.ts        # 插件存储
 ├── storage/

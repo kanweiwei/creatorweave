@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS encryption_metadata (
 CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,            -- Workspace ID (matches conversation.id)
     project_id TEXT NOT NULL,
-    root_directory TEXT NOT NULL UNIQUE,  -- OPFS path like /conversations/{id}
+    root_directory TEXT NOT NULL UNIQUE,  -- OPFS path like workspaces/{id}
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
     cache_size INTEGER NOT NULL DEFAULT 0,

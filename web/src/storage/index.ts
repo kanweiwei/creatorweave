@@ -12,6 +12,7 @@ export {
   setupAutoSave,
   getStorageStatus,
   clearAllStorage,
+  clearSQLiteAndProjectsDirectory,
   exportStorage,
   importStorage,
   getStorageMode,
