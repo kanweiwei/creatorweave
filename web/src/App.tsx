@@ -8,11 +8,11 @@ import { useMobile } from '@/components/mobile/useMobile'
 import { StorageLoading } from '@/components/StorageLoading'
 import { DatabaseRefreshDialog } from '@/components/DatabaseRefreshDialog'
 import { attemptReconnect } from '@/store/remote.store'
-import { useWorkspaceStore } from '@/store/workspace.store'
+import { useConversationContextStore } from '@/store/conversation-context.store'
 import { useProjectStore } from '@/store/project.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { useOPFSStore } from '@/store/opfs.store'
-import { initStorage, setupAutoSave } from '@/storage'
+import { initStorage, setupAutoSave, clearSQLiteAndProjectsDirectory } from '@/storage'
 import { useT } from '@/i18n'
 import { PWAUpdateBanner } from '@/pwa/PWAUpdateBanner'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
@@ -117,6 +117,7 @@ function App() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
+  const [isClearingLocalData, setIsClearingLocalData] = useState(false)
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute(window.location.pathname))
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const createProject = useProjectStore((s) => s.createProject)
@@ -127,7 +128,7 @@ function App() {
   const projectStats = useProjectStore((s) => s.projectStats)
   const projectLoading = useProjectStore((s) => s.isLoading)
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const activeWorkspaceId = useConversationContextStore((s) => s.activeWorkspaceId)
   const activeConversationId = useConversationStore((s) => s.activeConversationId)
   const conversations = useConversationStore((s) => s.conversations)
   const t = useT() // i18n hook
@@ -172,6 +173,72 @@ function App() {
     } catch (error) {
       console.error('[App] Failed to reset database:', error)
       toast.error('重置数据库失败，请手动刷新页面')
+    }
+  }
+
+  /**
+   * Handle clearing all local data - SQLite database and OPFS projects directory
+   */
+  async function handleClearLocalData() {
+    setIsClearingLocalData(true)
+    try {
+      // No page refresh: clear SQLite + OPFS projects/ in-place.
+      await clearSQLiteAndProjectsDirectory()
+
+      // Clear in-memory stores so UI cannot keep stale cards from previous runtime state.
+      useProjectStore.setState({
+        activeProjectId: '',
+        projects: [],
+        projectStats: {},
+        initialized: false,
+        isLoading: false,
+        error: null,
+      })
+      useConversationContextStore.setState({
+        activeWorkspaceId: null,
+        workspaces: [],
+        currentPendingCount: 0,
+        initialized: false,
+        pendingChanges: null,
+        showPreview: false,
+        previewSelectedPath: null,
+        hasDirectoryHandle: false,
+        switchingWorkspaceId: null,
+        unsyncedSnapshots: [],
+        error: null,
+      })
+      useOPFSStore.setState({
+        workspaceId: null,
+        initialized: false,
+        pendingChanges: [],
+        approvedNotSyncedPaths: new Set<string>(),
+        cachedPaths: [],
+        isLoading: false,
+        error: null,
+      })
+      useConversationStore.setState({
+        conversations: [],
+        activeConversationId: null,
+        loaded: true,
+        agentLoops: new Map(),
+        streamingQueues: new Map(),
+        suggestedFollowUps: new Map(),
+        mountedConversations: new Map(),
+      })
+
+      await runInitStep('reinitializeProjectsAfterReset', () => useProjectStore.getState().initialize())
+      await runInitStep('reinitializeWorkspacesAfterReset', () =>
+        useConversationContextStore.getState().initialize()
+      )
+      await runInitStep('reinitializeOPFSAfterReset', () => useOPFSStore.getState().initialize())
+
+      navigateToRoute({ kind: 'projectsHome' }, true)
+      toast.success('已清空本地数据，可以重新开始了')
+    } catch (error) {
+      console.error('[App] Failed to clear local data:', error)
+      toast.error('清空本地数据失败')
+    } finally {
+      setIsClearingLocalData(false)
     }
   }
 
@@ -335,7 +402,7 @@ function App() {
       // Initialize projects first, then workspaces
       try {
         await runInitStep('initializeProjects', () => useProjectStore.getState().initialize())
-        await runInitStep('initializeWorkspaces', () => useWorkspaceStore.getState().initialize())
+        await runInitStep('initializeWorkspaces', () => useConversationContextStore.getState().initialize())
         await runInitStep('initializeOPFS', () => useOPFSStore.getState().initialize())
       } catch (err) {
         console.error('[App] Failed to initialize projects/workspaces:', err)
@@ -573,7 +640,7 @@ function App() {
 
       if (cancelled) return
 
-      const scopedWorkspaceIds = useWorkspaceStore.getState().workspaces.map((workspace) => workspace.id)
+      const scopedWorkspaceIds = useConversationContextStore.getState().workspaces.map((workspace) => workspace.id)
 
       if (!workspaceId) {
         if (scopedWorkspaceIds.length > 0) {
@@ -627,7 +694,7 @@ function App() {
   useEffect(() => {
     if (!isStorageReady || currentRoute.kind !== 'projectWorkspace') return
     if (!activeProjectId || !activeConversationId) return
-    const scopedWorkspaceIds = new Set(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.id))
+    const scopedWorkspaceIds = new Set(useConversationContextStore.getState().workspaces.map((workspace) => workspace.id))
     const convState = useConversationStore.getState()
     const activeConversation = convState.conversations.find(
       (conversation) => conversation.id === activeConversationId
@@ -658,7 +725,7 @@ function App() {
   const handleOpenProject = async (projectId: string) => {
     const ok = await setActiveProject(projectId)
     if (ok) {
-      const targetWorkspaceId = useWorkspaceStore.getState().workspaces[0]?.id
+      const targetWorkspaceId = useConversationContextStore.getState().workspaces[0]?.id
       if (targetWorkspaceId) {
         await useConversationStore.getState().setActive(targetWorkspaceId)
         navigateToRoute({ kind: 'projectWorkspace', projectId, workspaceId: targetWorkspaceId })
@@ -742,7 +809,7 @@ function App() {
     <WorkspaceLayout
       onBackToProjects={() => navigateToRoute({ kind: 'projectsHome' })}
       projectName={activeProject?.name}
-      workspaceName={activeConversation?.title}
+      conversationName={activeConversation?.title}
     />
   )
 
@@ -757,6 +824,8 @@ function App() {
       onRenameProject={handleRenameProject}
       onArchiveProject={handleArchiveProject}
       onDeleteProject={handleDeleteProject}
+      onClearLocalData={handleClearLocalData}
+      isClearingLocalData={isClearingLocalData}
     />
   ) : currentRoute.kind === 'webcontainerPreview' ? (
     <WebContainerStandalonePreview />

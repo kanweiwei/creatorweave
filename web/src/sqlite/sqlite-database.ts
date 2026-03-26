@@ -697,6 +697,112 @@ export async function resetSQLiteDB(): Promise<void> {
   window.location.reload()
 }
 
+function quoteSQLiteIdentifier(identifier: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
+    throw new Error(`Unsafe SQLite identifier: ${identifier}`)
+  }
+  return `"${identifier}"`
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'NotFoundError'
+  }
+  const message = toErrorMessage(error).toLowerCase()
+  return message.includes('not found') || message.includes('could not be found')
+}
+
+function isPoolLockError(error: unknown): boolean {
+  const message = toErrorMessage(error).toLowerCase()
+  return (
+    message.includes('an attempt was made to modify an object where modifications are not allowed') ||
+    message.includes('nomodificationallowederror')
+  )
+}
+
+async function forceDeleteSQLiteFilesFromOPFSRoot(): Promise<void> {
+  const opfsRoot = await navigator.storage.getDirectory()
+
+  try {
+    await opfsRoot.removeEntry('bfosa-unified.sqlite', { recursive: true })
+    console.log('[SQLite] Removed OPFS database file directly: bfosa-unified.sqlite')
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      throw new Error(`Failed to remove "bfosa-unified.sqlite" directly: ${toErrorMessage(error)}`)
+    }
+    console.log('[SQLite] OPFS database file already missing: bfosa-unified.sqlite')
+  }
+
+  try {
+    await opfsRoot.removeEntry('.bfosa-pool', { recursive: true })
+    console.log('[SQLite] Removed OPFS pool entry directly: .bfosa-pool')
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      console.log('[SQLite] OPFS pool entry already missing: .bfosa-pool')
+      return
+    }
+    if (isPoolLockError(error)) {
+      console.warn(
+        `[SQLite] Pool entry ".bfosa-pool" is currently locked by another context and cannot be removed: ${toErrorMessage(error)}`
+      )
+      return
+    }
+    throw new Error(`Failed to remove ".bfosa-pool" directly: ${toErrorMessage(error)}`)
+  }
+}
+
+/**
+ * Drop all user tables/views and rebuild schema without reloading the page.
+ * Useful when schema drift blocks initialization but a full page refresh is undesired.
+ *
+ * Call from browser console: window.__clearAllSQLiteTables()
+ */
+export async function clearAllSQLiteTables(): Promise<void> {
+  const manager = getSQLiteDB()
+  try {
+    await manager.initialize()
+
+    const [tables, views] = await Promise.all([
+      manager.queryAll<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+      ),
+      manager.queryAll<{ name: string }>("SELECT name FROM sqlite_master WHERE type='view'"),
+    ])
+
+    const statements: string[] = ['PRAGMA foreign_keys = OFF']
+    for (const view of views) {
+      if (!view?.name) continue
+      statements.push(`DROP VIEW IF EXISTS ${quoteSQLiteIdentifier(view.name)}`)
+    }
+    for (const table of tables) {
+      if (!table?.name) continue
+      statements.push(`DROP TABLE IF EXISTS ${quoteSQLiteIdentifier(table.name)}`)
+    }
+    statements.push('PRAGMA foreign_keys = ON')
+
+    await manager.execute(`${statements.join(';\n')};`)
+    await manager.close()
+    await manager.initialize()
+    console.log('[SQLite] Cleared all user tables and rebuilt schema without page reload')
+    return
+  } catch (error) {
+    console.warn(
+      '[SQLite] clearAllSQLiteTables failed, falling back to direct OPFS file cleanup:',
+      error
+    )
+  }
+
+  await manager.close().catch(() => undefined)
+  await forceDeleteSQLiteFilesFromOPFSRoot()
+  await manager.initialize()
+  console.log('[SQLite] Cleared SQLite via direct OPFS cleanup fallback')
+}
+
 /**
  * Get SQLite recovery statistics for diagnostics
  * Call this from browser console: window.__getSQLiteRecoveryStats()
@@ -714,6 +820,8 @@ export function getSQLiteRecoveryStats(): {
 if (typeof window !== 'undefined') {
   // @ts-ignore
   window.__resetSQLiteDB = resetSQLiteDB
+  // @ts-ignore
+  window.__clearAllSQLiteTables = clearAllSQLiteTables
   // @ts-ignore
   window.__getSQLiteRecoveryStats = getSQLiteRecoveryStats
   // @ts-ignore
@@ -831,7 +939,7 @@ if (typeof window !== 'undefined') {
   }
 
   console.log(
-    '[SQLite] Diagnostic functions available: window.__resetSQLiteDB(), window.__getSQLiteRecoveryStats(), window.__getSQLiteMode(), window.__checkSQLiteHealth(), window.__listSQLiteTables(), window.__checkDataIntegrity(), window.__enableSQLiteSQLLogging(), window.__queryPendingOps(), window.__queryPendingCounts()'
+    '[SQLite] Diagnostic functions available: window.__resetSQLiteDB(), window.__clearAllSQLiteTables(), window.__getSQLiteRecoveryStats(), window.__getSQLiteMode(), window.__checkSQLiteHealth(), window.__listSQLiteTables(), window.__checkDataIntegrity(), window.__enableSQLiteSQLLogging(), window.__queryPendingOps(), window.__queryPendingCounts()'
   )
 }
 

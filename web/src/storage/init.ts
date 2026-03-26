@@ -12,7 +12,9 @@
  * ```
  */
 
-import { initSQLiteDB, getSQLiteDB } from '@/sqlite'
+import { initSQLiteDB, getSQLiteDB, clearAllSQLiteTables } from '@/sqlite'
+import { clearStorageResetMarker, getStorageResetMarker, setStorageResetMarker } from './reset-marker'
+import { beginReset, endReset } from './reset-coordinator'
 
 //=============================================================================
 // Types
@@ -71,6 +73,15 @@ export function canUseOPFSVFS(): boolean {
 let currentStorageMode: StorageMode = 'sqlite-opfs'
 let storageInitPromise: Promise<InitStorageResult> | undefined = undefined
 
+function isDatabaseInaccessibleError(errorMsg: string): boolean {
+  const msg = errorMsg.toLowerCase()
+  return msg.includes('database_inaccessible') || msg.includes('cantopen')
+}
+
+function buildPostResetInaccessibleMessage(rawError: string): string {
+  return `DATABASE_INACCESSIBLE_AFTER_RESET: ${rawError}. 请关闭同源的其他标签页/窗口后重试。`
+}
+
 /**
  * Get the current storage mode
  */
@@ -98,6 +109,8 @@ export async function initStorage(options: InitStorageOptions = {}): Promise<Ini
   }
 
   const { onProgress, allowFallback = true } = options
+  const resetMarker = getStorageResetMarker()
+  const initAfterReset = !!resetMarker
 
   onProgress?.({ step: 'init', total: 1, current: 0, details: 'Initializing SQLite...' })
 
@@ -108,6 +121,7 @@ export async function initStorage(options: InitStorageOptions = {}): Promise<Ini
     try {
       // Initialize SQLite (worker will determine actual OPFS availability)
       await initSQLiteDB(onProgress)
+      await getSQLiteDB().queryFirst('SELECT 1')
 
       // Get actual mode from SQLite worker after initialization
       const actualMode = getSQLiteDB().getMode()
@@ -125,9 +139,31 @@ export async function initStorage(options: InitStorageOptions = {}): Promise<Ini
         details: `Storage ready (${currentStorageMode})`,
       })
 
+      if (initAfterReset) {
+        clearStorageResetMarker()
+        console.log('[Storage] Cleared storage reset marker after healthy initialization')
+      }
+
       return { success: true, mode: currentStorageMode }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
+      const inaccessibleAfterReset = initAfterReset && isDatabaseInaccessibleError(errorMsg)
+
+      if (inaccessibleAfterReset) {
+        const actionableError = buildPostResetInaccessibleMessage(errorMsg)
+        onProgress?.({
+          step: 'error',
+          total: 1,
+          current: 0,
+          details: actionableError,
+        })
+        storageInitPromise = undefined
+        return {
+          success: false,
+          mode: currentStorageMode,
+          error: actionableError,
+        }
+      }
 
       // If SQLite initialization fails and fallback is allowed
       if (allowFallback) {
@@ -163,6 +199,72 @@ export async function initStorage(options: InitStorageOptions = {}): Promise<Ini
   })()
 
   return storageInitPromise
+}
+
+export const __test__ = {
+  resetForTests() {
+    currentStorageMode = 'sqlite-opfs'
+    storageInitPromise = undefined
+  },
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'NotFoundError'
+  }
+  const message = toErrorMessage(error).toLowerCase()
+  return message.includes('not found') || message.includes('could not be found')
+}
+
+/**
+ * Clear SQLite data and remove OPFS projects/ directory without page reload.
+ * Recreates an empty projects/ directory after cleanup.
+ */
+export async function clearSQLiteAndProjectsDirectory(): Promise<void> {
+  const { token } = beginReset()
+  setStorageResetMarker(token)
+
+  try {
+    const errors: string[] = []
+
+    try {
+      await clearAllSQLiteTables()
+    } catch (error) {
+      errors.push(`Failed to clear SQLite tables: ${toErrorMessage(error)}`)
+    }
+
+    const { resetWorkspaceManager } = await import('@/opfs')
+    resetWorkspaceManager()
+
+    const opfsRoot = await navigator.storage.getDirectory()
+    try {
+      await opfsRoot.removeEntry('projects', { recursive: true })
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        errors.push(`Failed to clear OPFS projects/ directory: ${toErrorMessage(error)}`)
+      }
+    }
+
+    try {
+      await opfsRoot.getDirectoryHandle('projects', { create: true })
+    } catch (error) {
+      errors.push(`Failed to recreate OPFS projects/ directory: ${toErrorMessage(error)}`)
+    }
+
+    resetWorkspaceManager()
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(' | '))
+    }
+  } finally {
+    clearStorageResetMarker()
+    endReset(token)
+  }
 }
 
 /**
@@ -230,7 +332,8 @@ export async function clearAllStorage(): Promise<void> {
     await db.execute('DELETE FROM file_metadata')
     await db.execute('DELETE FROM pending_changes')
     await db.execute('DELETE FROM undo_records')
-    await db.execute('DELETE FROM active_session')
+    await db.execute('DELETE FROM active_workspace')
+    await db.execute('DELETE FROM active_project')
 
     console.log('[Storage] All data cleared')
   } catch (error) {
@@ -360,9 +463,9 @@ export async function importStorage(data: {
         }
         await db.execute(
           `INSERT OR REPLACE INTO workspaces
-           (id, project_id, root_directory, name, status, cache_size, pending_count, undo_count,
+           (id, project_id, root_directory, name, status, cache_size, undo_count,
             modified_files, created_at, last_accessed_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
           [
             workspace.id,
             projectId,
@@ -370,7 +473,6 @@ export async function importStorage(data: {
             workspace.name,
             workspace.status,
             workspace.cache_size || workspace.cacheSize || 0,
-            workspace.pending_count || workspace.pendingCount || 0,
             workspace.undo_count || workspace.undoCount || 0,
             workspace.modified_files || workspace.modifiedFiles || 0,
             workspace.created_at || workspace.createdAt || Date.now(),
