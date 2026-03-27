@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, MessageSquare, Users, Plus, X, Trash2 } from 'lucide-react'
+import { Send, StopCircle, MessageSquare, ChevronDown, Plus, Trash2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
@@ -35,7 +35,7 @@ export function ConversationView({
   const [input, setInput] = useState('')
   const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([])
   const [inputResetToken, setInputResetToken] = useState(0)
-  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(true)
+  const [isAgentDropdownOpen, setIsAgentDropdownOpen] = useState(false)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [newAgentId, setNewAgentId] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -125,6 +125,22 @@ export function ConversationView({
       cancelled = true
     }
   }, [activeProjectId, isAgentsInitialized, isAgentsLoading, mentionAgents.length])
+
+  // Close agent dropdown when clicking outside
+  useEffect(() => {
+    if (!isAgentDropdownOpen) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.agent-dropdown-container')) {
+        setIsAgentDropdownOpen(false)
+        setIsCreatingAgent(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isAgentDropdownOpen])
 
   // Auto-scroll to bottom on committed message append / finalization edges.
   useEffect(() => {
@@ -507,104 +523,6 @@ export function ConversationView({
         {/* Input area */}
         <div className="shrink-0 border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
           <div className="mx-auto flex max-w-3xl flex-col">
-            <div className="mb-2 rounded-xl border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900/80">
-              <div className="flex items-center justify-between px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAgentPanelOpen((v) => !v)}
-                  className="flex items-center gap-2 text-xs font-medium text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  Agents ({allAgents.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingAgent((v) => !v)}
-                  className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                >
-                  {isCreatingAgent ? (
-                    <>
-                      <X className="h-3 w-3" />
-                      Cancel
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-3 w-3" />
-                      New
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {isAgentPanelOpen && (
-                <div className="border-t border-neutral-200 px-3 pb-3 pt-2 dark:border-neutral-700">
-                  {isCreatingAgent && (
-                    <div className="mb-2 flex items-center gap-2">
-                      <input
-                        value={newAgentId}
-                        onChange={(e) => setNewAgentId(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            void handleCreateAgent()
-                          }
-                        }}
-                        placeholder="agent-id"
-                        className="h-8 w-40 rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void handleCreateAgent()}
-                        disabled={!newAgentId.trim()}
-                        className="rounded-md bg-primary-600 px-2.5 py-1.5 text-xs text-white hover:bg-primary-700 disabled:opacity-40"
-                      >
-                        Create
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-2">
-                    {allAgents.map((agent) => {
-                      const isActive = activeAgentId === agent.id
-                      return (
-                        <div
-                          key={agent.id}
-                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
-                            isActive
-                              ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
-                              : 'border-neutral-300 bg-white text-neutral-700 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => void setActiveAgent(agent.id)}
-                            className="text-xs font-medium"
-                            title={`Switch to ${agent.id}`}
-                          >
-                            @{agent.id}
-                          </button>
-                          {agent.id !== 'default' && (
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteAgent(agent.id)}
-                              className="rounded p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-red-400"
-                              title={`Delete ${agent.id}`}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Active agent is used by default. <code>@agent</code> in input only overrides the current message.
-                  </div>
-                </div>
-              )}
-            </div>
-
             <div className="relative">
               <AgentRichInput
                 placeholder={
@@ -648,7 +566,110 @@ export function ConversationView({
               )}
             </div>
           </div>
-          {renderContextUsage()}
+
+          {/* Compact agent selector row */}
+          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between">
+            <div className="agent-dropdown-container relative">
+              <button
+                type="button"
+                onClick={() => setIsAgentDropdownOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:bg-neutral-700"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${activeAgentId ? 'bg-emerald-500' : 'bg-neutral-400'}`} />
+                <span className="max-w-[120px] truncate">@{activeAgentId || 'default'}</span>
+                <ChevronDown className={`h-3 w-3 transition-transform ${isAgentDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown menu */}
+              {isAgentDropdownOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-1 w-52 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {allAgents.map((agent) => {
+                      const isActive = activeAgentId === agent.id
+                      return (
+                        <div
+                          key={agent.id}
+                          className="flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              console.log('[Agent] Switching to:', agent.id)
+                              console.log('[Agent] allAgents:', allAgents)
+                              console.log('[Agent] activeAgentId:', activeAgentId)
+                              void setActiveAgent(agent.id)
+                              setIsAgentDropdownOpen(false)
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <span className={`font-medium ${isActive ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                              @{agent.id}
+                            </span>
+                          </button>
+                          <div className="ml-2 flex items-center gap-1">
+                            {isActive && <Check className="h-3 w-3 text-primary-500" />}
+                            {agent.id !== 'default' && (
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteAgent(agent.id)}
+                                className="rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-red-500 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-red-400"
+                                title={`Delete ${agent.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Create new agent */}
+                  <div className="border-t border-neutral-200 p-2 dark:border-neutral-700">
+                    {isCreatingAgent ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={newAgentId}
+                          onChange={(e) => setNewAgentId(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              void handleCreateAgent()
+                            } else if (e.key === 'Escape') {
+                              setIsCreatingAgent(false)
+                              setNewAgentId('')
+                            }
+                          }}
+                          placeholder="agent-id"
+                          autoFocus
+                          className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleCreateAgent()}
+                          disabled={!newAgentId.trim()}
+                          className="rounded bg-primary-600 px-2 py-1 text-xs text-white hover:bg-primary-700 disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingAgent(true)}
+                        className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                      >
+                        <Plus className="h-3 w-3" />
+                        New agent
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {renderContextUsage()}
+          </div>
         </div>
       </div>
     </ErrorBoundary>
