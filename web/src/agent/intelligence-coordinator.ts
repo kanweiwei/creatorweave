@@ -62,6 +62,17 @@ export interface CoordinatorOptions {
   sessionId?: string
   /** Active file being discussed */
   activeFile?: string
+  /** Current routed agent id for this run (from @mention routing) */
+  currentAgentId?: string | null
+}
+
+function extractFirstMentionedAgentId(content?: string): string | null {
+  if (!content) return null
+  const match = /(?:^|\s)@([a-zA-Z0-9_-]+)/.exec(content)
+  if (!match) return null
+  const id = (match[1] || '').trim()
+  if (!id || id.toLowerCase() === 'default') return null
+  return id
 }
 
 //=============================================================================
@@ -84,8 +95,10 @@ export class IntelligenceCoordinator {
     const recommendedTools: string[] = []
     let agentInfo: AgentInfo | null = null
 
-    // 0. Load Agent Configuration (default agent)
-    agentInfo = await this.loadDefaultAgent()
+    // 0. Load Agent Configuration (routed agent, fallback to default)
+    const routedAgentId =
+      options.currentAgentId?.trim() || extractFirstMentionedAgentId(options.userMessage || undefined)
+    agentInfo = await this.loadAgentForRun(routedAgentId)
 
     // 1. Project Fingerprint (cached)
     let fingerprint: ProjectFingerprint | null = null
@@ -154,10 +167,11 @@ export class IntelligenceCoordinator {
   }
 
   /**
-   * Load default agent configuration
-   * Note: No caching - always read fresh from OPFS so user changes take effect immediately
+   * Load current routed agent configuration.
+   * Falls back to default agent if requested agent is missing.
+   * Note: No caching - always read fresh from OPFS so user changes take effect immediately.
    */
-  private async loadDefaultAgent(): Promise<AgentInfo | null> {
+  private async loadAgentForRun(currentAgentId?: string | null): Promise<AgentInfo | null> {
     try {
       const projectManager = await ProjectManager.create()
       const currentProjectId = await this.resolveActiveProjectId()
@@ -171,9 +185,17 @@ export class IntelligenceCoordinator {
         return null
       }
 
+      const requestedAgentId = currentAgentId?.trim() || 'default'
+      if (requestedAgentId !== 'default') {
+        const requested = await project.agentManager.getAgent(requestedAgentId)
+        if (requested) {
+          return requested
+        }
+      }
+
       return await project.agentManager.getAgent('default')
     } catch (error) {
-      console.warn('[IntelligenceCoordinator] Failed to load default agent:', error)
+      console.warn('[IntelligenceCoordinator] Failed to load routed agent:', error)
       return null
     }
   }
@@ -351,7 +373,8 @@ export async function enhancePromptForAgentLoop(
   basePrompt: string,
   directoryHandle: FileSystemDirectoryHandle | null | undefined,
   userMessage: string,
-  sessionId?: string
+  sessionId?: string,
+  currentAgentId?: string | null
 ): Promise<string> {
   const coordinator = getIntelligenceCoordinator()
 
@@ -359,6 +382,7 @@ export async function enhancePromptForAgentLoop(
     directoryHandle,
     userMessage,
     sessionId,
+    currentAgentId,
   })
 
   // Process message for learning

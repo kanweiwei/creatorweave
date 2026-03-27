@@ -131,6 +131,52 @@ describe('IntelligenceCoordinator', () => {
     expect(getProjectMock).toHaveBeenCalledWith('proj-sqlite')
   })
 
+  it('injects routed agent prompt when currentAgentId is provided', async () => {
+    projectStoreState.activeProjectId = 'proj-store'
+    const routedAgent = createAgentInfo('novel-editor')
+    const defaultAgent = createAgentInfo('default')
+    const getAgentMock = vi.fn(async (id: string) =>
+      id === 'novel-editor' ? routedAgent : defaultAgent
+    )
+    getProjectMock.mockResolvedValue({
+      agentManager: {
+        getAgent: getAgentMock,
+        readTodayLog: vi.fn(async () => null),
+      },
+    })
+
+    const coordinator = new IntelligenceCoordinator()
+    const result = await coordinator.enhanceSystemPrompt('BASE_PROMPT', {
+      currentAgentId: 'novel-editor',
+    })
+
+    expect(getAgentMock).toHaveBeenCalledWith('novel-editor')
+    expect(result.agentInfo?.id).toBe('novel-editor')
+    expect(result.systemPrompt).toContain('AGENT_PROMPT\n\n---\n\nBASE_PROMPT')
+  })
+
+  it('falls back to default agent prompt when routed agent is missing', async () => {
+    projectStoreState.activeProjectId = 'proj-store'
+    const defaultAgent = createAgentInfo('default')
+    const getAgentMock = vi.fn(async (id: string) => (id === 'default' ? defaultAgent : null))
+    getProjectMock.mockResolvedValue({
+      agentManager: {
+        getAgent: getAgentMock,
+        readTodayLog: vi.fn(async () => null),
+      },
+    })
+
+    const coordinator = new IntelligenceCoordinator()
+    const result = await coordinator.enhanceSystemPrompt('BASE_PROMPT', {
+      currentAgentId: 'novel-editor',
+    })
+
+    expect(getAgentMock).toHaveBeenCalledWith('novel-editor')
+    expect(getAgentMock).toHaveBeenCalledWith('default')
+    expect(result.agentInfo?.id).toBe('default')
+    expect(result.systemPrompt).toContain('AGENT_PROMPT\n\n---\n\nBASE_PROMPT')
+  })
+
   it('does not inject agent prompt when no active project can be resolved', async () => {
     const coordinator = new IntelligenceCoordinator()
     const result = await coordinator.enhanceSystemPrompt('BASE_PROMPT')

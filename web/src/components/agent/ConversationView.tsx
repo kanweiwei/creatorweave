@@ -6,15 +6,18 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, MessageSquare } from 'lucide-react'
+import { Send, StopCircle, MessageSquare, Users, Plus, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAgentStore } from '@/store/agent.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { useSettingsStore } from '@/store/settings.store'
+import { useProjectStore } from '@/store/project.store'
+import { useAgentsStore } from '@/store/agents.store'
 import { useT } from '@/i18n'
 import { ErrorBoundary } from '@/components/error/ErrorBoundary'
 import { MessageBubble } from './MessageBubble'
 import { AssistantTurnBubble } from './AssistantTurnBubble'
+import { AgentRichInput } from './AgentRichInput'
 import { groupMessagesIntoTurns } from './group-messages'
 import { createUserMessage } from '@/agent/message-types'
 import type { Message } from '@/agent/message-types'
@@ -30,10 +33,27 @@ export function ConversationView({
   onInitialMessageConsumed,
 }: ConversationViewProps) {
   const [input, setInput] = useState('')
+  const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([])
+  const [inputResetToken, setInputResetToken] = useState(0)
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(true)
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false)
+  const [newAgentId, setNewAgentId] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const { directoryHandle } = useAgentStore()
+  const activeProjectId = useProjectStore((s) => s.activeProjectId)
+  const isAgentsLoading = useAgentsStore((s) => s.isLoading)
+  const isAgentsInitialized = useAgentsStore((s) => s.isInitialized)
+  const allAgents = useAgentsStore((s) => s.agents)
+  const activeAgentId = useAgentsStore((s) => s.activeAgentId)
+  const setActiveAgent = useAgentsStore((s) => s.setActiveAgent)
+  const createAgent = useAgentsStore((s) => s.createAgent)
+  const deleteAgent = useAgentsStore((s) => s.deleteAgent)
+  const mentionAgents = useAgentsStore((s) =>
+    s.agents
+      .filter((agent) => agent.id !== 'default')
+      .map((agent) => ({ id: agent.id, name: agent.name }))
+  )
 
   const activeConversationId = useConversationStore((s) => s.activeConversationId)
   const activeConversation = useConversationStore((s) => {
@@ -80,6 +100,31 @@ export function ConversationView({
     initialMessageHandled.current = false
     initialMessageKeyRef.current = null
   }, [convId])
+
+  useEffect(() => {
+    if (!activeProjectId) return
+    if (isAgentsLoading) return
+    if (mentionAgents.length > 0 && isAgentsInitialized) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { ProjectManager } = await import('@/opfs')
+        const pm = await ProjectManager.create()
+        const store = useAgentsStore.getState()
+        store.setProjectManager(pm)
+        await store.initialize(activeProjectId)
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[ConversationView] Failed to initialize agents for mentions:', error)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeProjectId, isAgentsInitialized, isAgentsLoading, mentionAgents.length])
 
   // Auto-scroll to bottom on committed message append / finalization edges.
   useEffect(() => {
@@ -146,8 +191,8 @@ export function ConversationView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMessage, convId, isRunning])
 
-  const sendMessage = async (text: string) => {
-    if (!text) return
+  const sendMessage = async (text: string, options?: { agentOverrideId?: string | null }) => {
+    if (!text.trim()) return
 
     if (!hasApiKey) {
       toast.error(t('conversation.toast.noApiKey'))
@@ -174,18 +219,28 @@ export function ConversationView({
     const currentMessages = conv ? [...conv.messages, userMsg] : [userMsg]
     updateMessages(targetConvId, currentMessages)
     setInput('')
+    setMentionedAgentIds([])
+    setInputResetToken((v) => v + 1)
 
     // Run agent
-    await runAgent(targetConvId, providerType, modelName, maxTokens, directoryHandle)
+    await runAgent(
+      targetConvId,
+      providerType,
+      modelName,
+      maxTokens,
+      directoryHandle,
+      options?.agentOverrideId ?? null
+    )
   }
 
   const handleSend = () => {
-    // Use follow-up suggestion if input is empty
-    const textToSend = input || suggestedFollowUp
+    const inputTrimmed = input.trim()
+    const textToSend = inputTrimmed ? input : suggestedFollowUp
     if (textToSend) {
-      sendMessage(textToSend)
+      const agentOverrideId = inputTrimmed ? (mentionedAgentIds[0] ?? null) : null
+      sendMessage(textToSend, { agentOverrideId })
       // Clear the follow-up suggestion after sending
-      if (!input && convId) {
+      if (!inputTrimmed && convId) {
         clearSuggestedFollowUp(convId)
       }
     }
@@ -205,31 +260,21 @@ export function ConversationView({
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      // Check if IME composition is in progress, don't send if composing
-      if (e.nativeEvent.isComposing) {
-        return
-      }
-      e.preventDefault()
-      handleSend()
-    }
+  const handleCreateAgent = async () => {
+    const id = newAgentId.trim()
+    if (!id) return
+    const created = await createAgent(id)
+    if (!created) return
+    await setActiveAgent(created.id)
+    setNewAgentId('')
+    setIsCreatingAgent(false)
   }
 
-  // Auto-adjust textarea height
-  const adjustTextareaHeight = useCallback(() => {
-    const textarea = inputRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      const newHeight = Math.min(textarea.scrollHeight, 4 * 24) // 4 行，每行约 24px
-      textarea.style.height = `${newHeight}px`
-    }
-  }, [])
-
-  // Auto-adjust height when typing
-  useEffect(() => {
-    adjustTextareaHeight()
-  }, [input, adjustTextareaHeight])
+  const handleDeleteAgent = async (agentId: string) => {
+    if (agentId === 'default') return
+    if (!window.confirm(`Delete agent "${agentId}"?`)) return
+    await deleteAgent(agentId)
+  }
 
   const status = activeConversation?.status || 'idle'
   const isProcessing = isRunning
@@ -462,20 +507,119 @@ export function ConversationView({
         {/* Input area */}
         <div className="shrink-0 border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
           <div className="mx-auto flex max-w-3xl flex-col">
+            <div className="mb-2 rounded-xl border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900/80">
+              <div className="flex items-center justify-between px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAgentPanelOpen((v) => !v)}
+                  className="flex items-center gap-2 text-xs font-medium text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Agents ({allAgents.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingAgent((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  {isCreatingAgent ? (
+                    <>
+                      <X className="h-3 w-3" />
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3 w-3" />
+                      New
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {isAgentPanelOpen && (
+                <div className="border-t border-neutral-200 px-3 pb-3 pt-2 dark:border-neutral-700">
+                  {isCreatingAgent && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <input
+                        value={newAgentId}
+                        onChange={(e) => setNewAgentId(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            void handleCreateAgent()
+                          }
+                        }}
+                        placeholder="agent-id"
+                        className="h-8 w-40 rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateAgent()}
+                        disabled={!newAgentId.trim()}
+                        className="rounded-md bg-primary-600 px-2.5 py-1.5 text-xs text-white hover:bg-primary-700 disabled:opacity-40"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {allAgents.map((agent) => {
+                      const isActive = activeAgentId === agent.id
+                      return (
+                        <div
+                          key={agent.id}
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
+                            isActive
+                              ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
+                              : 'border-neutral-300 bg-white text-neutral-700 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void setActiveAgent(agent.id)}
+                            className="text-xs font-medium"
+                            title={`Switch to ${agent.id}`}
+                          >
+                            @{agent.id}
+                          </button>
+                          {agent.id !== 'default' && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteAgent(agent.id)}
+                              className="rounded p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-red-400"
+                              title={`Delete ${agent.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Active agent is used by default. <code>@agent</code> in input only overrides the current message.
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="relative">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+              <AgentRichInput
                 placeholder={
                   suggestedFollowUp ||
                   (hasApiKey ? t('conversation.input.placeholder') : t('conversation.input.placeholderNoKey'))
                 }
-                aria-label={t('conversation.input.ariaLabel')}
-                style={{ height: '38px', maxHeight: '96px' }}
-                className="scrollbar-hide focus:border-primary-300 focus:ring-primary-300 w-full resize-none overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all placeholder:text-neutral-400 focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
+                ariaLabel={t('conversation.input.ariaLabel')}
                 disabled={isProcessing || !hasApiKey}
+                resetToken={inputResetToken}
+                agents={mentionAgents}
+                onChange={({ text, mentionedAgentIds: mentionedIds }) => {
+                  setInput(text)
+                  setMentionedAgentIds(mentionedIds)
+                }}
+                onSubmit={handleSend}
               />
               {isProcessing ? (
                 <button

@@ -44,6 +44,21 @@ async function bootstrapProjectOpfs(projectId: string): Promise<void> {
   }
 }
 
+async function syncAgentsForProject(projectId: string): Promise<void> {
+  if (!projectId) return
+  try {
+    const [agentsModule, pm] = await Promise.all([
+      import('./agents.store'),
+      ProjectManager.create(),
+    ])
+    const agentsStore = agentsModule.useAgentsStore.getState()
+    agentsStore.setProjectManager(pm)
+    await agentsStore.initialize(projectId)
+  } catch (error) {
+    console.warn('[ProjectStore] Failed to sync agents store:', error)
+  }
+}
+
 export const useProjectStore = create<ProjectState>()(
   immer((set, get) => ({
     activeProjectId: '',
@@ -108,6 +123,7 @@ export const useProjectStore = create<ProjectState>()(
 
         const { useAgentStore } = await import('./agent.store')
         await useAgentStore.getState().setActiveProject(normalizedActiveProjectId)
+        await syncAgentsForProject(normalizedActiveProjectId)
         console.log(`[ProjectStore] initialize done (${Math.round(performance.now() - started)}ms)`)
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Failed to initialize projects'
@@ -148,6 +164,7 @@ export const useProjectStore = create<ProjectState>()(
 
         const { useAgentStore } = await import('./agent.store')
         await useAgentStore.getState().setActiveProject(projectId)
+        await syncAgentsForProject(projectId)
 
         // Keep workspace list in sync with active project selection.
         const { useConversationContextStore } = await import('./conversation-context.store')

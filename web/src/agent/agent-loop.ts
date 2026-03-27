@@ -220,6 +220,7 @@ export class AgentLoop {
         directoryHandle: this.toolContext.directoryHandle || undefined,
         userMessage,
         sessionId: this.sessionId,
+        currentAgentId: this.toolContext.currentAgentId ?? null,
       })
 
       enhancedPrompt = intelligenceResult.systemPrompt

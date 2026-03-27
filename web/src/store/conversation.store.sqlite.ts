@@ -125,6 +125,15 @@ function updateAutoTitleAfterMessageDelete(conv: Conversation): void {
   conv.title = DEFAULT_CONVERSATION_NAME
 }
 
+function extractFirstMentionedAgentId(content: string | null | undefined): string | null {
+  if (!content) return null
+  const match = /(?:^|\s)@([a-zA-Z0-9_-]+)/.exec(content)
+  if (!match) return null
+  const id = (match[1] || '').trim()
+  if (!id || id.toLowerCase() === 'default') return null
+  return id
+}
+
 //=============================================================================
 // Store Definition
 //=============================================================================
@@ -182,7 +191,8 @@ interface ConversationState {
     providerType: LLMProviderType,
     modelName: string,
     maxTokens: number,
-    directoryHandle: FileSystemDirectoryHandle | null
+    directoryHandle: FileSystemDirectoryHandle | null,
+    agentOverrideId?: string | null
   ) => Promise<void>
   cancelAgent: (conversationId: string) => void
 
@@ -686,7 +696,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       providerType: LLMProviderType,
       modelName: string,
       maxTokens: number,
-      directoryHandle: FileSystemDirectoryHandle | null
+      directoryHandle: FileSystemDirectoryHandle | null,
+      agentOverrideId?: string | null
     ) => {
       const state = get()
       const conv = state.conversations.find((c) => c.id === conversationId)
@@ -811,6 +822,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         const toolPolicyHooks = createToolPolicyHooks()
         let activeProjectId: string | null = null
         let activeAgentId: string | null = null
+        let knownAgentIds: Set<string> | null = null
 
         try {
           const { useProjectStore } = await import('./project.store')
@@ -824,9 +836,28 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
         try {
           const { useAgentsStore } = await import('./agents.store')
-          activeAgentId = useAgentsStore.getState().activeAgentId || null
+          const agentsState = useAgentsStore.getState()
+          activeAgentId = agentsState.activeAgentId || null
+          knownAgentIds = new Set(agentsState.agents.map((agent) => agent.id.toLowerCase()))
         } catch {
           // Ignore agents-store read failures and fallback to default.
+        }
+
+        const normalizedOverride = agentOverrideId?.trim() || null
+        const lastUserMessage = [...conv.messages].reverse().find((m) => m.role === 'user')
+        const overrideFromLatestMessage = extractFirstMentionedAgentId(lastUserMessage?.content)
+        const resolvedOverride = normalizedOverride || overrideFromLatestMessage
+
+        if (resolvedOverride) {
+          const normalizedResolvedOverride = resolvedOverride.toLowerCase()
+          if (!knownAgentIds || knownAgentIds.has(normalizedResolvedOverride)) {
+            activeAgentId = resolvedOverride
+          } else {
+            console.warn(
+              '[conversation.store] Ignoring unknown @agent override from latest message:',
+              resolvedOverride
+            )
+          }
         }
         if (!activeAgentId) {
           activeAgentId = 'default'
@@ -1456,7 +1487,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                 providerType,
                 modelName,
                 maxTokens,
-                directoryHandle
+                directoryHandle,
+                activeAgentId
               )
             } catch (error) {
               console.error('[conversation.store] Elicitation failed:', error)
