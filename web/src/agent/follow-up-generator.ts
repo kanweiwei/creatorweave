@@ -113,7 +113,7 @@ function buildFollowUpMessages(messages: Message[]): Array<{
   chatMessages.push({
     role: 'user',
     content:
-      '请生成用户接下来可能会问的问题（不超过15字）。注意：必须是用户视角的问题，比如"帮我继续写"、"详细解释一下"、"改成中文"。直接输出问题，不要前缀。',
+      '请生成用户接下来可能会说的内容（不超过15字）。可以是问题、要求或指令，比如"帮我继续写"、"详细解释一下"、"改成中文"、"为什么这样"。直接输出，不要前缀。',
   })
 
   return chatMessages
