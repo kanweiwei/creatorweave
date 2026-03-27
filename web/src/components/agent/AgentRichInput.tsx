@@ -4,6 +4,8 @@ import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
 import HardBreak from '@tiptap/extension-hard-break'
+import { ChevronDown, Plus, X, Trash2, Check } from 'lucide-react'
+import { useT } from '@/i18n'
 
 export interface AgentMentionCandidate {
   id: string
@@ -15,6 +17,11 @@ export interface AgentRichInputValue {
   mentionedAgentIds: string[]
 }
 
+export interface AgentInfo {
+  id: string
+  name?: string
+}
+
 interface AgentRichInputProps {
   ariaLabel?: string
   placeholder: string
@@ -23,6 +30,12 @@ interface AgentRichInputProps {
   agents: AgentMentionCandidate[]
   onSubmit: () => void
   onChange: (value: AgentRichInputValue) => void
+  // Agent selector props
+  activeAgentId: string | null
+  allAgents: AgentMentionCandidate[]
+  onSetActiveAgent: (id: string) => Promise<void>
+  onCreateAgent: (id: string) => Promise<AgentInfo | null>
+  onDeleteAgent: (id: string) => Promise<boolean>
 }
 
 interface MentionContext {
@@ -80,10 +93,21 @@ export function AgentRichInput({
   agents,
   onSubmit,
   onChange,
+  activeAgentId,
+  allAgents,
+  onSetActiveAgent,
+  onCreateAgent,
+  onDeleteAgent,
 }: AgentRichInputProps) {
+  const t = useT()
   const [isFocused, setIsFocused] = useState(false)
   const [mentionContext, setMentionContext] = useState<MentionContext | null>(null)
   const [mentionSelection, setMentionSelection] = useState(0)
+  // Agent selector state
+  const [showAgentSelector, setShowAgentSelector] = useState(false)
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false)
+  const [newAgentInput, setNewAgentInput] = useState('')
+  const [agentSelection, setAgentSelection] = useState(0)
 
   const mentionContextRef = useRef<MentionContext | null>(null)
   const mentionSelectionRef = useRef(0)
@@ -91,6 +115,9 @@ export function AgentRichInput({
   const onSubmitRef = useRef(onSubmit)
   const onChangeRef = useRef(onChange)
   const agentsRef = useRef(agents)
+  const showAgentSelectorRef = useRef(showAgentSelector)
+  const agentSelectionRef = useRef(agentSelection)
+  const allAgentsRef = useRef(allAgents)
 
   const emitValue = useCallback(
     (editor: Editor) => {
@@ -142,6 +169,18 @@ export function AgentRichInput({
   useEffect(() => {
     agentsRef.current = agents
   }, [agents])
+
+  useEffect(() => {
+    showAgentSelectorRef.current = showAgentSelector
+  }, [showAgentSelector])
+
+  useEffect(() => {
+    agentSelectionRef.current = agentSelection
+  }, [agentSelection])
+
+  useEffect(() => {
+    allAgentsRef.current = allAgents
+  }, [allAgents])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -265,20 +304,270 @@ export function AgentRichInput({
     [editor, emitValue, mentionContext]
   )
 
+  // Agent selector handlers
+  const handleCreateAgent = useCallback(async () => {
+    const id = newAgentInput.trim()
+    if (!id) return
+    const created = await onCreateAgent(id)
+    if (!created) return
+    await onSetActiveAgent(created.id)
+    setNewAgentInput('')
+    setIsCreatingAgent(false)
+    setShowAgentSelector(false)
+  }, [newAgentInput, onCreateAgent, onSetActiveAgent])
+
+  const handleDeleteAgent = useCallback(
+    async (agentId: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (agentId === 'default') return
+      if (!window.confirm(`Delete agent "${agentId}"?`)) return
+      const success = await onDeleteAgent(agentId)
+      if (success) {
+        // Adjust selection if needed
+        const newAgents = allAgentsRef.current.filter((a) => a.id !== agentId)
+        if (agentSelectionRef.current >= newAgents.length) {
+          setAgentSelection(Math.max(0, newAgents.length - 1))
+        }
+      }
+    },
+    [onDeleteAgent]
+  )
+
+  const handleSelectAgent = useCallback(
+    async (agentId: string) => {
+      await onSetActiveAgent(agentId)
+      setShowAgentSelector(false)
+    },
+    [onSetActiveAgent]
+  )
+
+  // Keyboard navigation for agent selector
+  useEffect(() => {
+    if (!showAgentSelector) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const currentAgents = allAgentsRef.current
+      const currentSelection = agentSelectionRef.current
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setAgentSelection((idx) => {
+          const max = Math.max(currentAgents.length - 1, 0)
+          return idx >= max ? max : idx + 1
+        })
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setAgentSelection((idx) => Math.max(0, idx - 1))
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowAgentSelector(false)
+        setIsCreatingAgent(false)
+      } else if (e.key === 'Enter' && !isCreatingAgent) {
+        e.preventDefault()
+        const agent = currentAgents[currentSelection]
+        if (agent) {
+          void handleSelectAgent(agent.id)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showAgentSelector, isCreatingAgent, handleSelectAgent])
+
+  // Click outside to close agent selector
+  useEffect(() => {
+    if (!showAgentSelector) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.agent-selector-dropdown') && !target.closest('.agent-selector-button')) {
+        setShowAgentSelector(false)
+        setIsCreatingAgent(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAgentSelector])
+
   const isEmpty = editor ? editor.isEmpty : true
   const showMentionSuggestions = !disabled && !!mentionContext
 
   return (
     <div className="relative">
-      <div className="focus-within:border-primary-300 focus-within:ring-primary-300 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus-within:bg-neutral-800">
-        {editor && <EditorContent editor={editor} />}
-        {!isFocused && isEmpty && (
-          <div className="pointer-events-none absolute left-5 top-4 pr-16 text-sm text-neutral-400 dark:text-neutral-500">
-            {placeholder}
+      <div className="focus-within:border-primary-300 focus-within:ring-primary-300 w-full rounded-xl border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 shadow-sm transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus-within:bg-neutral-800">
+        {/* Agent selector row - embedded at top of input */}
+        <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowAgentSelector((v) => !v)
+                setIsCreatingAgent(false)
+              }}
+              disabled={disabled}
+              className="agent-selector-button flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+            >
+              <span>@{activeAgentId || 'default'}</span>
+              <ChevronDown className="h-3 w-3" />
+            </button>
+
+            {/* Inline create agent form */}
+            {isCreatingAgent && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={newAgentInput}
+                  onChange={(e) => setNewAgentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void handleCreateAgent()
+                    } else if (e.key === 'Escape') {
+                      setIsCreatingAgent(false)
+                      setNewAgentInput('')
+                    }
+                  }}
+                  placeholder="agent-id"
+                  autoFocus
+                  className="h-6 w-24 rounded border border-neutral-300 bg-white px-1.5 text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCreateAgent()}
+                  disabled={!newAgentInput.trim()}
+                  className="rounded bg-primary-600 px-1.5 py-0.5 text-xs text-white hover:bg-primary-700 disabled:opacity-40"
+                >
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingAgent(false)
+                    setNewAgentInput('')
+                  }}
+                  className="rounded p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
-        )}
+
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+            {t('agent.inputHint')}
+          </span>
+        </div>
+
+        {/* Editor area - reduced top padding */}
+        <div className="relative px-5 py-3 pr-14">
+          {editor && <EditorContent editor={editor} />}
+          {!isFocused && isEmpty && (
+            <div className="pointer-events-none absolute left-5 top-3 pr-16 text-sm text-neutral-400 dark:text-neutral-500">
+              {placeholder}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Agent selector dropdown - expands downward */}
+      {showAgentSelector && (
+        <div className="agent-selector-dropdown absolute top-full left-0 z-20 mt-1 w-60 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+          <div className="max-h-[280px] overflow-y-auto py-1">
+            {allAgents.map((agent, idx) => {
+              const isActive = agent.id === activeAgentId
+              const selected = idx === agentSelection
+              return (
+                <div
+                  key={agent.id}
+                  className={`flex items-center gap-2 px-3 py-2 ${
+                    selected
+                      ? 'bg-primary-50 dark:bg-primary-900/40'
+                      : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void handleSelectAgent(agent.id)}
+                    className="flex flex-1 items-center gap-2 text-left"
+                  >
+                    <span
+                      className={`text-sm font-medium ${
+                        isActive
+                          ? 'text-primary-700 dark:text-primary-200'
+                          : 'text-neutral-700 dark:text-neutral-200'
+                      }`}
+                    >
+                      @{agent.id}
+                    </span>
+                    {agent.name && agent.name !== agent.id && (
+                      <span className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                        {agent.name}
+                      </span>
+                    )}
+                  </button>
+                  {isActive && (
+                    <Check className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" />
+                  )}
+                  {agent.id !== 'default' && (
+                    <button
+                      type="button"
+                      onClick={(e) => void handleDeleteAgent(agent.id, e)}
+                      className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-red-600 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-red-400"
+                      title={`Delete ${agent.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Create new agent row */}
+          <div className="border-t border-neutral-200 dark:border-neutral-700">
+            {isCreatingAgent ? (
+              <div className="flex items-center gap-1.5 px-3 py-2">
+                <input
+                  value={newAgentInput}
+                  onChange={(e) => setNewAgentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void handleCreateAgent()
+                    } else if (e.key === 'Escape') {
+                      setIsCreatingAgent(false)
+                      setNewAgentInput('')
+                    }
+                  }}
+                  placeholder="agent-id"
+                  autoFocus
+                  className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCreateAgent()}
+                  disabled={!newAgentInput.trim()}
+                  className="rounded bg-primary-600 px-2 py-1 text-xs text-white hover:bg-primary-700 disabled:opacity-40"
+                >
+                  Create
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsCreatingAgent(true)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{t('agent.createNew')}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mention suggestions dropdown - expands upward */}
       {showMentionSuggestions && (
         <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           {mentionCandidates.length > 0 ? (
@@ -311,7 +600,7 @@ export function AgentRichInput({
             </div>
           ) : (
             <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
-              No agents available
+              {t('agent.noAgents')}
             </div>
           )}
         </div>

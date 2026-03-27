@@ -760,6 +760,16 @@ export const jaJP = {
       delete: '削除',
     },
   },
+
+  // エージェント関連
+  agent: {
+    inputHint: '@を入力して一時的にエージェントを切り替え',
+    createNew: '新しいエージェントを作成...',
+    noAgents: '利用可能なエージェントがありません',
+    create: '作成',
+    delete: '{id}を削除',
+    confirmDelete: 'エージェント「{id}」を削除しますか？',
+  },
 } as const
 
 export default jaJP
