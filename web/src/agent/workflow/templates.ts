@@ -246,6 +246,104 @@ export const defaultEducationLessonRubric: RubricDefinition = {
   ],
 }
 
+export const defaultConditionalQualityLoopWorkflow: WorkflowTemplate = {
+  id: 'conditional_quality_loop_v1',
+  name: '质量循环工作流',
+  domain: 'generic',
+  entryNodeId: 'plan',
+  nodes: [
+    {
+      id: 'plan',
+      kind: 'plan',
+      agentRole: 'planner',
+      inputRefs: [],
+      outputKey: 'outline',
+      retryPolicy: { maxRetries: 1, timeoutMs: 15000 },
+    },
+    {
+      id: 'produce',
+      kind: 'produce',
+      agentRole: 'writer',
+      inputRefs: ['outline'],
+      outputKey: 'draft',
+      retryPolicy: { maxRetries: 1, timeoutMs: 30000 },
+    },
+    {
+      id: 'review',
+      kind: 'review',
+      agentRole: 'reviewer',
+      inputRefs: ['draft'],
+      outputKey: 'review_report',
+      retryPolicy: { maxRetries: 1, timeoutMs: 20000 },
+    },
+    {
+      id: 'quality_gate',
+      kind: 'condition',
+      agentRole: 'quality_router',
+      inputRefs: ['review_report'],
+      outputKey: 'decision',
+      retryPolicy: { maxRetries: 0, timeoutMs: 5000 },
+      conditionConfig: {
+        mode: 'rule',
+        branches: [
+          { label: 'pass', condition: '${review_report.score} >= 80' },
+          { label: 'fail', condition: 'true' },
+        ],
+        fallbackBranch: 'fail',
+      },
+    },
+    {
+      id: 'assemble',
+      kind: 'assemble',
+      agentRole: 'packager',
+      inputRefs: ['draft', 'review_report'],
+      outputKey: 'final_output',
+      retryPolicy: { maxRetries: 1, timeoutMs: 10000 },
+    },
+  ],
+  edges: [
+    { from: 'plan', to: 'produce' },
+    { from: 'produce', to: 'review' },
+    { from: 'review', to: 'quality_gate' },
+    { from: 'quality_gate', to: 'assemble', branch: 'pass' },
+    {
+      from: 'quality_gate',
+      to: 'produce',
+      branch: 'fail',
+      loopPolicy: {
+        maxIterations: 3,
+        exitCondition: '${review_report.score} >= 80',
+        accumulateHistory: true,
+      },
+    },
+  ],
+}
+
+export const defaultConditionalQualityLoopRubric: RubricDefinition = {
+  id: 'conditional_quality_loop_v1',
+  version: 1,
+  name: '质量循环评分规则',
+  passCondition: 'total_score >= 80 and hard_fail_count == 0',
+  retryPolicy: {
+    maxRepairRounds: 2,
+  },
+  rules: [
+    {
+      id: 'quality_check',
+      checker: 'quality_score',
+      params: {
+        minScore: 80,
+      },
+      weight: 1.0,
+      threshold: {
+        passEq: true,
+      },
+      failAction: 'auto_repair',
+      severity: 'high',
+    },
+  ],
+}
+
 const templateBundles: WorkflowTemplateBundle[] = [
   {
     id: 'novel_daily_v1',
@@ -264,6 +362,12 @@ const templateBundles: WorkflowTemplateBundle[] = [
     label: '教案笔记',
     workflow: defaultEducationLessonWorkflow,
     rubric: defaultEducationLessonRubric,
+  },
+  {
+    id: 'conditional_quality_loop_v1',
+    label: '质量循环',
+    workflow: defaultConditionalQualityLoopWorkflow,
+    rubric: defaultConditionalQualityLoopRubric,
   },
 ]
 
