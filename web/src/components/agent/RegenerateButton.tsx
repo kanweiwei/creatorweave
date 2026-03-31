@@ -62,7 +62,7 @@ export function RegenerateButton({
       title={isRunning ? "停止并重新发送" : "重新发送"}
       aria-label={isRunning ? "停止并重新发送此消息" : "重新发送此消息"}
     >
-      <RotateCcw className={`h-3.5 w-3.5 ${isRunning ? 'animate-spin' : ''}`} />
+      <RotateCcw className="h-3.5 w-3.5" />
     </button>
   )
 }

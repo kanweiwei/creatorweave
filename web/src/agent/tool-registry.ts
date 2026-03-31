@@ -17,6 +17,7 @@ import { readDirectoryDefinition, readDirectoryExecutor } from './tools/read-dir
 import { executeDefinition, executeExecutor } from './tools/execute.tool'
 import { pluginToToolDefinition, createPluginBridgeExecutor } from './tools/wasm-bridge.tool'
 import { analyzeDataDefinition, analyzeDataExecutor } from './tools/data-analysis.tool'
+import { runWorkflowDefinition, runWorkflowExecutor } from './tools/workflow.tool'
 
 // Import skill tools
 import {
@@ -40,6 +41,8 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: executeDefinition, executor: executeExecutor },
   // Data
   { definition: analyzeDataDefinition, executor: analyzeDataExecutor },
+  // Workflow orchestration
+  { definition: runWorkflowDefinition, executor: runWorkflowExecutor },
 ]
 
 export function getBuiltinToolNames(): string[] {

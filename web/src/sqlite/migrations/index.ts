@@ -48,7 +48,7 @@ function canRecoverMigrationError(migration: Migration, error: unknown): boolean
 
 
 // Base schema version
-export const BASE_SCHEMA_VERSION = 3
+export const BASE_SCHEMA_VERSION = 4
 
 // ============================================================================
 // Migration Registry
@@ -59,7 +59,36 @@ export const BASE_SCHEMA_VERSION = 3
 // 3. Be atomic (can be rolled back on error)
 // ============================================================================
 
-export const migrations: Migration[] = []
+export const migrations: Migration[] = [
+  {
+    version: 4,
+    name: 'add_custom_workflows_table',
+    up: `
+      CREATE TABLE IF NOT EXISTS custom_workflows (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          domain TEXT NOT NULL DEFAULT 'custom',
+          entry_node_id TEXT,
+          nodes_json TEXT NOT NULL DEFAULT '[]',
+          edges_json TEXT NOT NULL DEFAULT '[]',
+          source TEXT NOT NULL DEFAULT 'user-created',
+          version INTEGER NOT NULL DEFAULT 1,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+          updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_custom_workflows_domain ON custom_workflows(domain);
+      CREATE INDEX IF NOT EXISTS idx_custom_workflows_source ON custom_workflows(source);
+      CREATE INDEX IF NOT EXISTS idx_custom_workflows_enabled ON custom_workflows(enabled);
+      CREATE INDEX IF NOT EXISTS idx_custom_workflows_updated_at ON custom_workflows(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_custom_workflows_name_lower ON custom_workflows(lower(name));
+
+      PRAGMA user_version = 4;
+    `,
+  },
+]
 
 // ============================================================================
 // Migration Executor

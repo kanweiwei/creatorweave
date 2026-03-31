@@ -5,9 +5,10 @@
  * not as a separate component.
  */
 
+import type { ReactNode } from 'react'
 import { Bot } from 'lucide-react'
 import type { Turn } from './group-messages'
-import type { DraftAssistantStep, Message, ToolCall } from '@/agent/message-types'
+import type { DraftAssistantStep, Message, ToolCall, WorkflowRealRunPayload } from '@/agent/message-types'
 import { ReasoningSection } from './ReasoningSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MarkdownContent } from './MarkdownContent'
@@ -50,6 +51,8 @@ interface AssistantTurnBubbleProps {
   runtimeToolCalls?: ToolCall[]
   /** Runtime ordered streaming timeline (reasoning/content/tool calls) */
   runtimeSteps?: DraftAssistantStep[]
+  /** Optional workflow progress block rendered at the bottom of the bubble */
+  workflowProgress?: ReactNode
 }
 
 export function AssistantTurnBubble({
@@ -64,6 +67,7 @@ export function AssistantTurnBubble({
   streamingToolArgsByCallId,
   runtimeToolCalls,
   runtimeSteps,
+  workflowProgress,
 }: AssistantTurnBubbleProps) {
   const isStreamingReasoning = streamingState?.reasoning ?? false
   const isStreamingContent = streamingState?.content ?? false
@@ -104,7 +108,7 @@ export function AssistantTurnBubble({
       </div>
 
       {/* Steps column */}
-      <div className="min-w-0 max-w-[80%] space-y-2">
+      <div className="min-w-0 w-[90%] space-y-2">
         {turn.messages.map((msg, idx) => (
           <AssistantStep
             key={msg.id}
@@ -220,6 +224,8 @@ export function AssistantTurnBubble({
           </div>
         )}
 
+        {workflowProgress}
+
         {/* Summary footer: timestamp + aggregated token usage + copy button (only show when not processing) */}
         {!isProcessing && !isWaiting && (
           <div className="flex items-center gap-2 text-xs text-neutral-400">
@@ -303,6 +309,8 @@ function AssistantStep({
   const hasContent = !!message.content
   const hasToolCalls = !!(message.toolCalls && message.toolCalls.length > 0)
   const isContextSummary = message.kind === 'context_summary'
+  const isWorkflowDryRun = message.kind === 'workflow_dry_run'
+  const isWorkflowRealRun = message.kind === 'workflow_real_run'
 
   return (
     <>
@@ -320,13 +328,34 @@ function AssistantStep({
               className={
                 isContextSummary
                   ? 'rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
-                  : 'rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-700'
+                  : isWorkflowDryRun
+                    ? 'rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100'
+                    : isWorkflowRealRun
+                      ? 'rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100'
+                      : 'rounded-lg bg-white px-4 py-2 text-sm text-neutral-800 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-700'
               }
             >
               {isContextSummary && (
                 <div className="mb-1 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
                   上下文压缩摘要
                 </div>
+              )}
+              {isWorkflowDryRun && (
+                <div className="mb-2 space-y-1">
+                  <div className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                    工作流模拟运行
+                  </div>
+                  {message.workflowDryRun && (
+                    <div className="text-xs text-sky-800/90 dark:text-sky-200/90">
+                      <span className="mr-2">状态: {message.workflowDryRun.status}</span>
+                      <span className="mr-2">模板: {message.workflowDryRun.templateId}</span>
+                      <span>修复轮次: {message.workflowDryRun.repairRound}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {isWorkflowRealRun && (
+                <WorkflowRealRunHeader payload={message.workflowRealRun} />
               )}
               <div className="prose-sm max-w-prose overflow-x-auto break-words">
                 <MarkdownContent content={message.content!} />
@@ -354,6 +383,42 @@ function CompressionStatusCard({ text, streaming }: { text: string; streaming: b
       <span>{text}</span>
       {streaming && (
         <span className="ml-2 inline-block h-3 w-[2px] animate-pulse bg-neutral-400 align-middle" />
+      )}
+    </div>
+  )
+}
+
+function WorkflowRealRunHeader({ payload }: { payload?: WorkflowRealRunPayload }) {
+  return (
+    <div className="mb-2 space-y-1">
+      <div className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+        工作流真实运行
+      </div>
+      {payload && (
+        <div className="space-y-1 text-xs text-emerald-800/90 dark:text-emerald-200/90">
+          <div>
+            <span className="mr-2">状态: {payload.status}</span>
+            <span className="mr-2">模板: {payload.templateId}</span>
+            <span className="mr-2">修复轮次: {payload.repairRound}</span>
+            {payload.totalTokens != null && (
+              <span>Tokens: {payload.totalTokens}</span>
+            )}
+          </div>
+          {Object.keys(payload.nodeOutputs).length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {Object.entries(payload.nodeOutputs).map(([key, content]) => (
+                <details key={key} className="rounded border border-emerald-200 dark:border-emerald-800">
+                  <summary className="cursor-pointer px-2 py-0.5 font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
+                    {key}
+                  </summary>
+                  <div className="max-h-40 overflow-auto whitespace-pre-wrap px-2 py-1 text-[11px]">
+                    {content.length > 500 ? content.slice(0, 500) + '...' : content}
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

@@ -750,17 +750,22 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             const activeWorkspace = await getActiveWorkspace()
             if (!activeWorkspace) return
 
+            const requestedWorkspaceId = activeWorkspace.workspaceId
             const changes = await activeWorkspace.workspace.refreshPendingChanges()
+            if (get().activeWorkspaceId !== requestedWorkspaceId) {
+              return
+            }
+
             const hasChanges = changes && changes.changes.length > 0
             const pendingCount = changes?.changes.length ?? 0
             set((state) => ({
               pendingChanges: changes,
               currentPendingCount:
-                state.activeWorkspaceId === activeWorkspace.workspaceId
+                state.activeWorkspaceId === requestedWorkspaceId
                   ? pendingCount
                   : state.currentPendingCount,
               workspaces: state.workspaces.map((w) =>
-                w.id === activeWorkspace.workspaceId ? { ...w, pendingCount } : w
+                w.id === requestedWorkspaceId ? { ...w, pendingCount } : w
               ),
               // Keep current panel state when there are changes; only auto-close when empty.
               showPreview: hasChanges ? state.showPreview : false,

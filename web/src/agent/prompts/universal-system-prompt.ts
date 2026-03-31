@@ -72,6 +72,9 @@ Updating agent-space files:
 - \`execute(language="javascript", code)\` - Execute JavaScript
   Example: execute(language="python", code="print('hello')")
 
+### Workflow Execution
+- \`run_workflow(workflow_id, mode, inputs, ...)\` - Run predefined structured workflows for multi-step content generation/review
+
 ## Behavior Guidelines
 
 1. **Adapt to the user** - Detect their context (developer, analyst, student, etc.) and respond appropriately

@@ -28,12 +28,74 @@ export interface MessageUsage {
   totalTokens: number
 }
 
+export interface WorkflowDryRunPayload {
+  templateId: string
+  label: string
+  status: 'queued' | 'running' | 'needs_human' | 'passed' | 'failed'
+  executionOrder: string[]
+  executedNodeIds: string[]
+  repairRound: number
+  errors: string[]
+}
+
+export interface WorkflowRealRunPayload {
+  templateId: string
+  label: string
+  status: 'queued' | 'running' | 'needs_human' | 'passed' | 'failed'
+  executionOrder: string[]
+  executedNodeIds: string[]
+  repairRound: number
+  errors: string[]
+  nodeOutputs: Record<string, string>
+  totalTokens?: number
+}
+
+/** Runtime state for a running workflow execution (not persisted) */
+export type WorkflowNodeExecStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+/** A single streaming step within a workflow node execution */
+export type WorkflowNodeStep =
+  | {
+      id: string
+      type: 'reasoning'
+      content: string
+      streaming: boolean
+    }
+  | {
+      id: string
+      type: 'content'
+      content: string
+      streaming: boolean
+    }
+
+export interface WorkflowNodeExecState {
+  id: string
+  kind: string
+  label: string
+  status: WorkflowNodeExecStatus
+  output?: string
+  error?: string
+  steps?: WorkflowNodeStep[]
+}
+
+export interface WorkflowExecutionState {
+  templateId: string
+  label: string
+  nodes: WorkflowNodeExecState[]
+  totalTokens: number
+  startedAt: number
+}
+
 export interface Message {
   id: string
   role: MessageRole
   content: string | null
   /** UI-only classification for special assistant records */
-  kind?: 'normal' | 'context_summary'
+  kind?: 'normal' | 'context_summary' | 'workflow_dry_run' | 'workflow_real_run'
+  /** Structured payload for workflow dry-run assistant records */
+  workflowDryRun?: WorkflowDryRunPayload
+  /** Structured payload for workflow real-run assistant records */
+  workflowRealRun?: WorkflowRealRunPayload
   /** Chain-of-thought reasoning content (GLM-4.7+), not sent back to API */
   reasoning?: string | null
   toolCalls?: ToolCall[]
@@ -139,6 +201,8 @@ export interface Conversation {
   lastContextWindowUsage?: ContextWindowUsage | null
   /** Number of mounted views consuming this conversation (not persisted) */
   mountRefCount?: number
+  /** Runtime workflow execution progress (not persisted) */
+  workflowExecution?: WorkflowExecutionState | null
 }
 
 /** Generate a unique message ID */
@@ -162,13 +226,17 @@ export function createAssistantMessage(
   toolCalls?: ToolCall[],
   usage?: MessageUsage,
   reasoning?: string | null,
-  kind: Message['kind'] = 'normal'
+  kind: Message['kind'] = 'normal',
+  workflowDryRun?: WorkflowDryRunPayload,
+  workflowRealRun?: WorkflowRealRunPayload
 ): Message {
   return {
     id: generateId(),
     role: 'assistant',
     content,
     kind,
+    workflowDryRun,
+    workflowRealRun,
     reasoning: reasoning || null,
     toolCalls,
     usage,

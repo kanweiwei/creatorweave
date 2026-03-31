@@ -79,8 +79,8 @@ export function MessageBubble({
         </div>
 
         {/* Content */}
-        <div className="min-w-0 max-w-[80%]">
-          <div className="inline-block max-w-full rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">
+        <div className="min-w-0 max-w-[90%]">
+          <div className="ml-auto max-w-full rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">
             <div className="whitespace-pre-wrap break-words overflow-x-auto">{message.content}</div>
           </div>
 
@@ -100,7 +100,6 @@ export function MessageBubble({
                 conversationId={''}
                 onRegenerate={onRegenerate}
                 onCancel={onCancel}
-                disabled={disableDeleteActions}
                 isRunning={isProcessing}
               />
             )}
@@ -139,7 +138,7 @@ export function MessageBubble({
       )}
 
       {/* Content area */}
-      <div className="min-w-0 max-w-[80%] space-y-2">
+      <div className="min-w-0 w-[90%] space-y-2">
         {/* Reasoning */}
         {hasReasoning && (
           <ReasoningSection reasoning={message.reasoning!} streaming={isStreamingReasoning} />

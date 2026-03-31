@@ -331,3 +331,14 @@
 .cw-commentable-diff .monaco-editor .margin .line-decoration {
   cursor: pointer !important;
 }
+
+/* ── Workflow Editor: Edge Flow Animation ── */
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.animate-edge-flow {
+  animation: edge-flow 0.8s linear infinite;
+}

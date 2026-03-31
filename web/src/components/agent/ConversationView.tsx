@@ -5,7 +5,7 @@
  * Multiple conversations can run simultaneously.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, StopCircle, MessageSquare, ChevronDown, Plus, Trash2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAgentStore } from '@/store/agent.store'
@@ -18,6 +18,10 @@ import { ErrorBoundary } from '@/components/error/ErrorBoundary'
 import { MessageBubble } from './MessageBubble'
 import { AssistantTurnBubble } from './AssistantTurnBubble'
 import { AgentRichInput } from './AgentRichInput'
+import { WorkflowQuickActions } from './WorkflowQuickActions'
+import { WorkflowTemplateCard } from './WorkflowTemplateCard'
+import { WorkflowExecutionProgress } from './WorkflowExecutionProgress'
+import { WorkflowEditorDialog } from './workflow-editor/WorkflowEditorDialog'
 import { groupMessagesIntoTurns } from './group-messages'
 import { createUserMessage } from '@/agent/message-types'
 import type { Message } from '@/agent/message-types'
@@ -38,6 +42,8 @@ export function ConversationView({
   const [isAgentDropdownOpen, setIsAgentDropdownOpen] = useState(false)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [newAgentId, setNewAgentId] = useState('')
+  const [selectedWorkflowTemplateId, setSelectedWorkflowTemplateId] = useState('')
+  const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const { directoryHandle } = useAgentStore()
@@ -65,6 +71,10 @@ export function ConversationView({
   const deleteAgentLoop = useConversationStore((s) => s.deleteAgentLoop)
   const setActive = useConversationStore((s) => s.setActive)
   const runAgent = useConversationStore((s) => s.runAgent)
+  const runWorkflowDryRun = useConversationStore((s) => s.runWorkflowDryRun)
+  const runWorkflowRealRun = useConversationStore((s) => s.runWorkflowRealRun)
+  const runCustomWorkflowDryRun = useConversationStore((s) => s.runCustomWorkflowDryRun)
+  const listWorkflowTemplates = useConversationStore((s) => s.listWorkflowTemplates)
   const cancelAgent = useConversationStore((s) => s.cancelAgent)
   const isConversationRunning = useConversationStore((s) => s.isConversationRunning)
   const getSuggestedFollowUp = useConversationStore((s) => s.getSuggestedFollowUp)
@@ -179,6 +189,20 @@ export function ConversationView({
 
   // Get follow-up suggestion for current conversation
   const suggestedFollowUp = convId ? getSuggestedFollowUp(convId) : ''
+  const workflowTemplates = useMemo(() => listWorkflowTemplates(), [listWorkflowTemplates])
+
+  useEffect(() => {
+    if (workflowTemplates.length === 0) {
+      if (selectedWorkflowTemplateId) {
+        setSelectedWorkflowTemplateId('')
+      }
+      return
+    }
+
+    if (!workflowTemplates.some((template) => template.id === selectedWorkflowTemplateId)) {
+      setSelectedWorkflowTemplateId(workflowTemplates[0].id)
+    }
+  }, [workflowTemplates, selectedWorkflowTemplateId])
 
   useEffect(() => {
     if (!initialMessage || !convId || isRunning) return
@@ -268,6 +292,18 @@ export function ConversationView({
     }
   }
 
+  const handleRunWorkflow = async (templateId: string, rubricDsl?: string) => {
+    if (!convId || !templateId) return
+    if (isProcessing) return
+    await runWorkflowDryRun(convId, templateId, { rubricDsl })
+  }
+
+  const handleRealRunWorkflow = async (templateId: string, rubricDsl?: string) => {
+    if (!convId || !templateId) return
+    if (isProcessing) return
+    await runWorkflowRealRun(convId, templateId, { rubricDsl })
+  }
+
   const handleDeleteAgentLoop = (messageId: string) => {
     if (!convId) return
     const ok = deleteAgentLoop(convId, messageId)
@@ -333,6 +369,102 @@ export function ConversationView({
     return groupMessagesIntoTurns(messages)
   }, [activeConversation?.messages])
   const lastTurn = turns[turns.length - 1]
+  const workflowProgressAnchorTurnIndex = useMemo(() => {
+    if (!activeConversation?.workflowExecution) return -1
+
+    // Keep workflow progress near the tail after completion.
+    // This avoids the panel jumping to an older assistant turn and appearing "missing".
+    if (!isProcessing) {
+      const last = turns[turns.length - 1]
+      return last?.type === 'assistant' ? turns.length - 1 : -1
+    }
+
+    const assistantTurnIndexByMessageId = new Map<string, number>()
+    for (let i = 0; i < turns.length; i += 1) {
+      const turn = turns[i]
+      if (turn?.type !== 'assistant') continue
+      for (const message of turn.messages) {
+        assistantTurnIndexByMessageId.set(message.id, i)
+      }
+    }
+
+    const hasRunWorkflowToolCall = (turn: Extract<(typeof turns)[number], { type: 'assistant' }>) =>
+      turn.messages.some((message) =>
+        (message.toolCalls || []).some((toolCall) => toolCall.function.name === 'run_workflow')
+      )
+
+    const runtimeHasRunWorkflow =
+      (activeConversation.draftAssistant?.toolCalls || []).some(
+        (toolCall) => toolCall.function.name === 'run_workflow'
+      ) || activeConversation.currentToolCall?.function.name === 'run_workflow'
+
+    if (isProcessing && runtimeHasRunWorkflow) {
+      const last = turns[turns.length - 1]
+      // If the latest committed turn is user, anchor to draft assistant area (index -1),
+      // instead of falling back to previous assistant turn.
+      if (!last || last.type !== 'assistant') {
+        return -1
+      }
+      return turns.length - 1
+    }
+
+    const rawMessages = activeConversation.messages || []
+    let lastWorkflowToolMessageIndex = -1
+    for (let i = rawMessages.length - 1; i >= 0; i -= 1) {
+      const message = rawMessages[i]
+      if (message.role === 'tool' && message.name === 'run_workflow') {
+        lastWorkflowToolMessageIndex = i
+        break
+      }
+    }
+
+    if (lastWorkflowToolMessageIndex >= 0) {
+      let anchorAssistantMessageId: string | null = null
+
+      // Prefer assistant message right after tool result (same turn, post-tool reply)
+      for (let i = lastWorkflowToolMessageIndex + 1; i < rawMessages.length; i += 1) {
+        const message = rawMessages[i]
+        if (message.role === 'user') break
+        if (message.role === 'assistant') {
+          anchorAssistantMessageId = message.id
+          break
+        }
+      }
+
+      // Fallback to assistant message before tool result (tool-call starter)
+      if (!anchorAssistantMessageId) {
+        for (let i = lastWorkflowToolMessageIndex - 1; i >= 0; i -= 1) {
+          const message = rawMessages[i]
+          if (message.role === 'user') break
+          if (message.role === 'assistant') {
+            anchorAssistantMessageId = message.id
+            break
+          }
+        }
+      }
+
+      if (anchorAssistantMessageId) {
+        const anchoredTurnIndex = assistantTurnIndexByMessageId.get(anchorAssistantMessageId)
+        if (typeof anchoredTurnIndex === 'number') {
+          return anchoredTurnIndex
+        }
+      }
+    }
+
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      const turn = turns[i]
+      if (turn?.type === 'assistant' && hasRunWorkflowToolCall(turn)) {
+        return i
+      }
+    }
+
+    // Final fallback: keep panel close to latest assistant turn instead of list bottom.
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      if (turns[i]?.type === 'assistant') return i
+    }
+
+    return -1
+  }, [activeConversation, isProcessing, turns])
   // Render draft assistant loading when:
   // 1. Processing AND (no last turn OR last turn is not assistant)
   // 2. OR processing AND last turn is assistant but we're in pending/tool_calling state (meaning new loop iteration)
@@ -406,16 +538,37 @@ export function ConversationView({
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
           {activeConversation?.messages.length === 0 && !isProcessing ? (
             <div className="flex h-full items-center justify-center">
-              <div className="flex flex-col items-center text-center">
-                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-2xl shadow-primary-500/30 ring-4 ring-primary-500/10 dark:ring-primary-500/20">
-                  <MessageSquare className="h-10 w-10 text-white" />
+              <div className="mx-auto w-full max-w-2xl space-y-6 px-4">
+                <div className="flex flex-col items-center text-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-xl shadow-primary-500/20">
+                    <MessageSquare className="h-8 w-8 text-white" />
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                    {t('conversation.empty.title')}
+                  </h3>
+                  <p className="max-w-md text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+                    {t('conversation.empty.description')}
+                  </p>
                 </div>
-                <h3 className="mb-3 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                  {t('conversation.empty.title')}
-                </h3>
-                <p className="max-w-md text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-                  {t('conversation.empty.description')}
-                </p>
+
+                {workflowTemplates.length > 0 && (
+                  <div>
+                    <p className="mb-3 text-center text-xs font-medium tracking-wide text-neutral-400 uppercase dark:text-neutral-500">
+                      或选择一个工作流模板
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {workflowTemplates.map((template) => (
+                        <WorkflowTemplateCard
+                          key={template.id}
+                          template={template}
+                          disabled={isProcessing || !hasApiKey}
+                          onRun={(id) => void handleRunWorkflow(id)}
+                          onRealRun={(id) => void handleRealRunWorkflow(id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -435,74 +588,103 @@ export function ConversationView({
                     isProcessing={isProcessing}
                   />
                 ) : (
-                  <AssistantTurnBubble
-                    key={turn.messages[0].id}
-                    turn={turn}
-                    toolResults={toolResults}
-                    isProcessing={isProcessing}
-                    isWaiting={false}
-                    streamingState={
-                      // Only pass streaming state to the last assistant turn when processing
-                      isProcessing && idx === turns.length - 1 ? streamingState : undefined
-                    }
-                    streamingContent={
-                      // Pass streaming content to the last assistant turn when processing
-                      isProcessing && idx === turns.length - 1
-                        ? streamingContentMessage
-                        : undefined
-                    }
-                    currentToolCall={
-                      // Pass current tool call to the last assistant turn when in tool_calling phase
-                      isProcessing && idx === turns.length - 1 && status === 'tool_calling'
-                        ? activeConversation?.currentToolCall
-                        : undefined
-                    }
-                    streamingToolArgs={
-                      // Pass streaming tool args to the last assistant turn when in tool_calling phase
-                      isProcessing && idx === turns.length - 1 && status === 'tool_calling'
-                        ? activeConversation?.streamingToolArgs
-                        : undefined
-                    }
-                    streamingToolArgsByCallId={
-                      isProcessing && idx === turns.length - 1
-                        ? activeConversation?.streamingToolArgsByCallId
-                        : undefined
-                    }
-                    runtimeToolCalls={
-                      isProcessing && idx === turns.length - 1
-                        ? activeConversation?.draftAssistant?.toolCalls
-                        : undefined
-                    }
-                    runtimeSteps={
-                      isProcessing && idx === turns.length - 1
-                        ? activeConversation?.draftAssistant?.steps
-                        : undefined
-                    }
-                  />
+                  <Fragment key={turn.messages[0].id}>
+                    <AssistantTurnBubble
+                      turn={turn}
+                      toolResults={toolResults}
+                      isProcessing={isProcessing}
+                      isWaiting={false}
+                      streamingState={
+                        // Only pass streaming state to the last assistant turn when processing
+                        isProcessing && idx === turns.length - 1 ? streamingState : undefined
+                      }
+                      streamingContent={
+                        // Pass streaming content to the last assistant turn when processing
+                        isProcessing && idx === turns.length - 1
+                          ? streamingContentMessage
+                          : undefined
+                      }
+                      currentToolCall={
+                        // Pass current tool call to the last assistant turn when in tool_calling phase
+                        isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                          ? activeConversation?.currentToolCall
+                          : undefined
+                      }
+                      streamingToolArgs={
+                        // Pass streaming tool args to the last assistant turn when in tool_calling phase
+                        isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                          ? activeConversation?.streamingToolArgs
+                          : undefined
+                      }
+                      streamingToolArgsByCallId={
+                        isProcessing && idx === turns.length - 1
+                          ? activeConversation?.streamingToolArgsByCallId
+                          : undefined
+                      }
+                      runtimeToolCalls={
+                        isProcessing && idx === turns.length - 1
+                          ? activeConversation?.draftAssistant?.toolCalls
+                          : undefined
+                      }
+                      runtimeSteps={
+                        isProcessing && idx === turns.length - 1
+                          ? activeConversation?.draftAssistant?.steps
+                          : undefined
+                      }
+                      workflowProgress={
+                        activeConversation?.workflowExecution && idx === workflowProgressAnchorTurnIndex ? (
+                          <WorkflowExecutionProgress
+                            execution={activeConversation.workflowExecution}
+                            onStop={handleCancel}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </Fragment>
                 )
               )}
 
               {/* Draft assistant turn while waiting for current run's first committed assistant message */}
               {shouldRenderDraftAssistant && (
-                <AssistantTurnBubble
-                  key="draft-assistant"
-                  turn={{
-                    type: 'assistant',
-                    messages: [],
-                    timestamp: Date.now(),
-                    totalUsage: null,
-                  }}
-                  toolResults={toolResults}
-                  isProcessing={true}
-                  isWaiting={isWaitingForModel}
-                  streamingState={streamingState}
-                  streamingContent={streamingContentMessage}
-                  currentToolCall={status === 'tool_calling' ? activeConversation?.currentToolCall : undefined}
-                  streamingToolArgs={status === 'tool_calling' ? activeConversation?.streamingToolArgs : undefined}
-                  streamingToolArgsByCallId={activeConversation?.streamingToolArgsByCallId}
-                  runtimeToolCalls={activeConversation?.draftAssistant?.toolCalls}
-                  runtimeSteps={activeConversation?.draftAssistant?.steps}
-                />
+                <Fragment>
+                  <AssistantTurnBubble
+                    key="draft-assistant"
+                    turn={{
+                      type: 'assistant',
+                      messages: [],
+                      timestamp: Date.now(),
+                      totalUsage: null,
+                    }}
+                    toolResults={toolResults}
+                    isProcessing={true}
+                    isWaiting={isWaitingForModel}
+                    streamingState={streamingState}
+                    streamingContent={streamingContentMessage}
+                    currentToolCall={status === 'tool_calling' ? activeConversation?.currentToolCall : undefined}
+                    streamingToolArgs={status === 'tool_calling' ? activeConversation?.streamingToolArgs : undefined}
+                    streamingToolArgsByCallId={activeConversation?.streamingToolArgsByCallId}
+                    runtimeToolCalls={activeConversation?.draftAssistant?.toolCalls}
+                    runtimeSteps={activeConversation?.draftAssistant?.steps}
+                    workflowProgress={
+                      activeConversation?.workflowExecution && workflowProgressAnchorTurnIndex === -1 ? (
+                        <WorkflowExecutionProgress
+                          execution={activeConversation.workflowExecution}
+                          onStop={handleCancel}
+                        />
+                      ) : undefined
+                    }
+                  />
+                </Fragment>
+              )}
+
+              {/* Fallback: when no anchor turn is found and no draft assistant is shown */}
+              {activeConversation?.workflowExecution &&
+                workflowProgressAnchorTurnIndex === -1 &&
+                !shouldRenderDraftAssistant && (
+                  <WorkflowExecutionProgress
+                    execution={activeConversation.workflowExecution}
+                    onStop={handleCancel}
+                  />
               )}
 
                 <div ref={messagesEndRef} />
@@ -665,10 +847,30 @@ export function ConversationView({
               )}
             </div>
 
+            <WorkflowQuickActions
+              templates={workflowTemplates}
+              selectedTemplateId={selectedWorkflowTemplateId}
+              disabled={isProcessing}
+              onTemplateChange={setSelectedWorkflowTemplateId}
+              onRun={(templateId, rubricDsl) => void handleRunWorkflow(templateId, rubricDsl)}
+              onRealRun={(templateId, rubricDsl) => void handleRealRunWorkflow(templateId, rubricDsl)}
+              onOpenEditor={() => setWorkflowEditorOpen(true)}
+            />
+
             {renderContextUsage()}
           </div>
         </div>
       </div>
+      <WorkflowEditorDialog
+        open={workflowEditorOpen}
+        onOpenChange={setWorkflowEditorOpen}
+        initialTemplateId={selectedWorkflowTemplateId}
+        onRunDryRun={(template) => {
+          void runCustomWorkflowDryRun(convId, template)
+          setSelectedWorkflowTemplateId(template.id)
+          setWorkflowEditorOpen(false)
+        }}
+      />
     </ErrorBoundary>
   )
 }

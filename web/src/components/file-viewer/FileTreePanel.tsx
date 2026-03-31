@@ -25,6 +25,7 @@ import { Icon } from '@iconify/react'
 import { BrandButton, BrandBadge } from '@creatorweave/ui'
 import { formatBytes } from '@/lib/utils'
 import { useOPFSStore } from '@/store/opfs.store'
+import { useWorkspaceStore } from '@/store/workspace.store'
 import { useT } from '@/i18n'
 import type { PendingChange } from '@/opfs/types/opfs-types'
 
@@ -462,6 +463,7 @@ export function FileTreePanel({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
 
   // Get pending changes and cached files from OPFS store
   const pendingChanges = useOPFSStore((state) => state.pendingChanges)
@@ -566,6 +568,44 @@ export function FileTreePanel({
     []
   )
 
+  /**
+   * Add cached subdirectories at a specific level to children array.
+   * This keeps approved (non-pending) OPFS files navigable in tree mode.
+   */
+  const addCachedSubdirsAtLevel = useCallback(
+    (
+      children: TreeNode[],
+      cachedPaths: string[],
+      parentPath: string,
+      existingNames: Set<string>
+    ): void => {
+      const parentPrefix = parentPath ? `${parentPath}/` : ''
+
+      for (const cachedPath of cachedPaths) {
+        if (parentPrefix && !cachedPath.startsWith(parentPrefix)) continue
+        const relative = parentPrefix ? cachedPath.slice(parentPrefix.length) : cachedPath
+        const parts = relative.split('/').filter(Boolean)
+        if (parts.length < 2) continue
+
+        const subdirName = parts[0]
+        if (existingNames.has(subdirName)) continue
+
+        const subdirPath = parentPath ? `${parentPath}/${subdirName}` : subdirName
+        children.push({
+          name: subdirName,
+          path: subdirPath,
+          kind: 'directory',
+          handle: null,
+          children: [],
+          loaded: false,
+        })
+        existingNames.add(subdirName)
+        console.log('[FileTree] Added cached subdir:', subdirPath)
+      }
+    },
+    []
+  )
+
   /** Load children of a directory handle (can be null for OPFS-only directories) */
   const loadChildren = useCallback(
     async (dirHandle: FileSystemDirectoryHandle | null, parentPath: string): Promise<TreeNode[]> => {
@@ -651,6 +691,11 @@ export function FileTreePanel({
         console.log('[FileTree] Added pending create subdir:', subdirPath)
       }
 
+      // Add subdirectories inferred from cached OPFS files.
+      // Needed when changes are approved (no longer pending) but not yet synced to disk.
+      const namesAfterPendingSubdirs = new Set(children.map((c) => c.name))
+      addCachedSubdirsAtLevel(children, cachedPaths, parentPath, namesAfterPendingSubdirs)
+
       // Add cached files from OPFS that are not already in children
       // and not pending creates (already handled above)
       // This works for both OPFS-only mode (dirHandle=null) and disk+OPFS mode
@@ -659,7 +704,15 @@ export function FileTreePanel({
 
       return children
     },
-    [isHidden, mode, getPendingCreatesForPath, getPendingCreateSubdirs, cachedPaths, addCachedFilesAtLevel]
+    [
+      isHidden,
+      mode,
+      getPendingCreatesForPath,
+      getPendingCreateSubdirs,
+      cachedPaths,
+      addCachedFilesAtLevel,
+      addCachedSubdirsAtLevel,
+    ]
   )
 
   /** Load root directory and optionally reload expanded paths */
@@ -704,6 +757,10 @@ export function FileTreePanel({
     },
     [directoryHandle, loadChildren, expandedPaths]
   )
+
+  const handleRefresh = useCallback(() => {
+    void loadRoot(true)
+  }, [loadRoot])
 
   /** Toggle directory expand/collapse */
   const handleToggle = useCallback(
@@ -777,6 +834,12 @@ export function FileTreePanel({
     }
   }, [directoryHandle, loaded, loading, loadRoot])
 
+  // Reuse the same refresh callback as the toolbar button when workspace changes.
+  useEffect(() => {
+    if (!activeWorkspaceId) return
+    handleRefresh()
+  }, [activeWorkspaceId, handleRefresh])
+
   // Show empty state only if no directoryHandle AND no pending changes AND no cached files
   const hasPendingChanges = pendingChanges.length > 0
   const hasCachedFiles = cachedPaths.length > 0
@@ -803,7 +866,7 @@ export function FileTreePanel({
             iconButton
             variant="ghost"
             className="h-6 w-6"
-            onClick={() => loadRoot(true)}
+            onClick={handleRefresh}
             title="刷新"
           >
             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />

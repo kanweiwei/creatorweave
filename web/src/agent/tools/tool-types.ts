@@ -20,6 +20,22 @@ export interface JSONSchema {
   required?: string[]
 }
 
+export interface WorkflowProgressHooks {
+  onStart?: (payload: {
+    templateId: string
+    label: string
+    nodes: Array<{ id: string; kind: string; label: string }>
+  }) => void
+  onNodeStart?: (payload: { nodeId: string; kind: string }) => void
+  onNodeComplete?: (payload: { nodeId: string; output: string }) => void
+  onNodeError?: (payload: { nodeId: string; error: string }) => void
+  onFinish?: (payload: {
+    status: string
+    totalTokens?: number
+    errors?: string[]
+  }) => void
+}
+
 /** Tool definition in OpenAI function calling format */
 export interface ToolDefinition {
   type: 'function'
@@ -45,6 +61,8 @@ export interface ToolContext {
     usedTokens: number
     maxTokens: number
   }
+  /** Workflow progress callbacks for long-running workflow tools */
+  workflowProgress?: WorkflowProgressHooks
 }
 
 /** Tool executor function signature */

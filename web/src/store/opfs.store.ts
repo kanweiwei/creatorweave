@@ -139,6 +139,15 @@ async function getActiveWorkspace() {
   return { workspace, workspaceId: activeWorkspaceId }
 }
 
+async function getWorkspaceById(workspaceId: string) {
+  const manager = await getWorkspaceManager()
+  const workspace = await manager.getWorkspace(workspaceId)
+  if (!workspace) {
+    throw new Error(`Workspace ${workspaceId} not found`)
+  }
+  return workspace
+}
+
 export const useOPFSStore = create<OPFSState>()(
   immer((set, get) => ({
     workspaceId: null,
@@ -339,7 +348,12 @@ export const useOPFSStore = create<OPFSState>()(
 
     refresh: async () => {
       try {
-        const { workspace, workspaceId: newWorkspaceId } = await getActiveWorkspace()
+        const { useWorkspaceStore } = await import('./workspace.store')
+        const requestedWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
+        if (!requestedWorkspaceId) {
+          return
+        }
+        const workspace = await getWorkspaceById(requestedWorkspaceId)
 
         // Fetch async data with error handling to prevent partial state updates
         let approvedNotSyncedPaths: Set<string>
@@ -350,8 +364,13 @@ export const useOPFSStore = create<OPFSState>()(
           approvedNotSyncedPaths = new Set()
         }
 
+        // Drop stale result if active workspace changed while this refresh was in flight.
+        if (useWorkspaceStore.getState().activeWorkspaceId !== requestedWorkspaceId) {
+          return
+        }
+
         set((state) => {
-          state.workspaceId = newWorkspaceId
+          state.workspaceId = requestedWorkspaceId
           state.pendingChanges = workspace.getPendingChanges()
           state.approvedNotSyncedPaths = approvedNotSyncedPaths
           state.cachedPaths = workspace.getCachedPaths()

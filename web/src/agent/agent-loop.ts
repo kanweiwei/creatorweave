@@ -26,6 +26,7 @@ import {
   shouldShowToolDiscovery,
   getToolDiscoveryMessage,
 } from './prompts/universal-system-prompt'
+import { buildAvailableWorkflowsBlock } from './workflow/workflow-injection'
 // Phase 2: Intelligence enhancements
 import { getIntelligenceCoordinator } from './intelligence-coordinator'
 // Phase 2 P1: Predictive file loading
@@ -46,6 +47,7 @@ import { PiAIProvider } from './llm/pi-ai-provider'
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
 const DEFAULT_TOOL_TIMEOUT = 30000
+const TOOL_TIMEOUT_EXEMPTIONS = new Set<string>(['run_workflow'])
 const SUMMARY_MIN_DROPPED_GROUPS = 2
 const SUMMARY_MIN_DROPPED_CONTENT_CHARS = 800
 const SUMMARY_MIN_INTERVAL_CONVERT_CALLS = 3
@@ -227,6 +229,16 @@ export class AgentLoop {
     } catch (error) {
       console.warn('[AgentLoop] Failed to inject intelligence enhancements:', error)
       // Continue without intelligence enhancements
+    }
+
+    // Inject available workflow catalog block
+    try {
+      const workflowBlock = buildAvailableWorkflowsBlock()
+      if (workflowBlock) {
+        enhancedPrompt += '\n\n' + workflowBlock
+      }
+    } catch (error) {
+      console.warn('[AgentLoop] Failed to inject workflow catalog:', error)
     }
 
     // Inject MCP services block AND register MCP tools
@@ -446,7 +458,7 @@ export class AgentLoop {
   private async executeToolWithTimeout(
     toolName: string,
     args: Record<string, unknown>,
-    timeoutMs: number
+    timeoutMs: number | null
   ): Promise<string> {
     const timeoutController = new AbortController()
     const runAbortSignal = this.abortController?.signal
@@ -466,13 +478,16 @@ export class AgentLoop {
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     let didTimeout = false
-    const timeoutPromise = new Promise<string>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        didTimeout = true
-        reject(new Error(`Tool "${toolName}" timed out after ${timeoutMs}ms`))
-        timeoutController.abort()
-      }, timeoutMs)
-    })
+    const timeoutPromise =
+      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? new Promise<string>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              didTimeout = true
+              reject(new Error(`Tool "${toolName}" timed out after ${timeoutMs}ms`))
+              timeoutController.abort()
+            }, timeoutMs)
+          })
+        : null
 
     const abortPromise = new Promise<string>((_, reject) => {
       if (timeoutController.signal.aborted) {
@@ -494,14 +509,17 @@ export class AgentLoop {
     })
 
     try {
-      return await Promise.race([
+      const racers: Array<Promise<string>> = [
         this.toolRegistry.execute(toolName, args, {
           ...this.toolContext,
           abortSignal: timeoutController.signal,
         }),
-        timeoutPromise,
         abortPromise,
-      ])
+      ]
+      if (timeoutPromise) {
+        racers.push(timeoutPromise)
+      }
+      return await Promise.race(racers)
     } finally {
       if (timeoutId) clearTimeout(timeoutId)
       for (const cleanup of cleanupListeners) cleanup()
@@ -995,7 +1013,7 @@ export class AgentLoop {
     let assistantMessageCount = 0
     let reachedMaxIterations = false
     let assistantMessageStarted = false
-    const startedToolCalls = new Set<string>()
+    const emittedToolCallSignatures = new Map<string, string>()
     const toolCallIdByIndex = new Map<number, string>()
     const toolCallArgsById = new Map<string, Record<string, unknown>>()
     const pendingToolCompletions = new Map<string, { toolCall: ToolCall; resultText: string }>()
@@ -1056,7 +1074,7 @@ export class AgentLoop {
             rawResult = await this.executeToolWithTimeout(
               toolDef.function.name,
               args,
-              this.toolExecutionTimeout
+              TOOL_TIMEOUT_EXEMPTIONS.has(toolDef.function.name) ? null : this.toolExecutionTimeout
             )
           } finally {
             // 无论工具执行成功或失败，都恢复原始上下文
@@ -1270,6 +1288,14 @@ export class AgentLoop {
       streamFn
     )
 
+    const emitToolCallStartIfChanged = (toolCall: ToolCall) => {
+      const signature = `${toolCall.function.name}:${toolCall.function.arguments}`
+      const previous = emittedToolCallSignatures.get(toolCall.id)
+      if (previous === signature) return
+      emittedToolCallSignatures.set(toolCall.id, signature)
+      callbacks?.onToolCallStart?.(toolCall)
+    }
+
     try {
       for await (const event of loop) {
         const typedEvent = event as PiAgentEvent
@@ -1287,9 +1313,7 @@ export class AgentLoop {
             typedEvent.assistantMessageEvent,
             callbacks,
             (toolCall) => {
-              if (startedToolCalls.has(toolCall.id)) return
-              startedToolCalls.add(toolCall.id)
-              callbacks?.onToolCallStart?.(toolCall)
+              emitToolCallStartIfChanged(toolCall)
             },
             toolCallIdByIndex
           )
@@ -1298,17 +1322,14 @@ export class AgentLoop {
         if (typedEvent.type === 'tool_execution_start') {
           const args = (typedEvent.args || {}) as Record<string, unknown>
           toolCallArgsById.set(typedEvent.toolCallId, args)
-          if (!startedToolCalls.has(typedEvent.toolCallId)) {
-            startedToolCalls.add(typedEvent.toolCallId)
-            callbacks?.onToolCallStart?.({
-              id: typedEvent.toolCallId,
-              type: 'function',
-              function: {
-                name: typedEvent.toolName,
-                arguments: JSON.stringify(args),
-              },
-            })
-          }
+          emitToolCallStartIfChanged({
+            id: typedEvent.toolCallId,
+            type: 'function',
+            function: {
+              name: typedEvent.toolName,
+              arguments: JSON.stringify(args),
+            },
+          })
         }
 
         if (typedEvent.type === 'tool_execution_end') {

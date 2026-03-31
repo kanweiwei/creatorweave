@@ -51,3 +51,10 @@ export {
   TooltipContent,
   TooltipProvider,
 } from './components/ui/tooltip'
+
+// Popover - exported for workflow configuration
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from './components/ui/popover'

@@ -36,6 +36,11 @@ export {
   inputVariants,
 } from './inputs/input'
 export type { BrandInputProps } from './inputs/input'
+export {
+  BrandTextarea,
+  textareaVariants,
+} from './inputs/textarea'
+export type { BrandTextareaProps } from './inputs/textarea'
 
 // ========== Toasts ==========
 export {

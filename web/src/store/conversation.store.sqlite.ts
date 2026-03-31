@@ -40,6 +40,13 @@ import { getToolRegistry } from '@/agent/tool-registry'
 import { getApiKeyRepository } from '@/sqlite'
 import { LLM_PROVIDER_CONFIGS, type LLMProviderType } from '@/agent/providers/types'
 import { generateFollowUp } from '@/agent/follow-up-generator'
+import {
+  WORKFLOW_DRY_RUN_MODEL_PREFIX,
+  type RunWorkflowTemplateDryRunResult,
+  parseWorkflowTemplateIdFromModelName,
+  runWorkflowTemplateDryRun,
+} from '@/agent/workflow/dry-run'
+import { getWorkflowTemplateBundle, listWorkflowTemplateBundles } from '@/agent/workflow/templates'
 import { getConversationRepository, initSQLiteDB } from '@/sqlite'
 import { useSettingsStore } from './settings.store'
 
@@ -134,6 +141,78 @@ function extractFirstMentionedAgentId(content: string | null | undefined): strin
   return id
 }
 
+interface WorkflowDryRunRequest {
+  templateId: string
+  rubricDsl?: string
+}
+
+interface RunWorkflowToolArgs {
+  workflowId: string
+  mode: 'dry_run' | 'real_run'
+}
+
+function extractRunWorkflowToolArgs(argumentsJson: string | undefined): RunWorkflowToolArgs | null {
+  if (!argumentsJson) return null
+  try {
+    const parsed = JSON.parse(argumentsJson) as Record<string, unknown>
+    const workflowId =
+      typeof parsed.workflow_id === 'string' ? parsed.workflow_id.trim() : ''
+    if (!workflowId) return null
+    const mode = parsed.mode === 'real_run' ? 'real_run' : 'dry_run'
+    return { workflowId, mode }
+  } catch {
+    return null
+  }
+}
+
+function extractWorkflowDryRunRequestFromSlashCommand(
+  content: string | null | undefined
+): WorkflowDryRunRequest | null {
+  if (!content) return null
+
+  const trimmed = content.trim()
+  if (!trimmed) return null
+
+  const lines = trimmed.split('\n')
+  const commandLine = (lines[0] || '').trim()
+  const match = /^\/(?:workflow|wf)(?:\s+([a-zA-Z0-9_-]+))?\s*$/i.exec(commandLine)
+  if (!match) return null
+
+  const templateId = (match[1] || '').trim() || 'novel_daily_v1'
+  const rubricSource = lines.slice(1).join('\n').trim()
+
+  if (!rubricSource) {
+    return { templateId }
+  }
+
+  const fencedRubricMatch = /^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i.exec(rubricSource)
+  if (fencedRubricMatch && fencedRubricMatch[1]?.trim()) {
+    return {
+      templateId,
+      rubricDsl: fencedRubricMatch[1].trim(),
+    }
+  }
+
+  return {
+    templateId,
+    rubricDsl: rubricSource,
+  }
+}
+
+type DryRunSuccess = Extract<RunWorkflowTemplateDryRunResult, { ok: true }>
+
+function buildWorkflowDryRunPayload(result: DryRunSuccess) {
+  return {
+    templateId: result.templateId,
+    label: result.label,
+    status: result.status,
+    executionOrder: result.execution.executionOrder,
+    executedNodeIds: result.execution.executedNodeIds,
+    repairRound: result.execution.repairRound,
+    errors: result.execution.errors,
+  }
+}
+
 //=============================================================================
 // Store Definition
 //=============================================================================
@@ -155,6 +234,13 @@ interface ConversationState {
   // Track mounted view ref counts per conversation (not persisted)
   // Used to prevent StrictMode mount/unmount churn from cancelling active runs
   mountedConversations: Map<string, number>
+
+  // Pending workflow dry-run payloads triggered from UI action (not persisted)
+  pendingWorkflowDryRuns: Map<string, WorkflowDryRunRequest>
+  // Pending workflow real-run payloads triggered from UI action (not persisted)
+  pendingWorkflowRealRuns: Map<string, WorkflowDryRunRequest>
+  // AbortControllers for in-flight workflow real-runs (not persisted)
+  workflowAbortControllers: Map<string, AbortController>
 
   // Computed
   activeConversation: () => Conversation | null
@@ -194,6 +280,21 @@ interface ConversationState {
     directoryHandle: FileSystemDirectoryHandle | null,
     agentOverrideId?: string | null
   ) => Promise<void>
+  runWorkflowDryRun: (
+    conversationId: string,
+    templateId: string,
+    options?: { rubricDsl?: string }
+  ) => Promise<void>
+  runWorkflowRealRun: (
+    conversationId: string,
+    templateId: string,
+    options?: { rubricDsl?: string }
+  ) => Promise<void>
+  listWorkflowTemplates: () => Array<{ id: string; label: string; pipeline?: string[] }>
+  runCustomWorkflowDryRun: (
+    conversationId: string | null,
+    workflow: import('@/agent/workflow/types').WorkflowTemplate
+  ) => Promise<void>
   cancelAgent: (conversationId: string) => void
 
   // Runtime state actions
@@ -227,6 +328,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
     streamingQueues: new Map(),
     suggestedFollowUps: new Map(),
     mountedConversations: new Map(),
+    pendingWorkflowDryRuns: new Map(),
+    pendingWorkflowRealRuns: new Map(),
+    workflowAbortControllers: new Map(),
 
     activeConversation: () => {
       const { conversations, activeConversationId } = get()
@@ -610,9 +714,16 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           agentLoop.cancel()
           state.agentLoops.delete(id)
         }
+        const workflowAbortController = state.workflowAbortControllers.get(id)
+        if (workflowAbortController) {
+          workflowAbortController.abort()
+          state.workflowAbortControllers.delete(id)
+        }
         state.suggestedFollowUps.delete(id)
         state.streamingQueues.delete(id)
         state.mountedConversations.delete(id)
+        state.pendingWorkflowDryRuns.delete(id)
+        state.pendingWorkflowRealRuns.delete(id)
       })
 
       const [convDeleteResult, workspaceDeleteResult] = await Promise.allSettled([
@@ -743,6 +854,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.isContentStreaming = false
           c.isReasoningStreaming = false
           c.contextWindowUsage = null
+          c.workflowExecution = null
           c.draftAssistant = {
             reasoning: '',
             content: '',
@@ -781,6 +893,82 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           })
         }
 
+        const pendingWorkflowRequest = get().pendingWorkflowDryRuns.get(conversationId)
+        if (pendingWorkflowRequest) {
+          set((state) => {
+            state.pendingWorkflowDryRuns.delete(conversationId)
+          })
+        }
+
+        const lastUserMessage = [...conv.messages].reverse().find((m) => m.role === 'user')
+        const pendingTemplateId = pendingWorkflowRequest?.templateId?.trim() || null
+        const workflowTemplateIdFromModel = parseWorkflowTemplateIdFromModelName(modelName)
+        const workflowSlashRequest = extractWorkflowDryRunRequestFromSlashCommand(
+          lastUserMessage?.content
+        )
+        const workflowTemplateId =
+          pendingTemplateId || workflowTemplateIdFromModel || workflowSlashRequest?.templateId || null
+
+        if (workflowTemplateId) {
+          const dryRunResult = await runWorkflowTemplateDryRun({
+            templateId: workflowTemplateId,
+            rubricDsl:
+              pendingWorkflowRequest?.rubricDsl ||
+              (workflowTemplateIdFromModel ? undefined : workflowSlashRequest?.rubricDsl),
+          })
+
+          if (!isCurrentRun()) return
+
+          if (!dryRunResult.ok) {
+            failRunEarly(dryRunResult.errors.join('; '))
+            emitError(dryRunResult.errors.join('; '))
+            return
+          }
+
+          const dryRunAssistant = createAssistantMessage(
+            dryRunResult.summary,
+            undefined,
+            undefined,
+            null,
+            'workflow_dry_run',
+            buildWorkflowDryRunPayload(dryRunResult)
+          )
+          latestMessages = [...conv.messages, dryRunAssistant]
+
+          set((state) => {
+            const c = state.conversations.find((x) => x.id === conversationId)
+            if (!c || c.activeRunId !== runId) return
+            c.messages = latestMessages
+            c.status = 'idle'
+            c.error = null
+            c.currentToolCall = null
+            c.activeToolCalls = []
+            c.streamingToolArgs = ''
+            c.streamingToolArgsByCallId = {}
+            c.streamingContent = ''
+            c.streamingReasoning = ''
+            c.completedContent = null
+            c.completedReasoning = null
+            c.isContentStreaming = false
+            c.isReasoningStreaming = false
+            c.draftAssistant = null
+            c.activeRunId = null
+            state.agentLoops.delete(conversationId)
+            state.streamingQueues.delete(conversationId)
+          })
+
+          emitComplete()
+          const finalConv = get().conversations.find((c) => c.id === conversationId)
+          if (finalConv) {
+            persistConversation(finalConv).catch((err) => {
+              console.error('[conversation.store] Failed to persist workflow dry-run:', err)
+              toast.error('对话保存失败，部分内容可能丢失')
+            })
+          }
+
+          return
+        }
+
         const apiKeyRepo = getApiKeyRepository()
         const settingsState = useSettingsStore.getState()
         const effectiveConfig = settingsState.getEffectiveProviderConfig()
@@ -801,6 +989,237 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         const apiKey = await apiKeyRepo.load(providerConfig.apiKeyProviderKey)
         if (!apiKey) {
           failRunEarly('API Key 未设置，请先在设置中配置')
+          return
+        }
+
+        // ---- Workflow Real-Run interception ----
+        // Detect pending real-run request (triggered by runWorkflowRealRun action).
+        // Uses the same provider/model as normal chat — no special model name.
+        const pendingRealRunRequest = get().pendingWorkflowRealRuns.get(conversationId)
+        if (pendingRealRunRequest) {
+          set((state) => {
+            state.pendingWorkflowRealRuns.delete(conversationId)
+          })
+
+          try {
+            // Create AbortController so cancelAgent can abort this workflow
+            const abortController = new AbortController()
+            set((state) => {
+              state.workflowAbortControllers.set(conversationId, abortController)
+            })
+
+            // Initialize workflow execution state for UI progress tracking
+            const { getWorkflowTemplateBundle } = await import('@/agent/workflow/templates')
+            const bundle = getWorkflowTemplateBundle(pendingRealRunRequest.templateId)
+            if (bundle) {
+              set((state) => {
+                const c = state.conversations.find((x) => x.id === conversationId)
+                if (!c || c.activeRunId !== runId) return
+                c.workflowExecution = {
+                  templateId: bundle.id,
+                  label: bundle.label,
+                  nodes: bundle.workflow.nodes.map((n) => ({
+                    id: n.id,
+                    kind: n.kind,
+                    label: n.kind,
+                    status: 'pending' as const,
+                  })),
+                  totalTokens: 0,
+                  startedAt: Date.now(),
+                }
+              })
+            }
+
+            const { runRealWorkflow } = await import('@/agent/workflow/real-run')
+            const { buildEnhancedWorkflowNodePrompt } = await import('@/agent/workflow/node-enhancements')
+            const result = await runRealWorkflow({
+              templateId: pendingRealRunRequest.templateId,
+              rubricDsl: pendingRealRunRequest.rubricDsl,
+              apiKey,
+              providerType,
+              baseUrl: providerConfig.baseUrl,
+              model: providerConfig.modelName,
+              abortSignal: abortController.signal,
+              enhanceSystemPrompt: (basePrompt, userMessage) =>
+                buildEnhancedWorkflowNodePrompt(basePrompt, userMessage, {
+                  directoryHandle: directoryHandle ?? null,
+                  currentAgentId: activeAgentId ?? null,
+                }),
+              onNodeStart: (nodeId, _kind) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId) return
+                  c.status = 'streaming'
+                  c.isContentStreaming = true
+                  if (!c.workflowExecution) return
+                  // Mark this node as running, set prior pending nodes that were skipped
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId) {
+                      node.status = 'running'
+                    }
+                  }
+                })
+              },
+              onNodeComplete: (nodeId, output) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId) return
+                  if (!c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId) {
+                      node.status = 'completed'
+                      if (output) node.output = output
+                    }
+                  }
+                })
+              },
+              onNodeError: (nodeId, error) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId) return
+                  if (!c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId) {
+                      node.status = 'failed'
+                      node.error = error
+                    }
+                  }
+                })
+              },
+              onNodeStepStart: (nodeId, stepId, stepType) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId) {
+                      if (!node.steps) node.steps = []
+                      node.steps.push({
+                        id: stepId,
+                        type: stepType,
+                        content: '',
+                        streaming: true,
+                      })
+                    }
+                  }
+                })
+              },
+              onNodeReasoningDelta: (nodeId, delta) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId && node.steps) {
+                      const lastStep = node.steps[node.steps.length - 1]
+                      if (lastStep && lastStep.type === 'reasoning' && lastStep.streaming) {
+                        lastStep.content += delta
+                      }
+                    }
+                  }
+                })
+              },
+              onNodeContentDelta: (nodeId, delta) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId && node.steps) {
+                      const lastStep = node.steps[node.steps.length - 1]
+                      if (lastStep && lastStep.type === 'content' && lastStep.streaming) {
+                        lastStep.content += delta
+                      }
+                    }
+                  }
+                })
+              },
+              onNodeStepEnd: (nodeId, stepId) => {
+                set((state) => {
+                  const c = state.conversations.find((x) => x.id === conversationId)
+                  if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+                  for (const node of c.workflowExecution.nodes) {
+                    if (node.id === nodeId && node.steps) {
+                      for (const step of node.steps) {
+                        if (step.id === stepId) {
+                          step.streaming = false
+                        }
+                      }
+                    }
+                  }
+                })
+              },
+            })
+
+            if (!isCurrentRun()) return
+
+            if (result.ok) {
+              const payload: import('@/agent/message-types').WorkflowRealRunPayload = {
+                templateId: result.templateId,
+                label: result.label,
+                status: result.status,
+                executionOrder: result.execution.executionOrder,
+                executedNodeIds: result.execution.executedNodeIds,
+                repairRound: result.execution.repairRound,
+                errors: result.execution.errors,
+                nodeOutputs: result.nodeOutputs,
+                totalTokens: result.totalTokens,
+              }
+              const realRunAssistant = createAssistantMessage(
+                result.summary,
+                undefined,
+                undefined,
+                null,
+                'workflow_real_run',
+                undefined,
+                payload
+              )
+              latestMessages = [...conv.messages, realRunAssistant]
+
+              set((state) => {
+                const c = state.conversations.find((x) => x.id === conversationId)
+                if (!c || c.activeRunId !== runId) return
+                c.messages = latestMessages
+                c.status = 'idle'
+                c.error = null
+                c.currentToolCall = null
+                c.activeToolCalls = []
+                c.streamingToolArgs = ''
+                c.streamingToolArgsByCallId = {}
+                c.streamingContent = ''
+                c.streamingReasoning = ''
+                c.completedContent = null
+                c.completedReasoning = null
+                c.isContentStreaming = false
+                c.isReasoningStreaming = false
+                c.draftAssistant = null
+                c.activeRunId = null
+                state.agentLoops.delete(conversationId)
+                state.streamingQueues.delete(conversationId)
+              })
+
+              emitComplete()
+              const finalConv = get().conversations.find((c) => c.id === conversationId)
+              if (finalConv) {
+                persistConversation(finalConv).catch((err) => {
+                  console.error('[conversation.store] Failed to persist workflow real-run:', err)
+                  toast.error('对话保存失败，部分内容可能丢失')
+                })
+              }
+            } else {
+              failRunEarly(result.errors.join('; '))
+              emitError(result.errors.join('; '))
+            }
+          } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+              return
+            }
+            const msg = error instanceof Error ? error.message : String(error)
+            failRunEarly(msg)
+            emitError(msg)
+          } finally {
+            set((state) => {
+              state.workflowAbortControllers.delete(conversationId)
+            })
+          }
+
           return
         }
 
@@ -844,7 +1263,6 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         }
 
         const normalizedOverride = agentOverrideId?.trim() || null
-        const lastUserMessage = [...conv.messages].reverse().find((m) => m.role === 'user')
         const overrideFromLatestMessage = extractFirstMentionedAgentId(lastUserMessage?.content)
         const resolvedOverride = normalizedOverride || overrideFromLatestMessage
 
@@ -863,6 +1281,76 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           activeAgentId = 'default'
         }
 
+        const workflowProgressHooks: import('@/agent/tools/tool-types').WorkflowProgressHooks = {
+          onStart: (payload) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId) return
+              c.workflowExecution = {
+                templateId: payload.templateId,
+                label: payload.label,
+                nodes: payload.nodes.map((node) => ({
+                  id: node.id,
+                  kind: node.kind,
+                  label: node.label,
+                  status: 'pending',
+                })),
+                totalTokens: 0,
+                startedAt: Date.now(),
+              }
+            })
+          },
+          onNodeStart: ({ nodeId }) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+              for (const node of c.workflowExecution.nodes) {
+                if (node.id === nodeId) {
+                  node.status = 'running'
+                }
+              }
+            })
+          },
+          onNodeComplete: ({ nodeId, output }) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+              for (const node of c.workflowExecution.nodes) {
+                if (node.id === nodeId) {
+                  node.status = 'completed'
+                  if (output) node.output = output
+                }
+              }
+            })
+          },
+          onNodeError: ({ nodeId, error }) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+              for (const node of c.workflowExecution.nodes) {
+                if (node.id === nodeId) {
+                  node.status = 'failed'
+                  node.error = error
+                }
+              }
+            })
+          },
+          onFinish: ({ totalTokens }) => {
+            if (!isCurrentRun()) return
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId || !c.workflowExecution) return
+              if (typeof totalTokens === 'number') {
+                c.workflowExecution.totalTokens = totalTokens
+              }
+            })
+          },
+        }
+
         const agentLoop = new AgentLoop({
           provider,
           toolRegistry,
@@ -871,6 +1359,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             directoryHandle,
             projectId: activeProjectId,
             currentAgentId: activeAgentId,
+            workflowProgress: workflowProgressHooks,
           },
           maxIterations: 20,
           beforeToolCall: toolPolicyHooks.beforeToolCall,
@@ -1166,10 +1655,38 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           },
           onToolCallStart: (tc: ToolCall) => {
             if (!isCurrentRun()) return
+            const existingConversation = get().conversations.find((c) => c.id === conversationId)
+            const shouldEmitToolStart =
+              existingConversation?.activeRunId === runId
+                ? existingConversation.currentToolCall?.id !== tc.id
+                : true
+            const runWorkflowArgs =
+              tc.function.name === 'run_workflow'
+                ? extractRunWorkflowToolArgs(tc.function.arguments)
+                : null
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c && c.activeRunId === runId) {
                 c.status = 'tool_calling'
+                if (
+                  runWorkflowArgs?.mode === 'real_run' &&
+                  !c.workflowExecution
+                ) {
+                  const bundle = getWorkflowTemplateBundle(runWorkflowArgs.workflowId)
+                  c.workflowExecution = {
+                    templateId: bundle?.id || runWorkflowArgs.workflowId,
+                    label: bundle?.label || runWorkflowArgs.workflowId,
+                    nodes:
+                      bundle?.workflow.nodes.map((node) => ({
+                        id: node.id,
+                        kind: node.kind,
+                        label: node.kind,
+                        status: 'pending' as const,
+                      })) || [],
+                    totalTokens: 0,
+                    startedAt: Date.now(),
+                  }
+                }
                 const isSameTool = c.currentToolCall?.id === tc.id
                 c.currentToolCall = tc
                 c.activeToolCalls = c.activeToolCalls || []
@@ -1211,11 +1728,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                 }
               }
             })
-            emitToolStart({
-              name: tc.function.name,
-              args: tc.function.arguments,
-              id: tc.id,
-            })
+            if (shouldEmitToolStart) {
+              emitToolStart({
+                name: tc.function.name,
+                args: tc.function.arguments,
+                id: tc.id,
+              })
+            }
           },
           onToolCallDelta: (_index: number, argsDelta: string, toolCallId?: string) => {
             if (!isCurrentRun()) return
@@ -1586,7 +2105,113 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       }
     },
 
+    runWorkflowDryRun: async (
+      conversationId: string,
+      templateId: string,
+      options?: { rubricDsl?: string }
+    ) => {
+      const normalizedTemplateId = templateId.trim()
+      if (!normalizedTemplateId) {
+        return
+      }
+
+      if (get().isConversationRunning(conversationId)) {
+        return
+      }
+
+      const normalizedRubricDsl = options?.rubricDsl?.trim()
+      set((state) => {
+        state.pendingWorkflowDryRuns.set(conversationId, {
+          templateId: normalizedTemplateId,
+          rubricDsl: normalizedRubricDsl || undefined,
+        })
+      })
+
+      await get().runAgent(
+        conversationId,
+        'openai',
+        `${WORKFLOW_DRY_RUN_MODEL_PREFIX}${normalizedTemplateId}`,
+        1024,
+        null
+      )
+    },
+
+    listWorkflowTemplates: () =>
+      listWorkflowTemplateBundles().map((bundle) => ({
+        id: bundle.id,
+        label: bundle.label,
+        pipeline: bundle.workflow.nodes.map((n) => n.kind),
+      })),
+
+    runCustomWorkflowDryRun: async (
+      conversationId: string | null,
+      workflow: import('@/agent/workflow/types').WorkflowTemplate
+    ) => {
+      if (!conversationId) return
+      if (get().isConversationRunning(conversationId)) return
+
+      const { runCustomWorkflowDryRun: dryRun } = await import('@/agent/workflow/dry-run')
+      const result = await dryRun(workflow)
+
+      if (result.ok) {
+        const msg = createAssistantMessage(
+          result.summary,
+          undefined,
+          undefined,
+          null,
+          'workflow_dry_run',
+          buildWorkflowDryRunPayload(result)
+        )
+        const conv = get().conversations.find((c) => c.id === conversationId)
+        if (conv) {
+          get().updateMessages(conversationId, [...conv.messages, msg])
+        }
+      } else {
+        toast.error(`工作流验证失败: ${result.errors.join(', ')}`)
+      }
+    },
+
+    runWorkflowRealRun: async (
+      conversationId: string,
+      templateId: string,
+      options?: { rubricDsl?: string }
+    ) => {
+      const normalizedTemplateId = templateId.trim()
+      if (!normalizedTemplateId) return
+
+      if (get().isConversationRunning(conversationId)) return
+
+      const normalizedRubricDsl = options?.rubricDsl?.trim()
+      set((state) => {
+        state.pendingWorkflowRealRuns.set(conversationId, {
+          templateId: normalizedTemplateId,
+          rubricDsl: normalizedRubricDsl || undefined,
+        })
+      })
+
+      // Use normal runAgent — real-run will be intercepted inside runAgent
+      // by detecting pendingWorkflowRealRuns, using the same model/provider as normal chat
+      const settingsState = useSettingsStore.getState()
+      const effectiveConfig = settingsState.getEffectiveProviderConfig()
+      const providerType = settingsState.providerType
+      const modelName =
+        effectiveConfig?.modelName || settingsState.modelName
+
+      await get().runAgent(
+        conversationId,
+        providerType,
+        modelName,
+        4096,
+        null
+      )
+    },
+
     cancelAgent: (conversationId: string) => {
+      const workflowAbortController = get().workflowAbortControllers.get(conversationId)
+      if (workflowAbortController) {
+        workflowAbortController.abort()
+      }
+
       const agentLoop = get().agentLoops.get(conversationId)
       if (agentLoop) {
         agentLoop.cancel()
@@ -1601,6 +2226,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         set((state) => {
           state.agentLoops.delete(conversationId)
           state.streamingQueues.delete(conversationId)
+          state.workflowAbortControllers.delete(conversationId)
+          state.pendingWorkflowRealRuns.delete(conversationId)
+          state.pendingWorkflowDryRuns.delete(conversationId)
           const c = state.conversations.find((c) => c.id === conversationId)
           if (c) {
             const draftReasoning = c.draftAssistant?.reasoning || c.streamingReasoning
@@ -1648,6 +2276,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             c.streamingReasoning = ''
             c.isContentStreaming = false
             c.isReasoningStreaming = false
+            c.workflowExecution = null
           }
         })
         if (committedPartial) {
@@ -1661,7 +2290,45 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               toast.error('停止后保存草稿失败，部分内容可能丢失')
             })
         }
+        return
       }
+
+      const isWorkflowRunActive =
+        !!workflowAbortController ||
+        get().pendingWorkflowRealRuns.has(conversationId) ||
+        !!get().conversations.find((c) => c.id === conversationId)?.workflowExecution
+
+      if (!isWorkflowRunActive) return
+
+      const queues = get().streamingQueues.get(conversationId)
+      if (queues) {
+        queues.reasoning.flushNow()
+        queues.content.flushNow()
+        queues.reasoning.destroy()
+        queues.content.destroy()
+      }
+
+      set((state) => {
+        state.streamingQueues.delete(conversationId)
+        state.workflowAbortControllers.delete(conversationId)
+        state.pendingWorkflowRealRuns.delete(conversationId)
+        state.pendingWorkflowDryRuns.delete(conversationId)
+        const c = state.conversations.find((x) => x.id === conversationId)
+        if (!c) return
+        c.status = 'idle'
+        c.error = null
+        c.activeRunId = null
+        c.draftAssistant = null
+        c.currentToolCall = null
+        c.activeToolCalls = []
+        c.streamingToolArgs = ''
+        c.streamingToolArgsByCallId = {}
+        c.streamingContent = ''
+        c.streamingReasoning = ''
+        c.isContentStreaming = false
+        c.isReasoningStreaming = false
+        c.workflowExecution = null
+      })
     },
 
     // Runtime state actions
@@ -1770,6 +2437,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
     resetConversationState: (id: string) => {
       set((state) => {
+        const workflowAbortController = state.workflowAbortControllers.get(id)
+        if (workflowAbortController) {
+          workflowAbortController.abort()
+          state.workflowAbortControllers.delete(id)
+        }
+        state.pendingWorkflowDryRuns.delete(id)
+        state.pendingWorkflowRealRuns.delete(id)
         const c = state.conversations.find((c) => c.id === id)
         if (c) {
           c.status = 'idle'
@@ -1787,6 +2461,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           c.activeRunId = null
           c.draftAssistant = null
           c.contextWindowUsage = null
+          c.workflowExecution = null
         }
       })
     },
