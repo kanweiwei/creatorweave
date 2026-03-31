@@ -26,6 +26,61 @@ import {
 import { useConversationContextStore } from './conversation-context.store'
 import { getElicitationHandler } from '@/mcp/elicitation-handler.tsx'
 
+/**
+ * Commit completed draft assistant content + tool calls into conversation messages.
+ * Used both when starting a new assistant message (onMessageStart) and when cancelling.
+ */
+function commitDraftToMessages(
+  conv: {
+    messages: Message[]
+    draftAssistant?: {
+      reasoning: string
+      content: string
+      toolCalls: ToolCall[]
+      toolResults: Record<string, string>
+      toolCall: ToolCall | null
+      toolArgs: string
+      steps: import('@/agent/message-types').DraftAssistantStep[]
+      activeReasoningStepId?: string | null
+      activeContentStepId?: string | null
+      activeToolStepId?: string | null
+      activeCompressionStepId?: string | null
+    } | null
+  },
+): boolean {
+  const draft = conv.draftAssistant
+  if (!draft) return false
+
+  const completedToolCalls = draft.toolCalls.filter((tc) =>
+    Object.prototype.hasOwnProperty.call(draft.toolResults, tc.id)
+  )
+  const hasContent =
+    draft.reasoning.trim() ||
+    draft.content.trim() ||
+    completedToolCalls.length > 0
+
+  if (!hasContent) return false
+
+  conv.messages.push(
+    createAssistantMessage(
+      draft.content || null,
+      completedToolCalls.length > 0 ? completedToolCalls : undefined,
+      undefined,
+      draft.reasoning || null
+    )
+  )
+  for (const tc of completedToolCalls) {
+    conv.messages.push(
+      createToolMessage({
+        toolCallId: tc.id,
+        name: tc.function.name,
+        content: draft.toolResults[tc.id] || '',
+      })
+    )
+  }
+  return true
+}
+
 // Default conversation name when title is not available
 const DEFAULT_CONVERSATION_NAME = '对话'
 import { StreamingQueue } from '../utils/streaming-queue'
@@ -1520,6 +1575,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             set((state) => {
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c && c.activeRunId === runId) {
+                // Commit completed tool calls from previous turn before resetting
+                commitDraftToMessages(c)
+
                 c.streamingContent = ''
                 c.streamingReasoning = ''
                 c.isReasoningStreaming = false
@@ -2231,39 +2289,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           state.pendingWorkflowDryRuns.delete(conversationId)
           const c = state.conversations.find((c) => c.id === conversationId)
           if (c) {
-            const draftReasoning = c.draftAssistant?.reasoning || c.streamingReasoning
-            const draftContent = c.draftAssistant?.content || c.streamingContent
-            const draftToolCalls = c.draftAssistant?.toolCalls || []
-            const draftToolResults = c.draftAssistant?.toolResults || {}
-
-            // Only save tool calls with execution results (completed tool call + tool result pairs)
-            const completedDraftToolCalls = draftToolCalls.filter((tc) =>
-              Object.prototype.hasOwnProperty.call(draftToolResults, tc.id)
-            )
-
-            const hasPartialContent =
-              draftReasoning.trim() || draftContent.trim() || completedDraftToolCalls.length > 0
-
-            if (hasPartialContent) {
-              c.messages.push(
-                createAssistantMessage(
-                  draftContent || null,
-                  completedDraftToolCalls.length > 0 ? completedDraftToolCalls : undefined,
-                  undefined,
-                  draftReasoning || null
-                )
-              )
-              for (const completedToolCall of completedDraftToolCalls) {
-                c.messages.push(
-                  createToolMessage({
-                    toolCallId: completedToolCall.id,
-                    name: completedToolCall.function.name,
-                    content: draftToolResults[completedToolCall.id] || '',
-                  })
-                )
-              }
+            committedPartial = commitDraftToMessages(c)
+            if (committedPartial) {
               c.updatedAt = Date.now()
-              committedPartial = true
             }
             c.status = 'idle'
             c.activeRunId = null
