@@ -14,7 +14,6 @@ import { useConversationStore } from '@/store/conversation.store'
 import { useOPFSStore } from '@/store/opfs.store'
 import { initStorage, setupAutoSave, clearSQLiteAndProjectsDirectory } from '@/storage'
 import { useT } from '@/i18n'
-import { PWAUpdateBanner } from '@/pwa/PWAUpdateBanner'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { ProjectHome } from '@/components/project/ProjectHome'
 import { WebContainerStandalonePreview } from '@/components/webcontainer/WebContainerStandalonePreview'
@@ -860,7 +859,6 @@ function App() {
     <>
       {rootView}
       <InstallPrompt />
-      <PWAUpdateBanner />
       <DatabaseRefreshDialog isOpen={false} />
       <Toaster position="bottom-right" />
     </>
