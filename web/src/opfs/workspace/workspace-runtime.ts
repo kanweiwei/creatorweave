@@ -474,17 +474,10 @@ export class WorkspaceRuntime {
     let isNewFile = false
     try {
       if (directoryHandle) {
-        // Try to read existing content from files/ first, then native FS
-        if (this.hasFileInIndex(path)) {
-          const fromFiles = await this.readFromFilesDir(path)
-          if (fromFiles) {
-            baselineFsMtime = fromFiles.mtime
-          }
-        } else {
-          // Read from native filesystem
-          const fromNative = await this.readFromNativeFS(path, directoryHandle)
-          baselineFsMtime = fromNative.metadata.mtime
-        }
+        // Always use native mtime as conflict baseline when directory handle is available.
+        // OPFS cache mtime can diverge from native disk mtime after prior approvals/syncs.
+        const fromNative = await this.readFromNativeFS(path, directoryHandle)
+        baselineFsMtime = fromNative.metadata.mtime
       } else {
         // No directoryHandle (pure OPFS mode): check if file exists in filesIndex
         // If not in index, this is a new file

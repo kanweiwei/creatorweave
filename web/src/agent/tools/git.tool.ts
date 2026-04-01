@@ -5,7 +5,6 @@
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
-import { getSQLiteDB } from '@/sqlite'
 import { useConversationContextStore } from '@/store/conversation-context.store'
 
 // 导入 Git 工具实现
@@ -47,10 +46,13 @@ export const gitStatusDefinition: ToolDefinition = {
   },
 }
 
-export const gitStatusExecutor: ToolExecutor = async (args) => {
+export const gitStatusExecutor: ToolExecutor = async (args, context) => {
   try {
-    const db = getSQLiteDB()
-    const result = await gitStatus(db)
+    const workspaceId = context.workspaceId
+    if (!workspaceId) {
+      return JSON.stringify({ error: 'No active workspace' })
+    }
+    const result = await gitStatus(workspaceId)
     const format = args.format as string || 'text'
 
     if (format === 'json') {
@@ -102,15 +104,18 @@ export const gitDiffDefinition: ToolDefinition = {
   },
 }
 
-export const gitDiffExecutor: ToolExecutor = async (args) => {
+export const gitDiffExecutor: ToolExecutor = async (args, context) => {
   try {
-    const db = getSQLiteDB()
+    const workspaceId = context.workspaceId
+    if (!workspaceId) {
+      return JSON.stringify({ error: 'No active workspace' })
+    }
     const mode = (args.mode as 'working' | 'cached' | 'snapshot') || 'working'
     const snapshotId = args.snapshot_id as string | undefined
     const path = args.path as string | undefined
     const format = args.format as string || 'text'
 
-    const result = await gitDiff(db, {
+    const result = await gitDiff(workspaceId, {
       mode,
       snapshotId,
       path,
@@ -168,16 +173,19 @@ export const gitLogDefinition: ToolDefinition = {
   },
 }
 
-export const gitLogExecutor: ToolExecutor = async (args) => {
+export const gitLogExecutor: ToolExecutor = async (args, context) => {
   try {
-    const db = getSQLiteDB()
+    const workspaceId = context.workspaceId
+    if (!workspaceId) {
+      return JSON.stringify({ error: 'No active workspace' })
+    }
     const limit = (args.limit as number) || 10
     const path = args.path as string | undefined
     const status = args.status as 'committed' | 'approved' | 'rolled_back' | undefined
     const oneline = args.oneline as boolean
     const format = args.format as string || 'text'
 
-    const result = await gitLog(db, {
+    const result = await gitLog(workspaceId, {
       limit,
       path,
       status,
@@ -222,13 +230,16 @@ export const gitShowDefinition: ToolDefinition = {
   },
 }
 
-export const gitShowExecutor: ToolExecutor = async (args) => {
+export const gitShowExecutor: ToolExecutor = async (args, context) => {
   try {
-    const db = getSQLiteDB()
+    const workspaceId = context.workspaceId
+    if (!workspaceId) {
+      return JSON.stringify({ error: 'No active workspace' })
+    }
     const snapshotId = args.snapshot_id as string | undefined
     const format = args.format as string || 'text'
 
-    const result = await gitShow(db, snapshotId)
+    const result = await gitShow(workspaceId, snapshotId)
 
     if (!result) {
       return JSON.stringify({ error: 'No snapshots found' })
@@ -284,9 +295,12 @@ export const gitRestoreDefinition: ToolDefinition = {
   },
 }
 
-export const gitRestoreExecutor: ToolExecutor = async (args) => {
+export const gitRestoreExecutor: ToolExecutor = async (args, context) => {
   try {
-    const db = getSQLiteDB()
+    const workspaceId = context.workspaceId
+    if (!workspaceId) {
+      return JSON.stringify({ error: 'No active workspace' })
+    }
     const paths = args.paths as string[]
     const staged = args.staged as boolean
     const snapshotId = args.snapshot_id as string | undefined
@@ -296,7 +310,7 @@ export const gitRestoreExecutor: ToolExecutor = async (args) => {
       return JSON.stringify({ error: 'paths is required' })
     }
 
-    const result = await gitRestore(db, {
+    const result = await gitRestore(workspaceId, {
       paths,
       staged: staged || false,
       worktree: !staged,

@@ -82,23 +82,35 @@ interface OPFSState {
   initialize: () => Promise<void>
 
   /** Read file from current workspace (cache first, then filesystem) */
-  readFile: (path: string, directoryHandle?: FileSystemDirectoryHandle | null) => Promise<FileReadResult>
+  readFile: (
+    path: string,
+    directoryHandle?: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
+  ) => Promise<FileReadResult>
 
   /** Write file to current workspace (cache + pending) */
   writeFile: (
     path: string,
     content: FileContent,
-    directoryHandle?: FileSystemDirectoryHandle | null
+    directoryHandle?: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
   ) => Promise<void>
 
   /** Delete file from current workspace */
-  deleteFile: (path: string, directoryHandle?: FileSystemDirectoryHandle | null) => Promise<void>
+  deleteFile: (
+    path: string,
+    directoryHandle?: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
+  ) => Promise<void>
 
   /** Get pending changes for current workspace */
   getPendingChanges: () => PendingChange[]
 
   /** Sync pending changes to real filesystem */
-  syncPendingChanges: (directoryHandle: FileSystemDirectoryHandle) => Promise<SyncResult>
+  syncPendingChanges: (
+    directoryHandle: FileSystemDirectoryHandle,
+    workspaceId?: string | null
+  ) => Promise<SyncResult>
 
   /** Clear current workspace's cache and pending */
   clearWorkspace: () => Promise<void>
@@ -121,22 +133,23 @@ interface OPFSState {
 /**
  * Helper to get active workspace runtime
  */
-async function getActiveWorkspace() {
+async function getWorkspaceForOperation(workspaceId?: string | null) {
   const { useWorkspaceStore } = await import('./workspace.store')
   const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
+  const targetWorkspaceId = workspaceId || activeWorkspaceId
 
-  if (!activeWorkspaceId) {
+  if (!targetWorkspaceId) {
     throw new Error('No active workspace')
   }
 
   const manager = await getWorkspaceManager()
-  const workspace = await manager.getWorkspace(activeWorkspaceId)
+  const workspace = await manager.getWorkspace(targetWorkspaceId)
 
   if (!workspace) {
-    throw new Error(`Workspace ${activeWorkspaceId} not found`)
+    throw new Error(`Workspace ${targetWorkspaceId} not found`)
   }
 
-  return { workspace, workspaceId: activeWorkspaceId }
+  return { workspace, workspaceId: targetWorkspaceId }
 }
 
 async function getWorkspaceById(workspaceId: string) {
@@ -160,7 +173,7 @@ export const useOPFSStore = create<OPFSState>()(
 
     initialize: async () => {
       try {
-        const { workspaceId } = await getActiveWorkspace()
+        const { workspaceId } = await getWorkspaceForOperation()
 
         // Load initial state from workspace
         const manager = await getWorkspaceManager()
@@ -193,11 +206,11 @@ export const useOPFSStore = create<OPFSState>()(
       }
     },
 
-    readFile: async (path, directoryHandle) => {
+    readFile: async (path, directoryHandle, workspaceId) => {
       set({ isLoading: true, error: null })
 
       try {
-        const { workspace } = await getActiveWorkspace()
+        const { workspace } = await getWorkspaceForOperation(workspaceId)
         const result = await workspace.readFile(path, directoryHandle)
 
         set({ isLoading: false })
@@ -210,25 +223,30 @@ export const useOPFSStore = create<OPFSState>()(
       }
     },
 
-    writeFile: async (path, content, directoryHandle) => {
+    writeFile: async (path, content, directoryHandle, workspaceId) => {
       set({ isLoading: true, error: null })
 
       try {
-        const { workspace } = await getActiveWorkspace()
+        const { workspace, workspaceId: targetWorkspaceId } = await getWorkspaceForOperation(workspaceId)
         await workspace.writeFile(path, content, directoryHandle)
 
         // Update state
+        const { useWorkspaceStore } = await import('./workspace.store')
+        const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
         set((state) => {
-          state.pendingChanges = workspace.getPendingChanges()
-          state.cachedPaths = workspace.getCachedPaths()
+          if (activeWorkspaceId === targetWorkspaceId) {
+            state.pendingChanges = workspace.getPendingChanges()
+            state.cachedPaths = workspace.getCachedPaths()
+          }
           state.isLoading = false
         })
 
         // Update workspace store counts
-        const { useWorkspaceStore } = await import('./workspace.store')
-        await useWorkspaceStore.getState().updateCurrentCounts()
-        // Keep sync preview list in sync with OPFS writes (no toast spam).
-        await useWorkspaceStore.getState().refreshPendingChanges(true)
+        if (activeWorkspaceId === targetWorkspaceId) {
+          await useWorkspaceStore.getState().updateCurrentCounts()
+          // Keep sync preview list in sync with OPFS writes (no toast spam).
+          await useWorkspaceStore.getState().refreshPendingChanges(true)
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Failed to write file'
 
@@ -244,25 +262,30 @@ export const useOPFSStore = create<OPFSState>()(
       }
     },
 
-    deleteFile: async (path, directoryHandle) => {
+    deleteFile: async (path, directoryHandle, workspaceId) => {
       set({ isLoading: true, error: null })
 
       try {
-        const { workspace } = await getActiveWorkspace()
+        const { workspace, workspaceId: targetWorkspaceId } = await getWorkspaceForOperation(workspaceId)
         await workspace.deleteFile(path, directoryHandle)
 
         // Update state
+        const { useWorkspaceStore } = await import('./workspace.store')
+        const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
         set((state) => {
-          state.pendingChanges = workspace.getPendingChanges()
-          state.cachedPaths = workspace.getCachedPaths()
+          if (activeWorkspaceId === targetWorkspaceId) {
+            state.pendingChanges = workspace.getPendingChanges()
+            state.cachedPaths = workspace.getCachedPaths()
+          }
           state.isLoading = false
         })
 
         // Update workspace store counts
-        const { useWorkspaceStore } = await import('./workspace.store')
-        await useWorkspaceStore.getState().updateCurrentCounts()
-        // Keep sync preview list in sync with OPFS deletes (no toast spam).
-        await useWorkspaceStore.getState().refreshPendingChanges(true)
+        if (activeWorkspaceId === targetWorkspaceId) {
+          await useWorkspaceStore.getState().updateCurrentCounts()
+          // Keep sync preview list in sync with OPFS deletes (no toast spam).
+          await useWorkspaceStore.getState().refreshPendingChanges(true)
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Failed to delete file'
         set({ error: message, isLoading: false })
@@ -274,24 +297,29 @@ export const useOPFSStore = create<OPFSState>()(
       return get().pendingChanges
     },
 
-    syncPendingChanges: async (directoryHandle) => {
+    syncPendingChanges: async (directoryHandle, workspaceId) => {
       set({ isLoading: true, error: null })
 
       try {
-        const { workspace } = await getActiveWorkspace()
+        const { workspace, workspaceId: targetWorkspaceId } = await getWorkspaceForOperation(workspaceId)
         const result = await workspace.syncToDisk(directoryHandle)
 
         // Update state
+        const { useWorkspaceStore } = await import('./workspace.store')
+        const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
         set((state) => {
-          state.pendingChanges = workspace.getPendingChanges()
+          if (activeWorkspaceId === targetWorkspaceId) {
+            state.pendingChanges = workspace.getPendingChanges()
+          }
           state.isLoading = false
         })
 
         // Update workspace store counts
-        const { useWorkspaceStore } = await import('./workspace.store')
-        await useWorkspaceStore.getState().updateCurrentCounts()
-        // Refresh preview list after disk sync to reflect cleared/remaining pending files.
-        await useWorkspaceStore.getState().refreshPendingChanges(true)
+        if (activeWorkspaceId === targetWorkspaceId) {
+          await useWorkspaceStore.getState().updateCurrentCounts()
+          // Refresh preview list after disk sync to reflect cleared/remaining pending files.
+          await useWorkspaceStore.getState().refreshPendingChanges(true)
+        }
 
         return result
       } catch (e) {
@@ -313,7 +341,7 @@ export const useOPFSStore = create<OPFSState>()(
       set({ isLoading: true, error: null })
 
       try {
-        const { workspace } = await getActiveWorkspace()
+        const { workspace } = await getWorkspaceForOperation()
         await workspace.clear()
 
         // Update state

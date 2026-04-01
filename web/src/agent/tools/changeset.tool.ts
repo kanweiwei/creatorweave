@@ -1,6 +1,31 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { getActiveConversation, useConversationContextStore } from '@/store/conversation-context.store'
 
+/**
+ * Resolve native directory handle from context or workspaceId
+ */
+async function resolveNativeDirectoryHandle(
+  directoryHandle: FileSystemDirectoryHandle | null | undefined,
+  workspaceId?: string | null
+): Promise<FileSystemDirectoryHandle | null> {
+  if (directoryHandle) return directoryHandle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
+  const active = await getActiveConversation()
+  if (!active) return null
+  return await active.conversation.getNativeDirectoryHandle()
+}
+
 export const createSnapshotDefinition: ToolDefinition = {
   type: 'function',
   function: {
@@ -81,7 +106,8 @@ export const rollbackSnapshotExecutor: ToolExecutor = async (args, context) => {
     return JSON.stringify({ error: 'No active workspace' })
   }
 
-  const result = await active.conversation.rollbackSnapshot(snapshotId, context.directoryHandle)
+  const dirHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+  const result = await active.conversation.rollbackSnapshot(snapshotId, dirHandle)
   await useConversationContextStore.getState().updateCurrentCounts()
   await useConversationContextStore.getState().refreshPendingChanges(true)
   const hasUnresolved = result.unresolved.length > 0
@@ -91,7 +117,7 @@ export const rollbackSnapshotExecutor: ToolExecutor = async (args, context) => {
     reverted: result.reverted,
     unresolved: result.unresolved,
     hint:
-      hasUnresolved && !context.directoryHandle
+      hasUnresolved && !dirHandle
         ? '当前未连接本机目录，无法恢复已存在文件；请先选择目录后重试。'
         : hasUnresolved
           ? '部分文件在当前目录中不存在，无法自动恢复，请手动处理。'

@@ -7,9 +7,35 @@
 
 import type { ToolDefinition, ToolExecutor, ToolContext } from './tool-types'
 import type { PluginMetadata, PluginInstance, FileEntry, Plugin } from '@/types/plugin'
+import { getActiveConversation } from '@/store/conversation-context.store'
 import { getPluginLoader } from '@/services/plugin-loader.service'
 import { PluginExecutorService } from '@/services/plugin-executor.service'
 import { traverseDirectory } from '@/services/traversal.service'
+
+/**
+ * Resolve native directory handle from context or workspaceId
+ */
+async function resolveNativeDirectoryHandle(
+  directoryHandle: FileSystemDirectoryHandle | null | undefined,
+  workspaceId?: string | null
+): Promise<FileSystemDirectoryHandle | null> {
+  if (directoryHandle) return directoryHandle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
+  const active = await getActiveConversation()
+  if (!active) return null
+  return await active.conversation.getNativeDirectoryHandle()
+}
 
 /**
  * Convert a WASM plugin's metadata into an OpenAI-compatible ToolDefinition.
@@ -59,7 +85,7 @@ export function createPluginBridgeExecutor(pluginId: string): ToolExecutor {
       return JSON.stringify({ error: `Plugin not ready (state: ${instance.state})` })
     }
 
-    const dirHandle = context.directoryHandle
+    const dirHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
     if (!dirHandle) {
       return JSON.stringify({ error: '未选择项目文件夹，无法执行插件' })
     }

@@ -139,9 +139,22 @@ function isOPFSWorkspaceMiss(error: unknown): boolean {
 }
 
 async function resolveNativeDirectoryHandle(
-  directoryHandle?: FileSystemDirectoryHandle | null
+  directoryHandle?: FileSystemDirectoryHandle | null,
+  workspaceId?: string | null
 ): Promise<FileSystemDirectoryHandle | null> {
   if (directoryHandle) return directoryHandle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
   const active = await getActiveConversation()
   if (!active) return null
   return await active.conversation.getNativeDirectoryHandle()
@@ -226,7 +239,7 @@ async function executeSingleRead(
       return formatAgentTextReadResult(path, content, options, maxSize)
     }
 
-    const result = await readFile(target.path, context.directoryHandle)
+    const result = await readFile(target.path, context.directoryHandle, context.workspaceId)
     return formatSingleReadResult(path, result, options, maxSize)
   } catch (error) {
     if (isOPFSWorkspaceMiss(error)) {
@@ -235,9 +248,12 @@ async function executeSingleRead(
         if (target.kind !== 'workspace') {
           throw error
         }
-        const nativeHandle = await resolveNativeDirectoryHandle(context.directoryHandle)
+        const nativeHandle = await resolveNativeDirectoryHandle(
+          context.directoryHandle,
+          context.workspaceId
+        )
         if (nativeHandle) {
-          const result = await readFile(target.path, nativeHandle)
+          const result = await readFile(target.path, nativeHandle, context.workspaceId)
           return formatSingleReadResult(path, result, options, maxSize)
         }
       } catch (fallbackError) {
@@ -263,7 +279,10 @@ async function executeBatchRead(
   const getNativeFallbackHandle = async (): Promise<FileSystemDirectoryHandle | null> => {
     if (nativeFallbackHandle !== undefined) return nativeFallbackHandle
     try {
-      nativeFallbackHandle = await resolveNativeDirectoryHandle(context.directoryHandle)
+      nativeFallbackHandle = await resolveNativeDirectoryHandle(
+        context.directoryHandle,
+        context.workspaceId
+      )
     } catch {
       nativeFallbackHandle = null
     }
@@ -312,7 +331,7 @@ async function executeBatchRead(
 
       let readResult: Awaited<ReturnType<ReturnType<typeof useOPFSStore.getState>['readFile']>>
       try {
-        readResult = await readFile(target.path, context.directoryHandle)
+        readResult = await readFile(target.path, context.directoryHandle, context.workspaceId)
       } catch (error) {
         if (!isOPFSWorkspaceMiss(error)) {
           throw error
@@ -321,7 +340,7 @@ async function executeBatchRead(
         if (!fallbackHandle) {
           throw error
         }
-        readResult = await readFile(target.path, fallbackHandle)
+        readResult = await readFile(target.path, fallbackHandle, context.workspaceId)
       }
       const { content, metadata } = readResult
 
@@ -499,7 +518,7 @@ async function executeSingleWrite(
 
     if (target.kind === 'workspace') {
       isNew = !hasCachedFile(target.path)
-      await writeFile(target.path, content, context.directoryHandle)
+      await writeFile(target.path, content, context.directoryHandle, context.workspaceId)
       pendingCount = getPendingChanges().length
       status = 'pending'
       message = isNew
@@ -555,7 +574,7 @@ async function executeBatchWrite(
 
       if (target.kind === 'workspace') {
         isNew = !hasCachedFile(target.path)
-        await writeFile(target.path, file.content, context.directoryHandle)
+        await writeFile(target.path, file.content, context.directoryHandle, context.workspaceId)
         hasWorkspaceWrites = true
       } else {
         await ensureAgentExistsForWrite(target, ensuredAgentIds)

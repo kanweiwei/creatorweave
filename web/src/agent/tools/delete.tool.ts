@@ -109,7 +109,7 @@ export const deleteExecutor: ToolExecutor = async (args, context) => {
     try {
       const resolved = await resolveVfsTarget(target, context, 'delete')
       if (resolved.kind === 'workspace') {
-        await deleteFile(resolved.path, context.directoryHandle)
+        await deleteFile(resolved.path, context.directoryHandle, context.workspaceId)
       } else {
         if (isProtectedAgentCoreFile(resolved.path)) {
           throw new Error(`Protected agent file cannot be deleted: ${resolved.path}`)

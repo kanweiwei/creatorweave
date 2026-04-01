@@ -3,12 +3,17 @@ import type { ToolContext } from '../tool-types'
 import { deleteExecutor } from '../delete.tool'
 
 const deleteFileMock = vi.fn<
-  (path: string, directoryHandle: FileSystemDirectoryHandle | null) => Promise<void>
+  (
+    path: string,
+    directoryHandle: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
+  ) => Promise<void>
 >()
 const readFileMock = vi.fn<
   (
     path: string,
-    directoryHandle: FileSystemDirectoryHandle | null
+    directoryHandle: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
   ) => Promise<{ content: string | ArrayBuffer; metadata: { size: number; contentType: string } }>
 >()
 const getPendingChangesMock = vi.fn<() => Array<{ id: string }>>()
@@ -61,7 +66,7 @@ describe('delete tool', () => {
 
     expect(parsed.success).toBe(true)
     expect(parsed.deleted).toEqual(['src/a.ts'])
-    expect(deleteFileMock).toHaveBeenCalledWith('src/a.ts', null)
+    expect(deleteFileMock).toHaveBeenCalledWith('src/a.ts', null, undefined)
   })
 
   it('supports dry_run without mutating state', async () => {
@@ -91,7 +96,7 @@ describe('delete tool', () => {
     expect(parsed.pendingCount).toBe(2)
 
     expect(deleteFileMock).toHaveBeenCalledTimes(1)
-    expect(deleteFileMock).toHaveBeenCalledWith('src/a.ts', mockDirectoryHandle)
+    expect(deleteFileMock).toHaveBeenCalledWith('src/a.ts', mockDirectoryHandle, undefined)
     expect(broadcastFileChangeMock).toHaveBeenCalledWith('src/a.ts', 'delete', 'Deleted: src/a.ts')
   })
 

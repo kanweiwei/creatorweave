@@ -5,7 +5,8 @@ import { readExecutor } from '../io.tool'
 const readFileMock = vi.fn<
   (
     path: string,
-    directoryHandle?: FileSystemDirectoryHandle | null
+    directoryHandle?: FileSystemDirectoryHandle | null,
+    workspaceId?: string | null
   ) => Promise<{ content: string | ArrayBuffer; metadata: { size: number; contentType: string } }>
 >()
 const getNativeDirectoryHandleMock = vi.fn<() => Promise<FileSystemDirectoryHandle | null>>()
@@ -121,8 +122,18 @@ describe('io read tool', () => {
     const result = await readExecutor({ path: 'src/components/agent/ConversationView.tsx' }, { directoryHandle: null })
     expect(result).toBe('export const ConversationView = () => null')
     expect(getNativeDirectoryHandleMock).toHaveBeenCalledOnce()
-    expect(readFileMock).toHaveBeenNthCalledWith(1, 'src/components/agent/ConversationView.tsx', null)
-    expect(readFileMock).toHaveBeenNthCalledWith(2, 'src/components/agent/ConversationView.tsx', nativeHandle)
+    expect(readFileMock).toHaveBeenNthCalledWith(
+      1,
+      'src/components/agent/ConversationView.tsx',
+      null,
+      undefined
+    )
+    expect(readFileMock).toHaveBeenNthCalledWith(
+      2,
+      'src/components/agent/ConversationView.tsx',
+      nativeHandle,
+      undefined
+    )
   })
 
   it('does not fail entire batch when resolving native workspace handle throws', async () => {
@@ -142,6 +153,6 @@ describe('io read tool', () => {
     expect(parsed.results[0]?.path).toBe('a.txt')
     expect(parsed.results[0]?.content).toBe('line1\nline2')
     expect(readFileMock).toHaveBeenCalledOnce()
-    expect(readFileMock).toHaveBeenCalledWith('a.txt', null)
+    expect(readFileMock).toHaveBeenCalledWith('a.txt', null, undefined)
   })
 })

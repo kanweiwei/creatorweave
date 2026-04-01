@@ -9,6 +9,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext } from './tool-types'
+import { getActiveConversation } from '@/store/conversation-context.store'
 import {
   parseCSV,
   parseJSON,
@@ -19,6 +20,31 @@ import {
   type ParsedData,
   type DataStats,
 } from '@/utils/data-parsing'
+
+/**
+ * Resolve native directory handle from context or workspaceId
+ */
+async function resolveNativeDirectoryHandle(
+  directoryHandle: FileSystemDirectoryHandle | null | undefined,
+  workspaceId?: string | null
+): Promise<FileSystemDirectoryHandle | null> {
+  if (directoryHandle) return directoryHandle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
+  const active = await getActiveConversation()
+  if (!active) return null
+  return await active.conversation.getNativeDirectoryHandle()
+}
 
 //=============================================================================
 // analyze_data Tool
@@ -55,7 +81,8 @@ export const analyzeDataExecutor: ToolExecutor = async (
   const path = args.path as string
   const fileType = args.file_type as 'csv' | 'json'
 
-  if (!context.directoryHandle) {
+  const directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+  if (!directoryHandle) {
     return JSON.stringify({ error: 'No directory selected. Please select a folder first.' })
   }
 
@@ -63,7 +90,7 @@ export const analyzeDataExecutor: ToolExecutor = async (
     // Read file content
     let fileContent: string
     try {
-      const fileHandle = await getFileHandle(context.directoryHandle, path)
+      const fileHandle = await getFileHandle(directoryHandle, path)
       const file = await fileHandle.getFile()
       fileContent = await file.text()
     } catch (error) {
@@ -220,7 +247,8 @@ export const generateChartExecutor: ToolExecutor = async (
   const xAxis = x_axis
   const yAxis = y_axis
 
-  if (!context.directoryHandle) {
+  const directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+  if (!directoryHandle) {
     return JSON.stringify({ error: 'No directory selected. Please select a folder first.' })
   }
 
@@ -228,7 +256,7 @@ export const generateChartExecutor: ToolExecutor = async (
     // Read file content
     let fileContent: string
     try {
-      const fileHandle = await getFileHandle(context.directoryHandle, filePath)
+      const fileHandle = await getFileHandle(directoryHandle, filePath)
       const file = await fileHandle.getFile()
       fileContent = await file.text()
     } catch (error) {
@@ -389,7 +417,8 @@ export const filterDataExecutor: ToolExecutor = async (
   const fileType = file_type
   const exportFormat = (export_format ?? 'json') as 'json' | 'csv'
 
-  if (!context.directoryHandle) {
+  const directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+  if (!directoryHandle) {
     return JSON.stringify({ error: 'No directory selected. Please select a folder first.' })
   }
 
@@ -397,7 +426,7 @@ export const filterDataExecutor: ToolExecutor = async (
     // Read file content
     let fileContent: string
     try {
-      const fileHandle = await getFileHandle(context.directoryHandle, filePath)
+      const fileHandle = await getFileHandle(directoryHandle, filePath)
       const file = await fileHandle.getFile()
       fileContent = await file.text()
     } catch (error) {
@@ -504,7 +533,8 @@ export const aggregateDataExecutor: ToolExecutor = async (
   const fileType = file_type
   const groupBy = group_by
 
-  if (!context.directoryHandle) {
+  const directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+  if (!directoryHandle) {
     return JSON.stringify({ error: 'No directory selected. Please select a folder first.' })
   }
 
@@ -512,7 +542,7 @@ export const aggregateDataExecutor: ToolExecutor = async (
     // Read file content
     let fileContent: string
     try {
-      const fileHandle = await getFileHandle(context.directoryHandle, filePath)
+      const fileHandle = await getFileHandle(directoryHandle, filePath)
       const file = await fileHandle.getFile()
       fileContent = await file.text()
     } catch (error) {

@@ -241,6 +241,7 @@ export const runWorkflowExecutor: ToolExecutor = async (args, context) => {
       buildEnhancedWorkflowNodePrompt(basePrompt, userMessage, {
         directoryHandle: context.directoryHandle ?? null,
         currentAgentId: context.currentAgentId ?? null,
+        workspaceId: context.workspaceId ?? null,
       }),
     onNodeStart: (nodeId, kind) => {
       context.workflowProgress?.onNodeStart?.({ nodeId, kind })

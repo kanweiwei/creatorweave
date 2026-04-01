@@ -1412,6 +1412,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           contextManager,
           toolContext: {
             directoryHandle,
+            workspaceId: conversationId,
             projectId: activeProjectId,
             currentAgentId: activeAgentId,
             workflowProgress: workflowProgressHooks,

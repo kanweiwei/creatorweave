@@ -123,9 +123,22 @@ export const readDirectoryExecutor: ToolExecutor = async (args, context) => {
 }
 
 async function resolveDirectoryHandleWithConversationFallback(
-  handle: FileSystemDirectoryHandle | null | undefined
+  handle: FileSystemDirectoryHandle | null | undefined,
+  workspaceId?: string | null
 ): Promise<FileSystemDirectoryHandle | null> {
   if (handle) return handle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
   try {
     const { useFolderAccessStore } = await import('@/store/folder-access.store')
     const folderHandle = useFolderAccessStore.getState().getCurrentHandle()
@@ -173,7 +186,7 @@ async function resolveDiscoveryScope(
   if (typeof rawPath === 'string' && rawPath.trim().startsWith('vfs://')) {
     const resolved = await resolveVfsTarget(rawPath.trim(), toolContext, 'list', { allowEmptyPath: true })
     if (resolved.kind === 'workspace') {
-      const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle)
+      const rootHandle = await resolveDirectoryHandleWithConversationFallback(toolContext.directoryHandle, toolContext.workspaceId)
       if (!rootHandle) {
         throw new Error('No directory selected.')
       }

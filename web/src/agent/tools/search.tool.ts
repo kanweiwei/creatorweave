@@ -2,6 +2,31 @@ import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { getActiveConversation } from '@/store/conversation-context.store'
 import { getSearchWorkerManager } from '@/workers/search-worker-manager'
 
+/**
+ * Resolve native directory handle from context or workspaceId
+ */
+async function resolveNativeDirectoryHandle(
+  directoryHandle: FileSystemDirectoryHandle | null | undefined,
+  workspaceId?: string | null
+): Promise<FileSystemDirectoryHandle | null> {
+  if (directoryHandle) return directoryHandle
+  if (workspaceId) {
+    try {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (workspace) {
+        return await workspace.getNativeDirectoryHandle()
+      }
+    } catch {
+      // fallback below
+    }
+  }
+  const active = await getActiveConversation()
+  if (!active) return null
+  return await active.conversation.getNativeDirectoryHandle()
+}
+
 function looksRegexLikeQuery(query: string): boolean {
   // Guard against common LLM misuse where regex operators are passed while regex=false.
   return query.includes('|') || query.includes('.*')
@@ -121,11 +146,7 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
 
   // OPFS-only fallback: search in active workspace files snapshot.
   if (!directoryHandle) {
-    const active = await getActiveConversation()
-    if (!active) {
-      return JSON.stringify({ error: 'No active workspace' })
-    }
-    directoryHandle = await active.conversation.getFilesDir()
+    directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
   }
   if (!directoryHandle) {
     return JSON.stringify({ error: 'No active workspace' })

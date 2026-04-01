@@ -22,6 +22,8 @@ export interface NodeEnhancementOptions {
   directoryHandle?: FileSystemDirectoryHandle | null
   /** Agent ID for loading agent personality */
   currentAgentId?: string | null
+  /** Workspace ID for multi-workspace routing */
+  workspaceId?: string | null
   /** Session ID for memory tracking */
   sessionId?: string
 }

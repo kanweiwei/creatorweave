@@ -119,6 +119,7 @@ async function executeSingleEdit(
   const { oldText, newText, path } = opts
   const toolContext = context as {
     directoryHandle?: FileSystemDirectoryHandle
+    workspaceId?: string | null
     projectId?: string | null
     currentAgentId?: string | null
   }
@@ -127,6 +128,7 @@ async function executeSingleEdit(
     const { readFile, writeFile, getPendingChanges } = useOPFSStore.getState()
     const vfsContext = {
       directoryHandle: toolContext.directoryHandle ?? null,
+      workspaceId: toolContext.workspaceId ?? null,
       projectId: toolContext.projectId ?? null,
       currentAgentId: toolContext.currentAgentId ?? null,
     }
@@ -134,7 +136,11 @@ async function executeSingleEdit(
     let fileContent: string
 
     if (target.kind === 'workspace') {
-      const { content } = await readFile(target.path, toolContext.directoryHandle)
+      const { content } = await readFile(
+        target.path,
+        toolContext.directoryHandle,
+        toolContext.workspaceId
+      )
       if (typeof content !== 'string') {
         return JSON.stringify({
           error: `Cannot edit binary file: ${path}. Use write to replace the entire file.`,
@@ -166,7 +172,12 @@ async function executeSingleEdit(
     const newContent = fileContent.replace(oldText, newText)
 
     if (target.kind === 'workspace') {
-      await writeFile(target.path, newContent, toolContext.directoryHandle)
+      await writeFile(
+        target.path,
+        newContent,
+        toolContext.directoryHandle,
+        toolContext.workspaceId
+      )
     } else {
       await target.agentManager.writePath(target.agentId, target.path, newContent)
     }
@@ -210,7 +221,10 @@ async function executeBatchEdit(
 ): Promise<string> {
   const filePattern = args.path as string
   const { find, replace, useRegex, dryRun, maxFiles } = opts
-  const toolContext = context as { directoryHandle?: FileSystemDirectoryHandle }
+  const toolContext = context as {
+    directoryHandle?: FileSystemDirectoryHandle
+    workspaceId?: string | null
+  }
 
   if (!toolContext.directoryHandle) {
     return JSON.stringify({ error: 'No directory selected. Please select a project folder first.' })
@@ -271,7 +285,11 @@ async function executeBatchEdit(
 
     for (const filePath of matchingFiles) {
       try {
-        const { content } = await readFile(filePath, toolContext.directoryHandle)
+        const { content } = await readFile(
+          filePath,
+          toolContext.directoryHandle,
+          toolContext.workspaceId
+        )
 
         if (typeof content !== 'string') {
           results.push({
@@ -312,7 +330,12 @@ async function executeBatchEdit(
             }
 
             if (!dryRun) {
-              await writeFile(filePath, newContent, toolContext.directoryHandle)
+              await writeFile(
+                filePath,
+                newContent,
+                toolContext.directoryHandle,
+                toolContext.workspaceId
+              )
               totalReplacements++
             }
           }
@@ -339,7 +362,12 @@ async function executeBatchEdit(
             preview = { old: find, new: replace, line: lineNum }
 
             if (!dryRun) {
-              await writeFile(filePath, newContent, toolContext.directoryHandle)
+              await writeFile(
+                filePath,
+                newContent,
+                toolContext.directoryHandle,
+                toolContext.workspaceId
+              )
               totalReplacements++
             }
           }
