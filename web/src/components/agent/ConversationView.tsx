@@ -27,6 +27,7 @@ import { createUserMessage } from '@/agent/message-types'
 import type { Message } from '@/agent/message-types'
 import type { ThinkingLevel } from '@mariozechner/pi-ai'
 import { BrandSwitch } from '@creatorweave/ui'
+import { cn } from '@/lib/utils'
 
 interface ConversationViewProps {
   /** Optional initial message to send immediately (from WelcomeScreen) */
@@ -524,17 +525,38 @@ export function ConversationView({
   const renderContextUsage = () => {
     if (!contextWindowUsage || !usageTone) return null
 
+    const percent = contextWindowUsage.usagePercent
+    const isHigh = percent >= 75
+    const isCritical = percent >= 90
+
     return (
-      <div className="mt-2 flex items-center justify-end gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-        <span className={`font-medium ${usageTone.text}`}>
-          {contextWindowUsage.usagePercent.toFixed(0)}%
+      <div className="mt-2 flex items-center gap-2.5">
+        {/* Subtle progress bar */}
+        <div className="relative h-1 w-12 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-500',
+              isCritical ? 'bg-red-500' : isHigh ? 'bg-amber-500' : 'bg-emerald-500'
+            )}
+            style={{ width: `${Math.min(percent, 100)}%` }}
+          />
+        </div>
+
+        {/* Usage percentage - color coded */}
+        <span className={cn('text-xs font-semibold tabular-nums', usageTone.text)}>
+          {percent.toFixed(0)}%
         </span>
-        <span className="opacity-40">·</span>
-        <span className="tabular-nums">{formatTokenCompact(contextWindowUsage.usedTokens)}</span>
-        <span className="opacity-40">/</span>
-        <span className="tabular-nums opacity-60">{formatTokenCompact(contextWindowUsage.maxTokens)}</span>
+
+        {/* Token count - muted */}
+        <span className="text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">
+          {formatTokenCompact(contextWindowUsage.usedTokens)}
+          <span className="mx-0.5 opacity-50">/</span>
+          {formatTokenCompact(contextWindowUsage.maxTokens)}
+        </span>
+
+        {/* Processing indicator */}
         {isProcessing && (
-          <span className="ml-1 h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-400 dark:bg-neutral-500" />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-500 dark:bg-primary-400" />
         )}
       </div>
     )
@@ -767,8 +789,10 @@ export function ConversationView({
             </div>
           </div>
 
-          {/* Compact agent selector row */}
-          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between">
+          {/* Compact toolbar row - left: selectors, right: context usage */}
+          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-2">
+            {/* Left: agent selector + thinking toggle + workflow selector */}
+            <div className="flex items-center gap-2">
             <div className="agent-dropdown-container relative">
               <button
                 type="button"
@@ -939,6 +963,7 @@ export function ConversationView({
               onRealRun={(templateId, rubricDsl) => void handleRealRunWorkflow(templateId, rubricDsl)}
               onOpenEditor={() => setWorkflowEditorOpen(true)}
             />
+            </div>
 
             {renderContextUsage()}
           </div>

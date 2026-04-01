@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { executeWorkflowRun } from '../workflow/workflow-executor'
-import type { RubricDefinition, WorkflowTemplate } from '../workflow/types'
+import type { RubricDefinition } from '../workflow/rubric'
+import type { WorkflowTemplate } from '../workflow/types'
 
 function createSimpleRubric(): RubricDefinition {
   return {
