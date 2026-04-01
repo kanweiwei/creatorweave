@@ -6,7 +6,8 @@ import { useOPFSStore } from '@/store/opfs.store'
 import { getWorkspaceManager } from '@/opfs'
 
 /**
- * Resolve native directory handle from context or workspaceId
+ * Resolve directory handle from context or workspaceId.
+ * Falls back to OPFS files/ directory when no native directory is available.
  */
 async function resolveNativeDirectoryHandle(
   directoryHandle: FileSystemDirectoryHandle | null | undefined,
@@ -19,7 +20,10 @@ async function resolveNativeDirectoryHandle(
       const manager = await getWorkspaceManager()
       const workspace = await manager.getWorkspace(workspaceId)
       if (workspace) {
-        return await workspace.getNativeDirectoryHandle()
+        const nativeHandle = await workspace.getNativeDirectoryHandle()
+        if (nativeHandle) return nativeHandle
+        // Fallback to OPFS files/ directory if no native directory
+        return await workspace.getFilesDir()
       }
     } catch {
       // fallback below
@@ -27,7 +31,23 @@ async function resolveNativeDirectoryHandle(
   }
   const active = await getActiveConversation()
   if (!active) return null
-  return await active.conversation.getNativeDirectoryHandle()
+  const nativeHandle = await active.conversation.getNativeDirectoryHandle()
+  if (nativeHandle) return nativeHandle
+  // Try to get OPFS files dir from active conversation's workspace
+  try {
+    const activeWorkspaceId = active.conversation.workspaceId
+    if (activeWorkspaceId) {
+      const { getWorkspaceManager } = await import('@/opfs')
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(activeWorkspaceId)
+      if (workspace) {
+        return await workspace.getFilesDir()
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
 }
 
 function looksRegexLikeQuery(query: string): boolean {

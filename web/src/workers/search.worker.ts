@@ -52,7 +52,7 @@ interface SearchResultPayload {
 
 interface SearchErrorPayload {
   message: string
-  code?: 'path_not_found' | 'search_worker_error'
+  code?: 'path_not_found' | 'search_worker_error' | 'file_too_large'
   requestedPath?: string
   resolvedRootName?: string
 }
@@ -143,6 +143,8 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
     const deadlineAt = start + Math.max(1000, deadlineMs)
     const normalizedPath = normalizeSubPath(path)
     let root = directoryHandle
+    let searchSingleFile: string | null = null
+
     if (normalizedPath) {
       try {
         root = await resolveSubdir(directoryHandle, normalizedPath)
@@ -156,22 +158,100 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
           })
           return
         }
-        throw error
+        if (isTypeMismatchError(error)) {
+          // Path is a file, not a directory - search in that file directly
+          searchSingleFile = normalizedPath
+        } else {
+          throw error
+        }
       }
     }
-    const matcher = buildMatcher(query, { regex, caseSensitive, wholeWord })
 
-    const stack: Array<{ dir: FileSystemDirectoryHandle; relPath: string }> = [{ dir: root, relPath: '' }]
+    const matcher = buildMatcher(query, { regex, caseSensitive, wholeWord })
     const hits: SearchHit[] = []
     let scannedFiles = 0
     let skippedFiles = 0
     let deadlineExceeded = false
     let truncated = false
 
+    // If searching a single file, handle it separately
+    if (searchSingleFile) {
+      scannedFiles = 1
+      // Check for overlay first
+      const overlay = pendingOverlays?.[searchSingleFile]
+      if (overlay?.deleted) {
+        sendResult({
+          results: [],
+          totalMatches: 0,
+          scannedFiles,
+          skippedFiles: 0,
+          truncated: false,
+          deadlineExceeded: false,
+        })
+        return
+      }
+
+      let text: string
+      if (overlay?.content !== undefined) {
+        text = overlay.content
+      } else {
+        // Try to read the file from disk
+        try {
+          const fileHandle = await directoryHandle.getFileHandle(searchSingleFile)
+          const file = await fileHandle.getFile()
+          if (file.size > Math.max(1, maxFileSize)) {
+            sendError({
+              code: 'file_too_large',
+              message: `File "${searchSingleFile}" exceeds maximum size of ${maxFileSize} bytes.`,
+            })
+            return
+          }
+          text = await file.text()
+        } catch (err) {
+          sendError({
+            code: 'path_not_found',
+            message: `Could not read file "${searchSingleFile}".`,
+            requestedPath: searchSingleFile,
+          })
+          return
+        }
+      }
+
+      if (isProbablyBinary(text)) {
+        sendResult({
+          results: [],
+          totalMatches: 0,
+          scannedFiles,
+          skippedFiles: 1,
+          truncated: false,
+          deadlineExceeded: false,
+        })
+        return
+      }
+
+      const fileHits = findMatchesInText(searchSingleFile, text, matcher, contextLines)
+      hits.push(...fileHits)
+      if (hits.length >= maxResults) {
+        truncated = true
+      }
+
+      sendResult({
+        results: hits,
+        totalMatches: hits.length,
+        scannedFiles,
+        skippedFiles,
+        truncated,
+        deadlineExceeded,
+      })
+      return
+    }
+
     // Build a set of disk-seen paths to identify new files (pending create, not on disk)
     const diskSeenPaths = new Set<string>()
     // Collect overlay paths that are within the search sub-path
     const relevantOverlayPaths: string[] = []
+
+    const dirStack: Array<{ dir: FileSystemDirectoryHandle; relPath: string }> = [{ dir: root, relPath: '' }]
 
     if (pendingOverlays && Object.keys(pendingOverlays).length > 0) {
       for (const overlayPath of Object.keys(pendingOverlays)) {
@@ -183,14 +263,14 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
       }
     }
 
-    while (stack.length > 0) {
+    while (dirStack.length > 0) {
       if (signal.aborted) break
       if (Date.now() > deadlineAt) {
         deadlineExceeded = true
         break
       }
 
-      const current = stack.pop()!
+      const current = dirStack.pop()!
       let entries: FileSystemHandle[] = []
       try {
         for await (const entry of current.dir.values()) {
@@ -214,7 +294,7 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
 
         if (entry.kind === 'directory') {
           if (shouldSkipDir(entry.name, includeIgnored, excludeDirs)) continue
-          stack.push({ dir: entry as FileSystemDirectoryHandle, relPath: rel })
+          dirStack.push({ dir: entry as FileSystemDirectoryHandle, relPath: rel })
           continue
         }
 
@@ -365,6 +445,10 @@ function isNotFoundError(error: unknown): boolean {
     error instanceof DOMException &&
     (error.name === 'NotFoundError' || error.name === 'NotFound')
   )
+}
+
+function isTypeMismatchError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'TypeMismatchError'
 }
 
 function shouldSkipDir(name: string, includeIgnored: boolean, excludeDirs: string[]): boolean {

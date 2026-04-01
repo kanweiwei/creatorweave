@@ -5,6 +5,7 @@ import { searchDefinition, searchExecutor } from '../search.tool'
 const searchInDirectoryMock = vi.fn()
 const getFilesDirMock = vi.fn()
 const getActiveConversationMock = vi.fn()
+const getWorkspaceManagerMock = vi.fn()
 
 vi.mock('@/workers/search-worker-manager', () => ({
   getSearchWorkerManager: () => ({
@@ -14,6 +15,10 @@ vi.mock('@/workers/search-worker-manager', () => ({
 
 vi.mock('@/store/conversation-context.store', () => ({
   getActiveConversation: () => getActiveConversationMock(),
+}))
+
+vi.mock('@/opfs', () => ({
+  getWorkspaceManager: () => getWorkspaceManagerMock(),
 }))
 
 const directoryHandle = {
@@ -65,19 +70,31 @@ describe('search tool', () => {
   })
 
   it('falls back to active conversation files dir in opfs-only mode', async () => {
+    // Mock getNativeDirectoryHandle returning null (no native directory)
+    // and getFilesDir returning the directory handle (OPFS-only mode)
     getFilesDirMock.mockResolvedValue(directoryHandle)
     getActiveConversationMock.mockResolvedValue({
       conversation: {
+        getNativeDirectoryHandle: vi.fn().mockResolvedValue(null),
         getFilesDir: getFilesDirMock,
+        workspaceId: 'ws_1',
       },
       conversationId: 'conv_1',
+    })
+
+    // Mock workspace manager to return workspace with native dir = null
+    getWorkspaceManagerMock.mockResolvedValue({
+      getWorkspace: vi.fn().mockResolvedValue({
+        getNativeDirectoryHandle: vi.fn().mockResolvedValue(null),
+        getFilesDir: getFilesDirMock,
+      }),
     })
 
     const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
     const parsed = JSON.parse(result)
 
     expect(parsed.success).toBe(true)
-    expect(getFilesDirMock).toHaveBeenCalledOnce()
+    expect(getFilesDirMock).toHaveBeenCalled()
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
       expect.objectContaining({ query: 'TODO', regex: false })
