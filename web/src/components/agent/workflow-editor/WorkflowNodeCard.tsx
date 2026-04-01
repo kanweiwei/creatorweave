@@ -12,18 +12,20 @@ import {
   Wrench,
   Layers,
   Flag,
+  GitBranch,
 } from 'lucide-react'
 import { cn } from '@creatorweave/ui'
 import { nodeKindConfig } from './constants'
 import type { WorkflowNodeData } from './workflow-to-flow'
 import type { WorkflowNodeKind } from '@/agent/workflow/types'
 
-const kindIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+const kindIcons: Record<WorkflowNodeKind, React.ComponentType<{ className?: string }>> = {
   plan: Lightbulb,
   produce: PenTool,
   review: ShieldCheck,
   repair: Wrench,
   assemble: Layers,
+  condition: GitBranch,
 }
 
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
