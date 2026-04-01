@@ -206,6 +206,9 @@ export class AgentLoop {
     this.toolRegistry = config.toolRegistry
     this.contextManager = config.contextManager
     this.toolContext = config.toolContext
+    if (!this.toolContext.readFileState) {
+      this.toolContext.readFileState = new Map()
+    }
     this.maxIterations = config.maxIterations || MAX_ITERATIONS
     this.baseSystemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT
     this.sessionId = config.sessionId

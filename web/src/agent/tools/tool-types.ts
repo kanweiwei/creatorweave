@@ -36,6 +36,12 @@ export interface WorkflowProgressHooks {
   }) => void
 }
 
+export interface ReadFileStateEntry {
+  content: string
+  timestamp: number
+  isPartial: boolean
+}
+
 /** Tool definition in OpenAI function calling format */
 export interface ToolDefinition {
   type: 'function'
@@ -67,6 +73,8 @@ export interface ToolContext {
   workflowProgress?: WorkflowProgressHooks
   /** Agent execution mode: 'plan' (read-only) or 'act' (full access) */
   agentMode?: 'plan' | 'act'
+  /** Per-run cache of file content that was read by tools, keyed by normalized target path */
+  readFileState?: Map<string, ReadFileStateEntry>
 }
 
 /** Tool executor function signature */

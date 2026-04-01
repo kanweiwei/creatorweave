@@ -14,6 +14,7 @@ import { useOPFSStore } from '@/store/opfs.store'
 import { useRemoteStore } from '@/store/remote.store'
 import { getActiveConversation } from '@/store/conversation-context.store'
 import { resolveVfsTarget, type AgentTarget } from './vfs-resolver'
+import { ensureReadFileState, getReadStateKey } from './read-state'
 
 //=============================================================================
 // Read Tool
@@ -160,66 +161,6 @@ async function resolveNativeDirectoryHandle(
   return await active.conversation.getNativeDirectoryHandle()
 }
 
-async function formatSingleReadResult(
-  originalPath: string,
-  readResult: Awaited<ReturnType<ReturnType<typeof useOPFSStore.getState>['readFile']>>,
-  options: ReadRangeOptions,
-  maxSize?: number
-): Promise<string> {
-  const { content, metadata } = readResult
-  if (maxSize && metadata.size > maxSize) {
-    return JSON.stringify({
-      error: 'too_large',
-      path: originalPath,
-      fileSize: metadata.size,
-      maxSize,
-      message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
-    })
-  }
-
-  if (typeof content === 'string') {
-    return applyTextRange(content, options)
-  }
-
-  if (hasRangeOptions(options)) {
-    return JSON.stringify({
-      error: 'range_not_supported_for_binary',
-      path: originalPath,
-      message: 'offset/limit/start_line/line_count can only be used for text files.',
-    })
-  }
-  // Binary content - return as base64
-  const buffer = content instanceof ArrayBuffer ? content : await content.arrayBuffer()
-  const uint8Array = new Uint8Array(buffer)
-  const base64 = btoa(String.fromCharCode(...uint8Array))
-  return JSON.stringify({
-    binary: true,
-    content: base64,
-    size: metadata.size,
-    contentType: metadata.contentType,
-  })
-}
-
-function formatAgentTextReadResult(
-  originalPath: string,
-  content: string,
-  options: ReadRangeOptions,
-  maxSize?: number
-): string {
-  const size = new TextEncoder().encode(content).length
-  if (maxSize && size > maxSize) {
-    return JSON.stringify({
-      error: 'too_large',
-      path: originalPath,
-      fileSize: size,
-      maxSize,
-      message: `File size ${size} exceeds requested max_size ${maxSize}.`,
-    })
-  }
-
-  return applyTextRange(content, options)
-}
-
 async function executeSingleRead(
   path: string,
   context: ToolContext,
@@ -227,20 +168,75 @@ async function executeSingleRead(
   maxSize?: number
 ): Promise<string> {
   const { readFile } = useOPFSStore.getState()
+  const readFileState = ensureReadFileState(context)
+  const isPartialRead = hasRangeOptions(options)
 
   try {
     const target = await resolveVfsTarget(path, context, 'read')
+    const readStateKey = getReadStateKey(target)
 
     if (target.kind === 'agent') {
       const content = await target.agentManager.readPath(target.agentId, target.path)
       if (content == null) {
         return JSON.stringify({ error: `File not found: ${path}` })
       }
-      return formatAgentTextReadResult(path, content, options, maxSize)
+      const size = new TextEncoder().encode(content).length
+      if (maxSize && size > maxSize) {
+        return JSON.stringify({
+          error: 'too_large',
+          path,
+          fileSize: size,
+          maxSize,
+          message: `File size ${size} exceeds requested max_size ${maxSize}.`,
+        })
+      }
+      const rendered = applyTextRange(content, options)
+      readFileState.set(readStateKey, {
+        content: rendered,
+        timestamp: Date.now(),
+        isPartial: isPartialRead,
+      })
+      return rendered
     }
 
     const result = await readFile(target.path, context.directoryHandle, context.workspaceId)
-    return formatSingleReadResult(path, result, options, maxSize)
+    const { content, metadata } = result
+    if (maxSize && metadata.size > maxSize) {
+      return JSON.stringify({
+        error: 'too_large',
+        path,
+        fileSize: metadata.size,
+        maxSize,
+        message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
+      })
+    }
+
+    if (typeof content === 'string') {
+      const formatted = applyTextRange(content, options)
+      readFileState.set(readStateKey, {
+        content: formatted,
+        timestamp: Date.now(),
+        isPartial: isPartialRead,
+      })
+      return formatted
+    }
+
+    if (hasRangeOptions(options)) {
+      return JSON.stringify({
+        error: 'range_not_supported_for_binary',
+        path,
+        message: 'offset/limit/start_line/line_count can only be used for text files.',
+      })
+    }
+    const buffer = content instanceof ArrayBuffer ? content : await content.arrayBuffer()
+    const uint8Array = new Uint8Array(buffer)
+    const base64 = btoa(String.fromCharCode(...uint8Array))
+    return JSON.stringify({
+      binary: true,
+      content: base64,
+      size: metadata.size,
+      contentType: metadata.contentType,
+    })
   } catch (error) {
     if (isOPFSWorkspaceMiss(error)) {
       try {
@@ -248,13 +244,48 @@ async function executeSingleRead(
         if (target.kind !== 'workspace') {
           throw error
         }
+        const readStateKey = getReadStateKey(target)
         const nativeHandle = await resolveNativeDirectoryHandle(
           context.directoryHandle,
           context.workspaceId
         )
         if (nativeHandle) {
           const result = await readFile(target.path, nativeHandle, context.workspaceId)
-          return formatSingleReadResult(path, result, options, maxSize)
+          const { content, metadata } = result
+          if (maxSize && metadata.size > maxSize) {
+            return JSON.stringify({
+              error: 'too_large',
+              path,
+              fileSize: metadata.size,
+              maxSize,
+              message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
+            })
+          }
+          if (typeof content === 'string') {
+            const formatted = applyTextRange(content, options)
+            readFileState.set(readStateKey, {
+              content: formatted,
+              timestamp: Date.now(),
+              isPartial: isPartialRead,
+            })
+            return formatted
+          }
+          if (hasRangeOptions(options)) {
+            return JSON.stringify({
+              error: 'range_not_supported_for_binary',
+              path,
+              message: 'offset/limit/start_line/line_count can only be used for text files.',
+            })
+          }
+          const buffer = content instanceof ArrayBuffer ? content : await content.arrayBuffer()
+          const uint8Array = new Uint8Array(buffer)
+          const base64 = btoa(String.fromCharCode(...uint8Array))
+          return JSON.stringify({
+            binary: true,
+            content: base64,
+            size: metadata.size,
+            contentType: metadata.contentType,
+          })
         }
       } catch (fallbackError) {
         error = fallbackError
@@ -275,6 +306,7 @@ async function executeBatchRead(
   context: ToolContext
 ): Promise<string> {
   const { readFile } = useOPFSStore.getState()
+  const readFileState = ensureReadFileState(context)
   let nativeFallbackHandle: FileSystemDirectoryHandle | null | undefined
   const getNativeFallbackHandle = async (): Promise<FileSystemDirectoryHandle | null> => {
     if (nativeFallbackHandle !== undefined) return nativeFallbackHandle
@@ -316,14 +348,20 @@ async function executeBatchRead(
           continue
         }
 
+        const rendered = applyTextRange(agentContent, {
+          startLine: read.start_line,
+          lineCount: read.line_count,
+        })
         results.push({
           path: filePath,
           success: true,
-          content: applyTextRange(agentContent, {
-            startLine: read.start_line,
-            lineCount: read.line_count,
-          }),
+          content: rendered,
           metadata: { size, contentType: 'text' },
+        })
+        readFileState.set(getReadStateKey(target), {
+          content: rendered,
+          timestamp: Date.now(),
+          isPartial: read.start_line !== undefined || read.line_count !== undefined,
         })
         successCount++
         continue
@@ -387,14 +425,20 @@ async function executeBatchRead(
         continue
       }
 
+      const rendered = applyTextRange(content, {
+        startLine: read.start_line,
+        lineCount: read.line_count,
+      })
       results.push({
         path: filePath,
         success: true,
-        content: applyTextRange(content, {
-          startLine: read.start_line,
-          lineCount: read.line_count,
-        }),
+        content: rendered,
         metadata: { size: metadata.size, contentType: metadata.contentType },
+      })
+      readFileState.set(getReadStateKey(target), {
+        content: rendered,
+        timestamp: Date.now(),
+        isPartial: read.start_line !== undefined || read.line_count !== undefined,
       })
       successCount++
     } catch (error) {

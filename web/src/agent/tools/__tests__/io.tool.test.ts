@@ -40,8 +40,12 @@ describe('io read tool', () => {
       metadata: { size: 5 * 1024 * 1024, contentType: 'text' },
     })
 
-    const result = await readExecutor({ path: 'big.txt' }, context)
+    const readFileState = new Map()
+    const result = await readExecutor({ path: 'big.txt' }, { ...context, readFileState })
     expect(result).toBe(largeContent)
+    const entry = readFileState.get('workspace:big.txt')
+    expect(entry?.isPartial).toBe(false)
+    expect(entry?.content).toBe(largeContent)
   })
 
   it('rejects offset/limit for single file (breaking change)', async () => {
@@ -61,8 +65,15 @@ describe('io read tool', () => {
       metadata: { size: 24, contentType: 'text' },
     })
 
-    const result = await readExecutor({ path: 'a.txt', start_line: 2, line_count: 2 }, context)
+    const readFileState = new Map()
+    const result = await readExecutor(
+      { path: 'a.txt', start_line: 2, line_count: 2 },
+      { ...context, readFileState }
+    )
     expect(result).toBe('line2\nline3')
+    const entry = readFileState.get('workspace:a.txt')
+    expect(entry?.isPartial).toBe(true)
+    expect(entry?.content).toBe('line2\nline3')
   })
 
   it('supports advanced batch reads with per-file ranges', async () => {
