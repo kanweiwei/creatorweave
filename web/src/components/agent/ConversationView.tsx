@@ -35,6 +35,8 @@ interface ConversationViewProps {
   onInitialMessageConsumed?: () => void
 }
 
+const EMPTY_MESSAGES: Message[] = []
+
 export function ConversationView({
   initialMessage,
   onInitialMessageConsumed,
@@ -66,9 +68,53 @@ export function ConversationView({
   )
 
   const activeConversationId = useConversationStore((s) => s.activeConversationId)
-  const activeConversation = useConversationStore((s) => {
+  // Split activeConversation into stable sub-selectors to avoid re-renders from streaming updates.
+  // Fine-grained selectors for fields that change during streaming
+  // (Replaces the old single activeConversation selector to avoid re-renders from streaming updates)
+  const activeMessages = useConversationStore((s) => {
+    if (!s.activeConversationId) return EMPTY_MESSAGES
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.messages || EMPTY_MESSAGES
+  })
+  const activeStatus = useConversationStore((s) => {
+    if (!s.activeConversationId) return 'idle' as const
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.status || 'idle'
+  })
+  const activeDraftAssistant = useConversationStore((s) => {
     if (!s.activeConversationId) return null
-    return s.conversations.find((c) => c.id === s.activeConversationId) || null
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.draftAssistant || null
+  })
+  const activeStreamingState = useConversationStore((s) => {
+    if (!s.activeConversationId) return null
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    if (!conv) return null
+    return {
+      streamingContent: conv.streamingContent,
+      streamingReasoning: conv.streamingReasoning,
+      isReasoningStreaming: conv.isReasoningStreaming,
+      isContentStreaming: conv.isContentStreaming,
+      currentToolCall: conv.currentToolCall,
+      activeToolCalls: conv.activeToolCalls,
+      streamingToolArgs: conv.streamingToolArgs,
+      streamingToolArgsByCallId: conv.streamingToolArgsByCallId,
+    }
+  })
+  const activeWorkflowExecution = useConversationStore((s) => {
+    if (!s.activeConversationId) return null
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.workflowExecution || null
+  })
+  const activeError = useConversationStore((s) => {
+    if (!s.activeConversationId) return null
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.status === 'error' ? conv.error?.trim() || null : null
+  })
+  const activeContextWindowUsage = useConversationStore((s) => {
+    if (!s.activeConversationId) return null
+    const conv = s.conversations.find((c) => c.id === s.activeConversationId)
+    return conv?.contextWindowUsage || conv?.lastContextWindowUsage || null
   })
   const createNew = useConversationStore((s) => s.createNew)
   const updateMessages = useConversationStore((s) => s.updateMessages)
@@ -172,13 +218,14 @@ export function ConversationView({
   }, [isThinkingDropdownOpen])
 
   // Auto-scroll to bottom on committed message append / finalization edges.
+  const activeMessagesLength = activeMessages.length
   useEffect(() => {
-    const messageCount = activeConversation?.messages.length || 0
+    const messageCount = activeMessagesLength
     const behavior: ScrollBehavior =
       messageCount > lastRenderedMessageCountRef.current ? 'smooth' : 'auto'
     lastRenderedMessageCountRef.current = messageCount
     messagesEndRef.current?.scrollIntoView({ behavior })
-  }, [activeConversation?.messages.length, activeConversation?.status])
+  }, [activeMessagesLength, activeStatus])
 
   // Build tool results map from conversation messages
   const buildToolResultsMap = useCallback((messages: Message[]) => {
@@ -192,19 +239,18 @@ export function ConversationView({
   }, [])
 
   // Update tool results when conversation changes
+  // Use activeMessages (stable array ref) and activeDraftAssistant to avoid
+  // re-computation on every streaming delta.
   const toolResults = useMemo(() => {
-    if (activeConversation) {
-      const merged = buildToolResultsMap(activeConversation.messages)
-      const runtimeResults = activeConversation.draftAssistant?.toolResults || {}
-      for (const [toolCallId, result] of Object.entries(runtimeResults)) {
-        if (!merged.has(toolCallId)) {
-          merged.set(toolCallId, result)
-        }
+    const merged = buildToolResultsMap(activeMessages)
+    const runtimeResults = activeDraftAssistant?.toolResults || {}
+    for (const [toolCallId, result] of Object.entries(runtimeResults)) {
+      if (!merged.has(toolCallId)) {
+        merged.set(toolCallId, result)
       }
-      return merged
     }
-    return new Map<string, string>()
-  }, [activeConversation, buildToolResultsMap])
+    return merged
+  }, [activeMessages, activeDraftAssistant?.toolResults, buildToolResultsMap])
 
   // Get follow-up suggestion for current conversation
   const suggestedFollowUp = convId ? getSuggestedFollowUp(convId) : ''
@@ -347,30 +393,29 @@ export function ConversationView({
     await deleteAgent(agentId)
   }
 
-  const status = activeConversation?.status || 'idle'
+  const status = activeStatus
   const isProcessing = isRunning
-  const conversationError =
-    activeConversation?.status === 'error' ? activeConversation.error?.trim() || null : null
+  const conversationError = activeError
 
   // Build streaming state for the last message when processing (direct calculation for streaming performance)
   const streamingState =
-    !activeConversation || !isProcessing
+    !activeStreamingState || !isProcessing
       ? undefined
       : {
-          reasoning: activeConversation.isReasoningStreaming,
-          content: activeConversation.isContentStreaming,
+          reasoning: activeStreamingState.isReasoningStreaming,
+          content: activeStreamingState.isContentStreaming,
         }
 
   // When processing, we have streaming content/reasoning that should be displayed (direct calculation for streaming performance)
   const streamingContentMessage =
-    !activeConversation || !isProcessing
+    !activeStreamingState || !activeDraftAssistant || !isProcessing
       ? undefined
       : (() => {
-          const draft = activeConversation.draftAssistant
-          const reasoning = draft?.reasoning || activeConversation.streamingReasoning
-          const content = draft?.content || activeConversation.streamingContent
+          const draft = activeDraftAssistant
+          const reasoning = draft?.reasoning || activeStreamingState.streamingReasoning
+          const content = draft?.content || activeStreamingState.streamingContent
           if (!reasoning && !content) return undefined
-          const lastAssistant = [...activeConversation.messages]
+          const lastAssistant = [...activeMessages]
             .reverse()
             .find((m) => m.role === 'assistant')
           if (
@@ -384,12 +429,11 @@ export function ConversationView({
         })()
 
   const turns = useMemo(() => {
-    const messages = activeConversation?.messages || []
-    return groupMessagesIntoTurns(messages)
-  }, [activeConversation?.messages])
+    return groupMessagesIntoTurns(activeMessages)
+  }, [activeMessages])
   const lastTurn = turns[turns.length - 1]
   const workflowProgressAnchorTurnIndex = useMemo(() => {
-    if (!activeConversation?.workflowExecution) return -1
+    if (!activeWorkflowExecution) return -1
 
     // Keep workflow progress near the tail after completion.
     // This avoids the panel jumping to an older assistant turn and appearing "missing".
@@ -413,9 +457,9 @@ export function ConversationView({
       )
 
     const runtimeHasRunWorkflow =
-      (activeConversation.draftAssistant?.toolCalls || []).some(
+      (activeDraftAssistant?.toolCalls || []).some(
         (toolCall) => toolCall.function.name === 'run_workflow'
-      ) || activeConversation.currentToolCall?.function.name === 'run_workflow'
+      ) || activeStreamingState?.currentToolCall?.function.name === 'run_workflow'
 
     if (isProcessing && runtimeHasRunWorkflow) {
       const last = turns[turns.length - 1]
@@ -427,7 +471,7 @@ export function ConversationView({
       return turns.length - 1
     }
 
-    const rawMessages = activeConversation.messages || []
+    const rawMessages = activeMessages
     let lastWorkflowToolMessageIndex = -1
     for (let i = rawMessages.length - 1; i >= 0; i -= 1) {
       const message = rawMessages[i]
@@ -483,7 +527,7 @@ export function ConversationView({
     }
 
     return -1
-  }, [activeConversation, isProcessing, turns])
+  }, [activeWorkflowExecution, activeDraftAssistant, activeStreamingState, isProcessing, turns])
   // Render draft assistant loading when:
   // 1. Processing AND (no last turn OR last turn is not assistant)
   // 2. OR processing AND last turn is assistant but we're in pending/tool_calling state (meaning new loop iteration)
@@ -496,12 +540,11 @@ export function ConversationView({
   const isWaitingForModel =
     status === 'pending' ||
     (status === 'tool_calling' &&
-      !activeConversation?.currentToolCall &&
-      (activeConversation?.activeToolCalls?.length || 0) === 0)
+      !activeStreamingState?.currentToolCall &&
+      (activeStreamingState?.activeToolCalls?.length || 0) === 0)
 
   // Context window usage
-  const contextWindowUsage =
-    activeConversation?.contextWindowUsage || activeConversation?.lastContextWindowUsage || null
+  const contextWindowUsage = activeContextWindowUsage
 
   const getUsageToneClass = (usagePercent: number): { text: string; label: string } => {
     if (usagePercent >= 90) {
@@ -576,7 +619,7 @@ export function ConversationView({
       <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-neutral-950">
         {/* Messages area - allow shrink with min-h-0 so input stays visible */}
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-          {activeConversation?.messages.length === 0 && !isProcessing ? (
+          {activeMessages.length === 0 && !isProcessing ? (
             <div className="flex h-full items-center justify-center">
               <div className="mx-auto w-full max-w-2xl space-y-6 px-4">
                 <div className="flex flex-col items-center text-center">
@@ -647,34 +690,34 @@ export function ConversationView({
                       currentToolCall={
                         // Pass current tool call to the last assistant turn when in tool_calling phase
                         isProcessing && idx === turns.length - 1 && status === 'tool_calling'
-                          ? activeConversation?.currentToolCall
+                          ? activeStreamingState?.currentToolCall
                           : undefined
                       }
                       streamingToolArgs={
                         // Pass streaming tool args to the last assistant turn when in tool_calling phase
                         isProcessing && idx === turns.length - 1 && status === 'tool_calling'
-                          ? activeConversation?.streamingToolArgs
+                          ? activeStreamingState?.streamingToolArgs
                           : undefined
                       }
                       streamingToolArgsByCallId={
                         isProcessing && idx === turns.length - 1
-                          ? activeConversation?.streamingToolArgsByCallId
+                          ? activeStreamingState?.streamingToolArgsByCallId
                           : undefined
                       }
                       runtimeToolCalls={
                         isProcessing && idx === turns.length - 1
-                          ? activeConversation?.draftAssistant?.toolCalls
+                          ? activeDraftAssistant?.toolCalls
                           : undefined
                       }
                       runtimeSteps={
                         isProcessing && idx === turns.length - 1
-                          ? activeConversation?.draftAssistant?.steps
+                          ? activeDraftAssistant?.steps
                           : undefined
                       }
                       workflowProgress={
-                        activeConversation?.workflowExecution && idx === workflowProgressAnchorTurnIndex ? (
+                        activeWorkflowExecution && idx === workflowProgressAnchorTurnIndex ? (
                           <WorkflowExecutionProgress
-                            execution={activeConversation.workflowExecution}
+                            execution={activeWorkflowExecution}
                             onStop={handleCancel}
                           />
                         ) : undefined
@@ -700,15 +743,15 @@ export function ConversationView({
                     isWaiting={isWaitingForModel}
                     streamingState={streamingState}
                     streamingContent={streamingContentMessage}
-                    currentToolCall={status === 'tool_calling' ? activeConversation?.currentToolCall : undefined}
-                    streamingToolArgs={status === 'tool_calling' ? activeConversation?.streamingToolArgs : undefined}
-                    streamingToolArgsByCallId={activeConversation?.streamingToolArgsByCallId}
-                    runtimeToolCalls={activeConversation?.draftAssistant?.toolCalls}
-                    runtimeSteps={activeConversation?.draftAssistant?.steps}
+                    currentToolCall={status === 'tool_calling' ? activeStreamingState?.currentToolCall : undefined}
+                    streamingToolArgs={status === 'tool_calling' ? activeStreamingState?.streamingToolArgs : undefined}
+                    streamingToolArgsByCallId={activeStreamingState?.streamingToolArgsByCallId}
+                    runtimeToolCalls={activeDraftAssistant?.toolCalls}
+                    runtimeSteps={activeDraftAssistant?.steps}
                     workflowProgress={
-                      activeConversation?.workflowExecution && workflowProgressAnchorTurnIndex === -1 ? (
+                      activeWorkflowExecution && workflowProgressAnchorTurnIndex === -1 ? (
                         <WorkflowExecutionProgress
-                          execution={activeConversation.workflowExecution}
+                          execution={activeWorkflowExecution}
                           onStop={handleCancel}
                         />
                       ) : undefined
@@ -718,11 +761,11 @@ export function ConversationView({
               )}
 
               {/* Fallback: when no anchor turn is found and no draft assistant is shown */}
-              {activeConversation?.workflowExecution &&
+              {activeWorkflowExecution &&
                 workflowProgressAnchorTurnIndex === -1 &&
                 !shouldRenderDraftAssistant && (
                   <WorkflowExecutionProgress
-                    execution={activeConversation.workflowExecution}
+                    execution={activeWorkflowExecution}
                     onStop={handleCancel}
                   />
               )}
@@ -963,6 +1006,7 @@ export function ConversationView({
               onRealRun={(templateId, rubricDsl) => void handleRealRunWorkflow(templateId, rubricDsl)}
               onOpenEditor={() => setWorkflowEditorOpen(true)}
             />
+
             </div>
 
             {renderContextUsage()}

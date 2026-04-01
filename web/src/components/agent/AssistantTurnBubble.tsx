@@ -5,7 +5,7 @@
  * not as a separate component.
  */
 
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { Bot } from 'lucide-react'
 import type { Turn } from './group-messages'
 import type { DraftAssistantStep, Message, ToolCall, WorkflowRealRunPayload } from '@/agent/message-types'
@@ -55,7 +55,7 @@ interface AssistantTurnBubbleProps {
   workflowProgress?: ReactNode
 }
 
-export function AssistantTurnBubble({
+export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   turn,
   toolResults,
   isProcessing,
@@ -251,7 +251,7 @@ export function AssistantTurnBubble({
       </div>
     </div>
   )
-}
+})
 
 /** Renders streaming content section within the turn */
 function StreamingContentSection({
@@ -296,7 +296,7 @@ function StreamingContentSection({
 }
 
 /** Renders one assistant message step inside a turn */
-function AssistantStep({
+const AssistantStep = memo(function AssistantStep({
   message,
   toolResults,
   showDivider,
@@ -375,7 +375,7 @@ function AssistantStep({
       )}
     </>
   )
-}
+})
 
 function CompressionStatusCard({ text, streaming }: { text: string; streaming: boolean }) {
   return (
