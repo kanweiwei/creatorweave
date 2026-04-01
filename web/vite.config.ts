@@ -59,7 +59,7 @@ export default defineConfig({
         // Silent auto-update
         skipWaiting: true,
         clientsClaim: true,
-        // Precache all static assets including index.html
+        // Precache all static assets
         globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
         // SPA fallback: serve index.html for navigation requests not in precache
         navigateFallback: '/index.html',
@@ -70,6 +70,32 @@ export default defineConfig({
         // Note: runtimeCaching is compatible with COOP/COEP headers
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // HTML (including index.html) - NetworkFirst to always get fresh version
+            // This prevents stale precached HTML from referencing outdated JS hashes
+            urlPattern: /.*\.html$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24, // 1 day max
+              },
+              networkTimeoutSeconds: 3,
+            },
+          },
+          {
+            // manifest.webmanifest - NetworkFirst to avoid stale manifest
+            urlPattern: /manifest\.webmanifest(\.json)?$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'manifest-cache',
+              expiration: {
+                maxEntries: 2,
+                maxAgeSeconds: 60 * 60 * 24, // 1 day
+              },
+            },
+          },
           {
             // WASM files (SQLite WASM) - CacheFirst for offline support
             urlPattern: /^https:\/\/.*\.wasm$/,
