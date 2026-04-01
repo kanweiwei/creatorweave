@@ -1410,10 +1410,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           ? Math.max(1, Math.min(100, Math.floor(configuredMaxIterations)))
           : 20
 
+        const agentMode = useSettingsStore.getState().agentMode
+
         const agentLoop = new AgentLoop({
           provider,
           toolRegistry,
           contextManager,
+          mode: agentMode,
           toolContext: {
             directoryHandle,
             workspaceId: conversationId,
@@ -1907,6 +1910,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                 maxTokens: payload.maxTokens,
                 reserveTokens: payload.reserveTokens,
                 usagePercent: payload.usagePercent,
+                modelMaxTokens: payload.maxTokens + payload.reserveTokens,
               }
               c.lastContextWindowUsage = c.contextWindowUsage
             })

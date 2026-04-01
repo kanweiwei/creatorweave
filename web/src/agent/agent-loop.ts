@@ -44,6 +44,7 @@ import type {
 import { streamSimple as piAiStreamSimple } from '@mariozechner/pi-ai'
 import { PiAIProvider } from './llm/pi-ai-provider'
 import { useSettingsStore } from '@/store/settings.store'
+import { isToolAllowedInMode, type AgentMode } from './agent-mode'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
@@ -51,11 +52,18 @@ const DEFAULT_TOOL_TIMEOUT = 30000
 const TOOL_TIMEOUT_EXEMPTIONS = new Set<string>(['run_workflow'])
 const SUMMARY_MIN_DROPPED_GROUPS = 2
 const SUMMARY_MIN_DROPPED_CONTENT_CHARS = 800
-const SUMMARY_MIN_INTERVAL_CONVERT_CALLS = 3
+const SUMMARY_MIN_INTERVAL_CONVERT_CALLS = 8
+/** After compression, ensure context usage is at or below this ratio of the input budget.
+ *  Prevents repeated compression on successive convert calls. */
+const COMPRESSION_TARGET_RATIO = 0.7
 const CONTEXT_SUMMARY_SYSTEM_PROMPT =
   'You are compressing earlier conversation context for another model call. Keep only durable facts, decisions, constraints, file paths, tool findings, and unresolved tasks. Output plain text only.'
 const COMPRESSED_MEMORY_PREFIX = 'Compressed memory of earlier conversation:'
 type CompressionSummaryMode = 'llm' | 'fallback' | 'skip'
+type CompressionBaselineState = {
+  summary: string
+  cutoffTimestamp: number
+}
 
 export interface BeforeToolCallHookContext {
   toolName: string
@@ -140,9 +148,13 @@ export interface AgentCallbacks {
   }) => void
   /** Called before each model turn with estimated context usage */
   onContextUsageUpdate?: (payload: {
+    /** Actual prompt input tokens sent to model for this turn */
     usedTokens: number
+    /** Effective input budget E = modelMaxTokens - reserveTokens */
     maxTokens: number
+    /** Reserved output tokens */
     reserveTokens: number
+    /** usagePercent = usedTokens / maxTokens * 100 */
     usagePercent: number
   }) => void
 }
@@ -168,6 +180,8 @@ export interface AgentLoopConfig {
   afterToolCall?: (
     context: AfterToolCallHookContext
   ) => Promise<AfterToolCallHookResult | undefined> | AfterToolCallHookResult | undefined
+  /** Agent execution mode: 'plan' (read-only) or 'act' (full access). Defaults to 'act'. */
+  mode?: AgentMode
 }
 
 export class AgentLoop {
@@ -185,6 +199,7 @@ export class AgentLoop {
   private afterToolCall?: AgentLoopConfig['afterToolCall']
   private convertCallCount = 0
   private lastSummaryConvertCall = Number.NEGATIVE_INFINITY
+  private mode: AgentMode
 
   constructor(config: AgentLoopConfig) {
     this.provider = config.provider
@@ -198,7 +213,18 @@ export class AgentLoop {
     this.toolExecutionTimeout = config.toolExecutionTimeout || DEFAULT_TOOL_TIMEOUT
     this.beforeToolCall = config.beforeToolCall
     this.afterToolCall = config.afterToolCall
+    this.mode = config.mode || 'act'
     this.contextManager.setSystemPrompt(this.baseSystemPrompt)
+  }
+
+  /** Get current agent mode */
+  getMode(): AgentMode {
+    return this.mode
+  }
+
+  /** Set agent mode */
+  setMode(mode: AgentMode): void {
+    this.mode = mode
   }
 
   /** Update system prompt (e.g. when skills are injected) */
@@ -213,8 +239,8 @@ export class AgentLoop {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     const userMessage = lastUserMsg?.content || ''
 
-    // Start with base system prompt, enhanced with scenario detection
-    let enhancedPrompt = buildEnhancedSystemPrompt(this.baseSystemPrompt, userMessage)
+    // Start with base system prompt, enhanced with scenario detection and agent mode
+    let enhancedPrompt = buildEnhancedSystemPrompt(this.baseSystemPrompt, userMessage, this.mode)
 
     // Phase 2: Inject intelligent enhancements (tool recs, project fingerprint, memory)
     try {
@@ -444,6 +470,43 @@ export class AgentLoop {
       return [messages[0], summaryMessage, ...messages.slice(1)]
     }
     return [summaryMessage, ...messages]
+  }
+
+  /**
+   * Find cutoff timestamp for rebuilding context after compression.
+   * We keep messages from the latest prompt boundary (user/tool) onward.
+   */
+  private getCompressionCutoffTimestamp(messages: Message[]): number | null {
+    const boundary = [...messages].reverse().find((msg) => msg.role === 'user' || msg.role === 'tool')
+    return typeof boundary?.timestamp === 'number' ? boundary.timestamp : null
+  }
+
+  /**
+   * Rebuild model input context from compression baseline:
+   * [summary] + [messages at/after cutoff].
+   */
+  private applyCompressionBaseline(
+    messages: Message[],
+    baseline: CompressionBaselineState
+  ): Message[] {
+    const retained = messages.filter(
+      (msg) => typeof msg.timestamp === 'number' && msg.timestamp >= baseline.cutoffTimestamp
+    )
+
+    if (retained.length === 0) {
+      return messages
+    }
+
+    const summaryMessage = createAssistantMessage(
+      `${COMPRESSED_MEMORY_PREFIX}\n${baseline.summary}`,
+      undefined,
+      undefined,
+      null,
+      'context_summary'
+    )
+    // Ensure summary stays before retained prompt boundary for stable ordering.
+    summaryMessage.timestamp = Math.max(0, baseline.cutoffTimestamp - 1)
+    return [summaryMessage, ...retained]
   }
 
   private shouldCallLLMSummary(droppedGroups: number, droppedContent: string): boolean {
@@ -1014,6 +1077,7 @@ export class AgentLoop {
     let assistantMessageCount = 0
     let reachedMaxIterations = false
     let assistantMessageStarted = false
+    let compressionBaseline: CompressionBaselineState | null = null
     const emittedToolCallSignatures = new Map<string, string>()
     const toolCallIdByIndex = new Map<number, string>()
     const toolCallArgsById = new Map<string, Record<string, unknown>>()
@@ -1021,7 +1085,7 @@ export class AgentLoop {
     const model = this.provider.getModel()
     const apiKey = this.provider.getApiKey()
 
-    const agentTools: AgentTool[] = this.toolRegistry.getToolDefinitions().map((toolDef) => ({
+    const agentTools: AgentTool[] = this.toolRegistry.getToolDefinitionsForMode(this.mode).map((toolDef) => ({
       name: toolDef.function.name,
       label: toolDef.function.name,
       description: toolDef.function.description || '',
@@ -1038,6 +1102,14 @@ export class AgentLoop {
         }
 
         try {
+          // Mode-based tool access control
+          if (!isToolAllowedInMode(toolDef.function.name, this.mode)) {
+            throw new Error(
+              `Tool "${toolDef.function.name}" is not available in ${this.mode} mode. ` +
+              `This tool requires write access. Switch to Act mode to use it.`
+            )
+          }
+
           if (this.beforeToolCall) {
             const before = await this.beforeToolCall({
               toolName: toolDef.function.name,
@@ -1186,27 +1258,59 @@ export class AgentLoop {
         reasoning,
         convertToLlm: async (agentMessages) => {
           this.convertCallCount++
-          const internalMessages = agentMessages
+          const internalMessagesRaw = agentMessages
             .map((m) => this.piToInternalMessage(m))
             .filter((m): m is Message => m !== null)
+          const internalMessages = compressionBaseline
+            ? this.applyCompressionBaseline(internalMessagesRaw, compressionBaseline)
+            : internalMessagesRaw
+          if (compressionBaseline) {
+            console.info('[AgentLoop] Using compression baseline', {
+              convertCallCount: this.convertCallCount,
+              cutoffTimestamp: compressionBaseline.cutoffTimestamp,
+              summaryChars: compressionBaseline.summary.length,
+              rawMessageCount: internalMessagesRaw.length,
+              effectiveMessageCount: internalMessages.length,
+            })
+          }
+          const contextConfig = this.contextManager.getConfig()
+          const maxContextTokens =
+            contextConfig.maxContextTokens || this.provider.maxContextTokens || 128000
+          const reserveTokens = contextConfig.reserveTokens ?? 0
+          const inputBudget = Math.max(1, maxContextTokens - reserveTokens)
+          const chatMessages = messagesToChatMessages(internalMessages)
+          const preTrimTokens = this.provider.estimateTokens(chatMessages)
           const summaryTokenBudget = Math.min(
             1200,
-            Math.max(256, Math.floor(this.contextManager.getConfig().maxContextTokens * 0.01))
+            Math.max(256, Math.floor(maxContextTokens * 0.01))
           )
-          const trimmedResult = this.contextManager.trimMessages(
-            messagesToChatMessages(internalMessages),
-            {
-              createSummary: true,
-              maxSummaryTokens: summaryTokenBudget,
-              summaryStrategy: 'external',
-            }
-          )
+          const trimmedResult = this.contextManager.trimMessages(chatMessages, {
+            createSummary: true,
+            maxSummaryTokens: summaryTokenBudget,
+            summaryStrategy: 'external',
+          })
           let trimmed = trimmedResult.messages
           if (trimmedResult.droppedContent) {
             const droppedContent = trimmedResult.droppedContent
             const droppedGroups = trimmedResult.droppedGroups
             const droppedContentChars = droppedContent.length
-            if (this.shouldCallLLMSummary(droppedGroups, droppedContent)) {
+            const preTrimUsagePercent = Math.max(0, Math.min(100, (preTrimTokens / inputBudget) * 100))
+            const shouldSummarize = this.shouldCallLLMSummary(droppedGroups, droppedContent)
+            console.info('[AgentLoop] Context compression triggered', {
+              convertCallCount: this.convertCallCount,
+              droppedGroups,
+              droppedContentChars,
+              shouldSummarize,
+              preTrimTokens,
+              inputBudget,
+              reserveTokens,
+              modelMaxTokens: maxContextTokens,
+              preTrimUsagePercent: Number(preTrimUsagePercent.toFixed(2)),
+              triggerThresholdPercent: 85,
+              targetPercent: COMPRESSION_TARGET_RATIO * 100,
+            })
+
+            if (shouldSummarize) {
               callbacks?.onContextCompressionStart?.({ droppedGroups, droppedContentChars })
               const startedAt = Date.now()
               const { summary, mode } = await this.generateContextSummaryWithLLM(
@@ -1216,10 +1320,40 @@ export class AgentLoop {
               const latencyMs = Date.now() - startedAt
               if (summary) {
                 this.lastSummaryConvertCall = this.convertCallCount
+                const cutoffTimestamp = this.getCompressionCutoffTimestamp(internalMessagesRaw)
+                if (typeof cutoffTimestamp === 'number') {
+                  compressionBaseline = { summary, cutoffTimestamp }
+                }
                 trimmed = this.injectSummaryMessage(trimmed, summary)
-                // Final safety pass: summary injection must still fit the context budget.
+                // First safety pass: summary injection must still fit the context budget.
                 trimmed = this.contextManager.trimMessages(trimmed, { createSummary: false }).messages
+                // Headroom enforcement: ensure post-compression usage is below the target ratio
+                // so that we don't immediately re-trigger compression on the next few turns.
+                const cfg = this.contextManager.getConfig()
+                const budget = cfg.maxContextTokens - (cfg.reserveTokens ?? 0)
+                const targetTokens = Math.floor(budget * COMPRESSION_TARGET_RATIO)
+                const postTrimTokens = this.provider.estimateTokens(trimmed)
+                if (postTrimTokens > targetTokens) {
+                  trimmed = this.contextManager.trimMessagesToTarget(trimmed, targetTokens)
+                }
               }
+              const postCompressionTokens = this.provider.estimateTokens(trimmed)
+              const postCompressionUsagePercent = Math.max(
+                0,
+                Math.min(100, (postCompressionTokens / inputBudget) * 100)
+              )
+              console.info('[AgentLoop] Context compression complete', {
+                convertCallCount: this.convertCallCount,
+                mode,
+                droppedGroups,
+                droppedContentChars,
+                summaryChars: summary?.length || 0,
+                compressionBaselineCutoff: compressionBaseline?.cutoffTimestamp ?? null,
+                postCompressionTokens,
+                inputBudget,
+                postCompressionUsagePercent: Number(postCompressionUsagePercent.toFixed(2)),
+                targetPercent: COMPRESSION_TARGET_RATIO * 100,
+              })
               callbacks?.onContextCompressionComplete?.({
                 mode,
                 summary,
@@ -1237,13 +1371,24 @@ export class AgentLoop {
                 summaryChars: 0,
                 latencyMs: 0,
               })
+              const postCompressionTokens = this.provider.estimateTokens(trimmed)
+              const postCompressionUsagePercent = Math.max(
+                0,
+                Math.min(100, (postCompressionTokens / inputBudget) * 100)
+              )
+              console.info('[AgentLoop] Context compression complete', {
+                convertCallCount: this.convertCallCount,
+                mode: 'skip',
+                droppedGroups,
+                droppedContentChars,
+                summaryChars: 0,
+                postCompressionTokens,
+                inputBudget,
+                postCompressionUsagePercent: Number(postCompressionUsagePercent.toFixed(2)),
+                targetPercent: COMPRESSION_TARGET_RATIO * 100,
+              })
             }
           }
-          const contextConfig = this.contextManager.getConfig()
-          const maxContextTokens =
-            contextConfig.maxContextTokens || this.provider.maxContextTokens || 128000
-          const reserveTokens = contextConfig.reserveTokens ?? 0
-          const inputBudget = Math.max(1, maxContextTokens - reserveTokens)
 
           // If the latest tool result can't survive compression, fail explicitly
           // instead of silently hiding it from the model.
@@ -1265,10 +1410,13 @@ export class AgentLoop {
               totalInputTokens: usedTokens,
             })
           }
-          const usagePercent = Math.max(0, Math.min(100, (usedTokens / Math.max(1, maxContextTokens)) * 100))
+          // Use the same denominator as ContextManager (input budget, not raw max)
+          // so the reported percentage aligns with compression trigger thresholds.
+          const usagePercent = Math.max(0, Math.min(100, (usedTokens / Math.max(1, inputBudget)) * 100))
           callbacks?.onContextUsageUpdate?.({
             usedTokens,
-            maxTokens: maxContextTokens,
+            // Report the effective input budget (M - R), not raw model context limit.
+            maxTokens: inputBudget,
             reserveTokens,
             usagePercent,
           })

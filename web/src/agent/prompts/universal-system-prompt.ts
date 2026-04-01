@@ -326,7 +326,11 @@ export function getToolDiscoveryMessage(userMessage: string): string | null {
 /**
  * Build enhanced system prompt based on user message
  */
-export function buildEnhancedSystemPrompt(basePrompt: string, userMessage: string): string {
+export function buildEnhancedSystemPrompt(
+  basePrompt: string,
+  userMessage: string,
+  agentMode?: 'plan' | 'act'
+): string {
   let enhanced = basePrompt
 
   // Add scenario-specific enhancement
@@ -335,5 +339,70 @@ export function buildEnhancedSystemPrompt(basePrompt: string, userMessage: strin
     enhanced += scenarioEnhancement
   }
 
+  // Add agent mode-specific enhancement
+  if (agentMode) {
+    enhanced += getAgentModeEnhancement(agentMode)
+  }
+
   return enhanced
+}
+
+/**
+ * Get system prompt enhancement for agent mode
+ */
+export function getAgentModeEnhancement(mode: 'plan' | 'act'): string {
+  if (mode === 'plan') {
+    return `
+
+## Agent Mode: Plan (Read-Only)
+
+You are currently in **Plan Mode** - a read-only mode designed for analysis, exploration, and planning.
+
+**Available Operations:**
+- Read files, search content, explore directory structures
+- Analyze code, data, and documents
+- Provide explanations, suggestions, and recommendations
+- Plan approaches and outline implementation steps
+
+**NOT Available in Plan Mode:**
+- Creating, modifying, or deleting files
+- Making changes to the codebase or documents
+- Running workflows that write to disk
+
+**When to Use Plan Mode:**
+- Exploring unfamiliar codebases
+- Analyzing problems before making changes
+- Planning implementation approaches
+- Learning about project structure
+
+**Behavior:**
+- Focus on understanding and analysis rather than implementation
+- Clearly communicate what you find and recommend
+- Suggest next steps for Act mode when appropriate
+
+If you need to make changes, indicate this to the user and suggest switching to Act mode.`
+  } else {
+    return `
+
+## Agent Mode: Act (Full Access)
+
+You are currently in **Act Mode** - full read/write access to the workspace.
+
+**All Operations Available:**
+- Read, search, and explore files
+- Create, modify, and delete files
+- Execute code and run workflows
+- Make changes directly to the codebase
+
+**When to Use Act Mode:**
+- Implementing features or fixes
+- Making targeted edits to files
+- Creating new files or directories
+- Running code that modifies the workspace
+
+**Behavior:**
+- Be decisive and take action
+- Execute changes efficiently
+- Confirm successful operations to the user`
+  }
 }

@@ -2,11 +2,13 @@
  * Tool Registry - manages tool registration, lookup, and execution.
  *
  * Integrated with intelligent error handling for better user experience.
+ * Supports mode-based tool filtering (Plan vs Act mode).
  */
 
 import type { ToolDefinition, ToolExecutor, ToolEntry, ToolContext } from './tools/tool-types'
 import type { PluginMetadata } from '@/types/plugin'
 import { formatErrorForUser, withAutoRetry } from './error-handling'
+import { isToolAllowedInMode, type AgentMode } from './agent-mode'
 
 // Import unified IO tools
 import { readDefinition, readExecutor, writeDefinition, writeExecutor } from './tools/io.tool'
@@ -89,6 +91,30 @@ export class ToolRegistry {
   /** Get all tool definitions (for LLM API) */
   getToolDefinitions(): ToolDefinition[] {
     return Array.from(this.tools.values()).map((entry) => entry.definition)
+  }
+
+  /**
+   * Get tool definitions filtered by agent mode.
+   * In 'plan' mode, only read-only tools are returned.
+   * In 'act' mode, all tools are returned.
+   */
+  getToolDefinitionsForMode(mode: AgentMode): ToolDefinition[] {
+    const allDefinitions = Array.from(this.tools.values()).map((entry) => entry.definition)
+    
+    if (mode === 'act') {
+      return allDefinitions
+    }
+    
+    // Plan mode: filter to read-only tools only
+    return allDefinitions.filter(tool => isToolAllowedInMode(tool.function.name, mode))
+  }
+
+  /**
+   * Check if a tool is available in the given mode.
+   */
+  isToolAvailableInMode(name: string, mode: AgentMode): boolean {
+    if (!this.tools.has(name)) return false
+    return isToolAllowedInMode(name, mode)
   }
 
   /** Execute a tool by name with intelligent error handling */
