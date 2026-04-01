@@ -44,6 +44,8 @@ interface SettingsState {
   maxIterations: number
   enableThinking: boolean
   thinkingLevel: ThinkingLevel
+  /** Agent execution mode: 'plan' (read-only) or 'act' (full access) */
+  agentMode: 'plan' | 'act'
 
   // API key status - NOT persisted, derived from SQLite
   // Use getHasApiKey() or checkHasApiKey() to get the current value
@@ -81,6 +83,9 @@ interface SettingsState {
    * Call this after saving/deleting an API key
    */
   invalidateApiKeyCache: (provider?: string) => void
+
+  /** Set agent execution mode */
+  setAgentMode: (mode: 'plan' | 'act') => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -97,6 +102,7 @@ export const useSettingsStore = create<SettingsState>()(
       enableThinking: false,
       thinkingLevel: 'medium' as ThinkingLevel,
       hasApiKey: false,
+      agentMode: 'act',
 
       setProviderType: (providerType) => {
         set({ providerType })
@@ -253,6 +259,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEnableThinking: (enableThinking) => set({ enableThinking }),
       setThinkingLevel: (thinkingLevel) => set({ thinkingLevel }),
       setHasApiKey: (hasApiKey) => set({ hasApiKey }),
+      setAgentMode: (agentMode) => set({ agentMode }),
       getEffectiveProviderConfig: () => {
         const state = get()
         if (state.providerType !== 'custom') {
@@ -344,6 +351,7 @@ export const useSettingsStore = create<SettingsState>()(
         maxIterations: state.maxIterations,
         enableThinking: state.enableThinking,
         thinkingLevel: state.thinkingLevel,
+        agentMode: state.agentMode,
       }),
     }
   )

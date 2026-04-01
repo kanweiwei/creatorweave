@@ -139,10 +139,16 @@ export type ConversationStatus = 'idle' | 'pending' | 'streaming' | 'tool_callin
 export type ConversationTitleMode = 'auto' | 'manual'
 
 export interface ContextWindowUsage {
+  /** Actual input tokens sent to model this turn */
   usedTokens: number
+  /** Effective input budget E = modelMaxTokens - reserveTokens */
   maxTokens: number
+  /** Reserved tokens for model output */
   reserveTokens: number
+  /** Usage percent = usedTokens / maxTokens * 100 */
   usagePercent: number
+  /** Raw model context limit M (for diagnostics/UI) */
+  modelMaxTokens?: number
 }
 
 export interface Conversation {

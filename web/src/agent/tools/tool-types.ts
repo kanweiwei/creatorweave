@@ -65,6 +65,8 @@ export interface ToolContext {
   }
   /** Workflow progress callbacks for long-running workflow tools */
   workflowProgress?: WorkflowProgressHooks
+  /** Agent execution mode: 'plan' (read-only) or 'act' (full access) */
+  agentMode?: 'plan' | 'act'
 }
 
 /** Tool executor function signature */

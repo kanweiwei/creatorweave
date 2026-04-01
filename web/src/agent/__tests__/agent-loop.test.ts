@@ -56,13 +56,15 @@ function createMockProvider(): PiAIProvider {
 }
 
 function createMockToolRegistry() {
-  return {
+  const registry = {
     getToolDefinitions: vi.fn(() => []),
+    getToolDefinitionsForMode: vi.fn((_mode: 'plan' | 'act') => registry.getToolDefinitions()),
     execute: vi.fn(async (name: string, args: Record<string, unknown>) => {
       return `Executed ${name} with ${JSON.stringify(args)}`
     }),
     registerMCPTools: vi.fn(() => Promise.resolve()),
-  } as any
+  }
+  return registry as any
 }
 
 function createMockContextManager() {
@@ -521,6 +523,95 @@ describe('AgentLoop', () => {
           )
       )
       expect(hasSummary).toBe(true)
+    })
+
+    it('should append subsequent turns on compression baseline context', async () => {
+      let firstConvertMessages: any[] = []
+      let secondConvertMessages: any[] = []
+      let trimCallCount = 0
+      const longDroppedContent =
+        'User: ' + 'baseline requirement '.repeat(80) + '\nAssistant: ' + 'baseline implementation '.repeat(80)
+
+      mockContextManager.trimMessages.mockImplementation((msgs: ChatMessage[]) => {
+        trimCallCount++
+        if (trimCallCount === 1) {
+          return {
+            messages: [{ role: 'user', content: 'latest user request' }],
+            wasTruncated: true,
+            droppedGroups: 3,
+            droppedContent: longDroppedContent,
+          }
+        }
+        return {
+          messages: msgs,
+          wasTruncated: false,
+          droppedGroups: 0,
+        }
+      })
+
+      ;(mockProvider.chat as any).mockResolvedValue({
+        choices: [{ message: { content: 'Compressed baseline summary.' } }],
+      })
+
+      mockAgentLoopContinue.mockImplementation((_context: any, config: any) => {
+        return (async function* () {
+          const now = Date.now()
+          firstConvertMessages = await config.convertToLlm([
+            { role: 'user', content: 'old user request', timestamp: now - 5000 },
+            { role: 'assistant', content: [{ type: 'text', text: 'old assistant response' }], timestamp: now - 4000 },
+            { role: 'user', content: 'latest user request', timestamp: now - 1000 },
+          ])
+
+          secondConvertMessages = await config.convertToLlm([
+            { role: 'user', content: 'old user request', timestamp: now - 5000 },
+            { role: 'assistant', content: [{ type: 'text', text: 'old assistant response' }], timestamp: now - 4000 },
+            { role: 'user', content: 'latest user request', timestamp: now - 1000 },
+            {
+              role: 'toolResult',
+              toolCallId: 'call_1',
+              toolName: 'read',
+              content: [{ type: 'text', text: 'fresh tool result' }],
+              timestamp: now - 500,
+            },
+          ])
+
+          yield { type: 'message_end', message: assistantMessage('Done') }
+        })()
+      })
+
+      const loop = new AgentLoop({
+        provider: mockProvider,
+        toolRegistry: mockTools,
+        contextManager: mockContextManager,
+        toolContext: createMockToolContext(),
+      })
+
+      await loop.run([createUserMessage('test')])
+
+      const secondSummary = secondConvertMessages.find(
+        (m: any) =>
+          m.role === 'assistant' &&
+          Array.isArray(m.content) &&
+          m.content.some(
+            (item: any) =>
+              item.type === 'text' && String(item.text).includes('Compressed memory of earlier conversation')
+          )
+      )
+      const hasOldUser = secondConvertMessages.some(
+        (m: any) => m.role === 'user' && m.content === 'old user request'
+      )
+      const hasLatestUser = secondConvertMessages.some(
+        (m: any) => m.role === 'user' && m.content === 'latest user request'
+      )
+      const hasLatestTool = secondConvertMessages.some(
+        (m: any) => m.role === 'toolResult' && m.toolCallId === 'call_1'
+      )
+
+      expect(firstConvertMessages.length).toBeGreaterThan(0)
+      expect(secondSummary).toBeDefined()
+      expect(hasOldUser).toBe(false)
+      expect(hasLatestUser).toBe(true)
+      expect(hasLatestTool).toBe(true)
     })
 
     it('should update messages through callbacks', async () => {

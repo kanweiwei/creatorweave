@@ -126,19 +126,51 @@ export class ContextManager {
 
     // Proactive compression: when we're close to the context ceiling, summarize
     // oldest groups early to preserve headroom for follow-up turns and tool output.
+    // Use unified usage math against input budget (maxContext - reserve), and include
+    // system tokens in the percentage calculation.
     if (
       this.enableSummarization &&
       options?.createSummary &&
       droppedGroups === 0 &&
       selectedGroups.length > 12
     ) {
-      const proactiveTrigger = Math.floor(availableTokens * ContextManager.PROACTIVE_COMPRESSION_TRIGGER)
-      const proactiveTarget = Math.floor(availableTokens * ContextManager.PROACTIVE_COMPRESSION_TARGET)
-      if (usedTokens >= proactiveTrigger) {
-        while (selectedGroups.length > 8 && usedTokens > proactiveTarget) {
+      const proactiveTrigger = Math.floor(budget * ContextManager.PROACTIVE_COMPRESSION_TRIGGER)
+      const proactiveTarget = Math.floor(budget * ContextManager.PROACTIVE_COMPRESSION_TARGET)
+      let totalUsedTokens = usedTokens + systemTokens
+      if (totalUsedTokens >= proactiveTrigger) {
+        while (selectedGroups.length > 8 && totalUsedTokens > proactiveTarget) {
           const droppedGroup = selectedGroups.shift()
           if (!droppedGroup) break
-          usedTokens -= droppedGroup.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+          const droppedTokens = droppedGroup.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+          usedTokens -= droppedTokens
+          totalUsedTokens -= droppedTokens
+          droppedGroups++
+        }
+      }
+    }
+
+    // Also check proactive compression when groups were already dropped but usage
+    // is still high — this handles cases where a few large groups were dropped
+    // early but the remaining messages still fill most of the budget.
+    if (
+      this.enableSummarization &&
+      options?.createSummary &&
+      droppedGroups > 0 &&
+      selectedGroups.length > 8
+    ) {
+      const proactiveTrigger = Math.floor(budget * ContextManager.PROACTIVE_COMPRESSION_TRIGGER)
+      const proactiveTarget = Math.floor(budget * ContextManager.PROACTIVE_COMPRESSION_TARGET)
+      // Recompute usedTokens from selectedGroups
+      const currentUsed = selectedGroups
+        .flat()
+        .reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+      let totalUsedTokens = currentUsed + systemTokens
+      if (totalUsedTokens >= proactiveTrigger) {
+        while (selectedGroups.length > 6 && totalUsedTokens > proactiveTarget) {
+          const droppedGroup = selectedGroups.shift()
+          if (!droppedGroup) break
+          const droppedTokens = droppedGroup.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+          totalUsedTokens -= droppedTokens
           droppedGroups++
         }
       }
@@ -323,6 +355,46 @@ export class ContextManager {
     const systemTokens = this.systemPrompt ? estimateStringTokens(this.systemPrompt) + 4 : 0
     const messageTokens = messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
     return systemTokens + messageTokens + 3 // conversation overhead
+  }
+
+  /**
+   * Aggressively trim messages to fit within a specific token target.
+   * Used by the agent loop to enforce headroom after context compression.
+   * Unlike trimMessages, this does not produce summaries — it just drops
+   * the oldest message groups until the target is met.
+   */
+  trimMessagesToTarget(messages: ChatMessage[], targetTokens: number): ChatMessage[] {
+    // Separate system message
+    const systemMessage: ChatMessage | null =
+      messages[0]?.role === 'system' ? messages[0] : null
+    const rest = systemMessage ? messages.slice(1) : messages
+    const systemTokens = systemMessage ? estimateMessageTokens(systemMessage) : 0
+    const available = targetTokens - systemTokens
+
+    if (available <= 0) {
+      return systemMessage ? [systemMessage] : []
+    }
+
+    const groups = this.groupMessages(rest)
+
+    // Fill from newest to oldest within target
+    const selectedGroups: ChatMessage[][] = []
+    let usedTokens = 0
+
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const group = groups[i]
+      const groupTokens = group.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+      if (usedTokens + groupTokens <= available) {
+        selectedGroups.unshift(group)
+        usedTokens += groupTokens
+      }
+      // else: drop older groups silently
+    }
+
+    const result: ChatMessage[] = []
+    if (systemMessage) result.push(systemMessage)
+    for (const group of selectedGroups) result.push(...group)
+    return result
   }
 
   /** Get current configuration */

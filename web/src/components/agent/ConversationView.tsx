@@ -22,6 +22,7 @@ import { WorkflowQuickActions } from './WorkflowQuickActions'
 import { WorkflowTemplateCard } from './WorkflowTemplateCard'
 import { WorkflowExecutionProgress } from './WorkflowExecutionProgress'
 import { WorkflowEditorDialog } from './workflow-editor/WorkflowEditorDialog'
+import { AgentModeSwitchCompact } from './AgentModeSwitch'
 import { groupMessagesIntoTurns } from './group-messages'
 import { createUserMessage } from '@/agent/message-types'
 import type { Message } from '@/agent/message-types'
@@ -133,7 +134,7 @@ export function ConversationView({
   const unmountConversation = useConversationStore((s) => s.unmountConversation)
   const regenerateUserMessage = useConversationStore((s) => s.regenerateUserMessage)
 
-  const { providerType, modelName, maxTokens, hasApiKey, enableThinking, thinkingLevel, setEnableThinking, setThinkingLevel } = useSettingsStore()
+  const { providerType, modelName, maxTokens, hasApiKey, enableThinking, thinkingLevel, setEnableThinking, setThinkingLevel, agentMode, setAgentMode } = useSettingsStore()
   const t = useT()
 
   // Must be declared before useEffect that uses it
@@ -547,10 +548,10 @@ export function ConversationView({
   const contextWindowUsage = activeContextWindowUsage
 
   const getUsageToneClass = (usagePercent: number): { text: string; label: string } => {
-    if (usagePercent >= 90) {
+    if (usagePercent >= 95) {
       return { text: 'text-red-600 dark:text-red-400', label: t('conversation.usage.highRisk') }
     }
-    if (usagePercent >= 75) {
+    if (usagePercent >= 85) {
       return { text: 'text-amber-600 dark:text-amber-400', label: t('conversation.usage.nearLimit') }
     }
     return { text: 'text-emerald-600 dark:text-emerald-400', label: t('conversation.usage.comfortable') }
@@ -569,8 +570,11 @@ export function ConversationView({
     if (!contextWindowUsage || !usageTone) return null
 
     const percent = contextWindowUsage.usagePercent
-    const isHigh = percent >= 75
-    const isCritical = percent >= 90
+    const isHigh = percent >= 85
+    const isCritical = percent >= 95
+    const effectiveBudget = contextWindowUsage.maxTokens
+    const reserveTokens = contextWindowUsage.reserveTokens
+    const modelMaxTokens = contextWindowUsage.modelMaxTokens ?? effectiveBudget + reserveTokens
 
     return (
       <div className="mt-2 flex items-center gap-2.5">
@@ -591,10 +595,13 @@ export function ConversationView({
         </span>
 
         {/* Token count - muted */}
-        <span className="text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">
+        <span
+          className="text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500"
+          title={`有效输入预算 ${effectiveBudget} = 总上限 ${modelMaxTokens} - 预留 ${reserveTokens}`}
+        >
           {formatTokenCompact(contextWindowUsage.usedTokens)}
           <span className="mx-0.5 opacity-50">/</span>
-          {formatTokenCompact(contextWindowUsage.maxTokens)}
+          {formatTokenCompact(effectiveBudget)}
         </span>
 
         {/* Processing indicator */}
@@ -1005,6 +1012,13 @@ export function ConversationView({
               onRun={(templateId, rubricDsl) => void handleRunWorkflow(templateId, rubricDsl)}
               onRealRun={(templateId, rubricDsl) => void handleRealRunWorkflow(templateId, rubricDsl)}
               onOpenEditor={() => setWorkflowEditorOpen(true)}
+            />
+
+            {/* Agent Mode Switch */}
+            <AgentModeSwitchCompact
+              mode={agentMode}
+              onModeChange={setAgentMode}
+              disabled={isProcessing}
             />
 
             </div>
