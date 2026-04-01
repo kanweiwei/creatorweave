@@ -17,6 +17,7 @@ describe('useSettingsStore', () => {
       customBaseUrl: '',
       temperature: 0.7,
       maxTokens: 4096,
+      maxIterations: 20,
       hasApiKey: false,
     })
   })
@@ -30,6 +31,7 @@ describe('useSettingsStore', () => {
       expect(state.customBaseUrl).toBe('')
       expect(state.temperature).toBe(0.7)
       expect(state.maxTokens).toBe(4096)
+      expect(state.maxIterations).toBe(20)
       expect(state.hasApiKey).toBe(false)
     })
   })
@@ -133,6 +135,16 @@ describe('useSettingsStore', () => {
 
       setMaxTokens(128000)
       expect(useSettingsStore.getState().maxTokens).toBe(128000)
+    })
+  })
+
+  describe('setMaxIterations', () => {
+    it('should update max iterations', () => {
+      const { setMaxIterations } = useSettingsStore.getState()
+
+      setMaxIterations(35)
+
+      expect(useSettingsStore.getState().maxIterations).toBe(35)
     })
   })
 

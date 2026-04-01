@@ -5,7 +5,7 @@
  * - Provider selection grouped by category (international/chinese/custom)
  * - Model selection with capability badges
  * - API Key management per provider
- * - Parameter tuning (temperature, max tokens)
+ * - Parameter tuning (temperature, max tokens, max iterations)
  * - Custom endpoint support for OpenAI-compatible APIs
  * - Token usage statistics display
  */
@@ -234,6 +234,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
     activeCustomProviderId,
     temperature,
     maxTokens,
+    maxIterations,
     enableThinking,
     thinkingLevel,
     setProviderType,
@@ -247,6 +248,7 @@ export function ModelSettings({ open }: ModelSettingsProps) {
     removeCustomProviderModel,
     setTemperature,
     setMaxTokens,
+    setMaxIterations,
     setEnableThinking,
     setThinkingLevel,
     setHasApiKey,
@@ -442,6 +444,12 @@ export function ModelSettings({ open }: ModelSettingsProps) {
       setTemperature(value[0] / 100)
     },
     [setTemperature]
+  )
+  const handleMaxIterationsChange = useCallback(
+    (value: number[]) => {
+      setMaxIterations(value[0] || 20)
+    },
+    [setMaxIterations]
   )
 
   return (
@@ -747,6 +755,22 @@ export function ModelSettings({ open }: ModelSettingsProps) {
                 step={256}
                 className="h-10"
               />
+            </div>
+
+            {/* Max Iterations */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-primary">最大迭代次数</label>
+                <span className="text-sm text-secondary">{maxIterations}</span>
+              </div>
+              <BrandSlider
+                value={[maxIterations]}
+                onValueChange={handleMaxIterationsChange}
+                min={1}
+                max={100}
+                step={1}
+              />
+              <p className="text-[10px] text-tertiary">限制单次 Agent Loop 的最大 assistant 回合数</p>
             </div>
 
             {/* Thinking Mode */}

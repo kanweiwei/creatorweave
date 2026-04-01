@@ -33,17 +33,25 @@ vi.mock('../conversation-context.store', () => ({
   },
 }))
 
-vi.mock('../settings.store', () => ({
-  useSettingsStore: {
-    getState: vi.fn(() => ({
-      getEffectiveProviderConfig: vi.fn(() => ({
-        apiKeyProviderKey: 'openai',
-        baseUrl: 'https://example.com',
-        modelName: 'mock-model',
-      })),
+vi.mock('../settings.store', () => {
+  const mockSettingsState = {
+    providerType: 'openai',
+    modelName: 'mock-model',
+    maxIterations: 20,
+    getEffectiveProviderConfig: vi.fn(() => ({
+      apiKeyProviderKey: 'openai',
+      baseUrl: 'https://example.com',
+      modelName: 'mock-model',
     })),
-  },
-}))
+  }
+
+  return {
+    useSettingsStore: {
+      getState: vi.fn(() => mockSettingsState),
+    },
+    __mockSettingsState: mockSettingsState,
+  }
+})
 
 vi.mock('@/sqlite', () => ({
   initSQLiteDB: vi.fn(() => Promise.resolve()),
@@ -92,6 +100,10 @@ vi.mock('@/mcp/elicitation-handler.tsx', () => ({
 
 vi.mock('@/agent/agent-loop', () => {
   class MockAgentLoop {
+    constructor(config: any) {
+      ;(globalThis as any).__lastAgentLoopConfig = config
+    }
+
     cancel() {}
 
     async run(messages: any[], callbacks: any) {
@@ -161,6 +173,7 @@ describe('conversation.store.sqlite tool-call routing', () => {
     } as any)
     delete (globalThis as any).__conversationStoreTestHook
     delete (globalThis as any).__conversationStoreBeforeCompressionStart
+    delete (globalThis as any).__lastAgentLoopConfig
   })
 
   it('should finalize non-current tool steps by toolCallId in interleaved calls', async () => {
@@ -205,6 +218,19 @@ describe('conversation.store.sqlite tool-call routing', () => {
     const bComplete = snapshots.find((s) => s.label === 'after_b_complete')
     expect(bComplete?.stepB?.streaming).toBe(false)
     expect(bComplete?.stepB?.result).toBe('result B')
+  })
+
+  it('should pass maxIterations from settings store into AgentLoop', async () => {
+    const settingsModule = await import('../settings.store')
+    ;(settingsModule as any).__mockSettingsState.maxIterations = 37
+
+    const store = useConversationStore.getState()
+    const conv = store.createNew('max-iterations-prop')
+
+    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+
+    const agentLoopConfig = (globalThis as any).__lastAgentLoopConfig
+    expect(agentLoopConfig?.maxIterations).toBe(37)
   })
 
   it('should delete only the specified user message', () => {

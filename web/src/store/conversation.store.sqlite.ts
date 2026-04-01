@@ -1405,6 +1405,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             })
           },
         }
+        const configuredMaxIterations = useSettingsStore.getState().maxIterations
+        const maxIterations = Number.isFinite(configuredMaxIterations)
+          ? Math.max(1, Math.min(100, Math.floor(configuredMaxIterations)))
+          : 20
 
         const agentLoop = new AgentLoop({
           provider,
@@ -1417,7 +1421,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             currentAgentId: activeAgentId,
             workflowProgress: workflowProgressHooks,
           },
-          maxIterations: 20,
+          maxIterations,
           beforeToolCall: toolPolicyHooks.beforeToolCall,
           afterToolCall: async (context) => {
             if (context.isError) return undefined

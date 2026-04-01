@@ -41,6 +41,7 @@ interface SettingsState {
   activeCustomProviderId: string
   temperature: number
   maxTokens: number
+  maxIterations: number
   enableThinking: boolean
   thinkingLevel: ThinkingLevel
 
@@ -63,6 +64,7 @@ interface SettingsState {
   removeCustomProviderModel: (providerId: string, model: string) => void
   setTemperature: (temp: number) => void
   setMaxTokens: (tokens: number) => void
+  setMaxIterations: (iterations: number) => void
   setEnableThinking: (v: boolean) => void
   setThinkingLevel: (v: ThinkingLevel) => void
   setHasApiKey: (has: boolean) => void
@@ -91,6 +93,7 @@ export const useSettingsStore = create<SettingsState>()(
       activeCustomProviderId: '',
       temperature: 0.7,
       maxTokens: 4096,
+      maxIterations: 20,
       enableThinking: false,
       thinkingLevel: 'medium' as ThinkingLevel,
       hasApiKey: false,
@@ -243,6 +246,10 @@ export const useSettingsStore = create<SettingsState>()(
       },
       setTemperature: (temperature) => set({ temperature }),
       setMaxTokens: (maxTokens) => set({ maxTokens }),
+      setMaxIterations: (maxIterations) =>
+        set({
+          maxIterations: Math.max(1, Math.min(100, Math.round(maxIterations))),
+        }),
       setEnableThinking: (enableThinking) => set({ enableThinking }),
       setThinkingLevel: (thinkingLevel) => set({ thinkingLevel }),
       setHasApiKey: (hasApiKey) => set({ hasApiKey }),
@@ -334,6 +341,7 @@ export const useSettingsStore = create<SettingsState>()(
         activeCustomProviderId: state.activeCustomProviderId,
         temperature: state.temperature,
         maxTokens: state.maxTokens,
+        maxIterations: state.maxIterations,
         enableThinking: state.enableThinking,
         thinkingLevel: state.thinkingLevel,
       }),
