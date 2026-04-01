@@ -11,7 +11,7 @@ const isVitest = process.env.VITEST === 'true'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [
     react(),
     sqlitePlugin(),
