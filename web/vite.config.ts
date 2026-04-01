@@ -59,10 +59,12 @@ export default defineConfig({
         // Silent auto-update
         skipWaiting: true,
         clientsClaim: true,
-        // Only precache static assets
+        // Precache all static assets including index.html
         globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
-        // Disable navigateFallback - don't intercept SPA navigation
-        navigateFallback: null,
+        // SPA fallback: serve index.html for navigation requests not in precache
+        navigateFallback: '/index.html',
+        // SPA routes start with /projects/ - don't treat as separate precached routes
+        navigateFallbackDenylist: [/\/projects\//],
         cleanupOutdatedCaches: true,
         // Runtime caching for offline support
         // Note: runtimeCaching is compatible with COOP/COEP headers

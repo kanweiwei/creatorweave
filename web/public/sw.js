@@ -45,20 +45,20 @@ self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
 
-// Activate event - cleanup old caches
+// Activate event - cleanup ALL old caches to ensure fresh deployment
 self.addEventListener('activate', (event) => {
   console.log('[ServiceWorker] Activating...')
 
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE)
-          .map((name) => {
-            console.log('[ServiceWorker] Deleting old cache:', name)
-            return caches.delete(name)
-          })
+        cacheNames.map((name) => {
+          console.log('[ServiceWorker] Deleting cache:', name)
+          return caches.delete(name)
+        })
       )
+    }).then(() => {
+      console.log('[ServiceWorker] All old caches cleared, ready to serve new content')
     })
   )
 
