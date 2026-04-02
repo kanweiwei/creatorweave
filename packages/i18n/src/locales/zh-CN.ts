@@ -53,6 +53,13 @@ export const zhCN = {
       mcpSettings: 'MCP 服务配置',
       appSettings: '应用设置',
     },
+    projectSwitcher: {
+      createProject: '新建项目',
+      manageProjects: '管理所有项目',
+      noProjects: '暂无项目',
+      workspaceCount: '{count} 个工作区',
+      shortcut: '⌘P',
+    },
   },
 
   // 文件夹选择器

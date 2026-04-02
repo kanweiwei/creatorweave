@@ -62,6 +62,12 @@ interface WorkspaceLayoutProps {
   conversationName?: string
   /** @deprecated use conversationName */
   workspaceName?: string
+  /** Switch to a different project */
+  onSwitchProject?: (projectId: string) => Promise<void>
+  /** Open create-project dialog */
+  onCreateProject?: () => void
+  /** Navigate to project list */
+  onManageProjects?: () => void
 }
 
 export function WorkspaceLayout({
@@ -69,6 +75,9 @@ export function WorkspaceLayout({
   projectName,
   conversationName,
   workspaceName,
+  onSwitchProject,
+  onCreateProject,
+  onManageProjects,
 }: WorkspaceLayoutProps) {
   const {
     activeConversationId,
@@ -89,6 +98,7 @@ export function WorkspaceLayout({
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [selectedFileHandle, setSelectedFileHandle] = useState<FileSystemFileHandle | null>(null)
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false)
 
   // Skills management state
   const [skillsManagerOpen, setSkillsManagerOpen] = useState(false)
@@ -303,6 +313,13 @@ export function WorkspaceLayout({
         return
       }
 
+      // Cmd/Ctrl + P to toggle project switcher
+      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+        e.preventDefault()
+        setProjectSwitcherOpen((prev) => !prev)
+        return
+      }
+
       // Cmd/Ctrl + B to toggle sidebar
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault()
@@ -511,6 +528,11 @@ export function WorkspaceLayout({
         activeConversationName={activeConversationName}
         onMenuOpen={() => setIsSidebarOpen(true)}
         isMobile={isMobile}
+        onSwitchProject={onSwitchProject}
+        onCreateProject={onCreateProject}
+        onManageProjects={onManageProjects}
+        projectSwitcherOpen={projectSwitcherOpen}
+        onProjectSwitcherOpenChange={setProjectSwitcherOpen}
       />
       <div className="flex flex-1 overflow-hidden">
         {/* Mobile sidebar overlay */}

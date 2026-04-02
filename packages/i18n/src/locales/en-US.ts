@@ -51,6 +51,13 @@ export const enUS = {
       mcpSettings: 'MCP Service Settings',
       appSettings: 'App Settings',
     },
+    projectSwitcher: {
+      createProject: 'New Project',
+      manageProjects: 'Manage All Projects',
+      noProjects: 'No projects yet',
+      workspaceCount: '{count} workspaces',
+      shortcut: '⌘P',
+    },
   },
 
   // Folder Selector

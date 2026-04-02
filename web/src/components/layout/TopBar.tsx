@@ -16,7 +16,6 @@ import { useState, type ReactNode } from 'react'
 import {
   Settings,
   SlidersHorizontal,
-  Sparkles,
   Wrench,
   KeyRound,
   Server,
@@ -26,6 +25,7 @@ import {
   ArrowLeft,
   Terminal,
 } from 'lucide-react'
+import { ProjectSwitcher } from './ProjectSwitcher'
 import { useHasApiKey } from '@/store/settings.store'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { MCPSettingsDialog } from '@/components/mcp'
@@ -59,6 +59,16 @@ interface TopBarProps {
   onMenuOpen?: () => void
   /** Whether the device is mobile */
   isMobile?: boolean
+  /** Switch to a different project by ID */
+  onSwitchProject?: (projectId: string) => Promise<void>
+  /** Open the "create project" dialog */
+  onCreateProject?: () => void
+  /** Navigate to project management (project list) */
+  onManageProjects?: () => void
+  /** Controlled open state for the project switcher dropdown */
+  projectSwitcherOpen?: boolean
+  /** Callback when project switcher open state changes */
+  onProjectSwitcherOpenChange?: (open: boolean) => void
 }
 
 export function TopBar({
@@ -73,6 +83,11 @@ export function TopBar({
   activeWorkspaceName,
   onMenuOpen,
   isMobile,
+  onSwitchProject,
+  onCreateProject,
+  onManageProjects,
+  projectSwitcherOpen,
+  onProjectSwitcherOpenChange,
 }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mcpSettingsOpen, setMcpSettingsOpen] = useState(false)
@@ -113,19 +128,16 @@ export function TopBar({
               </BrandButton>
             </ActionTooltip>
           )}
-          <ActionTooltip label={t('topbar.productName')}>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary-600" />
-              <span className="text-base font-medium text-primary">{t('topbar.productName')}</span>
-            </div>
-          </ActionTooltip>
           {activeProjectName && (
             <div className="flex items-center gap-1">
-              <ActionTooltip label={t('topbar.projectLabel', { name: activeProjectName })}>
-                <span className="rounded-md bg-muted px-2 py-1 text-xs text-secondary dark:bg-muted dark:text-muted">
-                  {activeProjectName}
-                </span>
-              </ActionTooltip>
+              <ProjectSwitcher
+                activeProjectName={activeProjectName}
+                onSwitchProject={onSwitchProject ?? (async () => {})}
+                onCreateProject={onCreateProject ?? (() => {})}
+                onManageProjects={onManageProjects ?? (() => {})}
+                open={projectSwitcherOpen}
+                onOpenChange={onProjectSwitcherOpenChange}
+              />
               {conversationName && (
                 <>
                   <span className="text-xs text-tertiary dark:text-muted">/</span>

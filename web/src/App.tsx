@@ -828,6 +828,11 @@ function App() {
       onBackToProjects={() => navigateToRoute({ kind: 'projectsHome' })}
       projectName={activeProject?.name}
       conversationName={activeConversation?.title}
+      onSwitchProject={async (projectId: string) => {
+        navigateToRoute({ kind: 'projectWorkspace', projectId })
+      }}
+      onCreateProject={() => navigateToRoute({ kind: 'projectsHome' })}
+      onManageProjects={() => navigateToRoute({ kind: 'projectsHome' })}
     />
   )
 
