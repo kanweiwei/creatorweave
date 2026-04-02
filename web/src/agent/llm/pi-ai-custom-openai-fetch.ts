@@ -10,6 +10,7 @@ import {
   type ToolCall,
   type Usage,
 } from '@mariozechner/pi-ai'
+import { normalizeBaseUrl } from './pi-ai-url-utils'
 
 export const CW_OPENAI_FETCH_API = 'cw-openai-fetch' as const
 
@@ -480,10 +481,6 @@ function safeParseChunk(data: string): OpenAIStreamChunk | null {
   } catch {
     return null
   }
-}
-
-function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '')
 }
 
 function mapStopReason(

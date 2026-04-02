@@ -2,6 +2,7 @@ import { getModel } from '@mariozechner/pi-ai'
 import type { Api, KnownProvider, Model } from '@mariozechner/pi-ai'
 import type { LLMProviderType } from '@/agent/providers/types'
 import { CW_OPENAI_FETCH_API } from './pi-ai-custom-openai-fetch'
+import { normalizeBaseUrl } from './pi-ai-url-utils'
 
 const DEFAULT_CONTEXT_WINDOW = 128000
 const DEFAULT_MAX_TOKENS = 8192
@@ -46,10 +47,6 @@ const MODEL_ALIASES: Partial<Record<LLMProviderType, Record<string, string>>> = 
   'glm-coding': {
     'glm-4-flash': 'glm-4.7-flash',
   },
-}
-
-function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '')
 }
 
 function tryGetNativeModel(
