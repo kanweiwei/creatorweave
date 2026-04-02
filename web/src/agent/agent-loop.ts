@@ -1365,6 +1365,24 @@ export class AgentLoop {
                 summaryChars: summary?.length || 0,
                 latencyMs,
               })
+
+              // Inject the summary into allMessages so it appears in the
+              // conversation at the correct position (alongside other
+              // assistant/tool messages in the current turn), rather than
+              // being appended at the very end after the loop completes.
+              if (summary) {
+                const summaryMessage = createAssistantMessage(
+                  `${COMPRESSED_MEMORY_PREFIX}\n${summary}`,
+                  undefined,
+                  undefined,
+                  null,
+                  'context_summary'
+                )
+                allMessages = produce(allMessages, (draft) => {
+                  draft.push(summaryMessage)
+                })
+                callbacks?.onMessagesUpdated?.(allMessages)
+              }
             } else {
               callbacks?.onContextCompressionComplete?.({
                 mode: 'skip',

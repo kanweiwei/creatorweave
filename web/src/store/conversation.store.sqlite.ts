@@ -886,7 +886,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
         let runEpoch = 0
         let latestMessages: Message[] = conv.messages
-        const compressionSummaryMessages: Message[] = []
+        // Compression summary messages are now injected into the agent
+        // loop's allMessages directly via onMessagesUpdated, so they appear
+        // at the correct chronological position — no longer appended here.
         let committed = false
 
         // Acquire run lock immediately to prevent concurrent duplicate starts.
@@ -1452,7 +1454,17 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           finalMessages?: Message[],
           error?: string
         ) => {
-          if (committed || !isCurrentRun()) return
+          // If already committed, nothing to do
+          if (committed) return
+
+          // Check if this is the current run OR if we have messages to save (cancel race condition)
+          // When cancelAgent aborts the loop, onComplete is called but may arrive after
+          // cancelAgent's set() has cleared activeRunId. In that case, we still need to save
+          // the messages we have.
+          const current = get().conversations.find((c) => c.id === conversationId)
+          const isRunCurrent = !!current && current.activeRunId === runId && (current.runEpoch || 0) === runEpoch
+          if (!isRunCurrent && !finalMessages) return
+
           committed = true
           const targetMessages = finalMessages || latestMessages
 
@@ -1965,17 +1977,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               }
               c.draftAssistant.activeCompressionStepId = null
             })
-            if (payload.summary) {
-              compressionSummaryMessages.push(
-                createAssistantMessage(
-                  payload.summary,
-                  undefined,
-                  undefined,
-                  null,
-                  'context_summary'
-                )
-              )
-            }
+            // Summary message is now injected by AgentLoop directly into
+            // allMessages via onMessagesUpdated, so no need to collect it here.
           },
           // SEP-1306: Handle binary elicitation for file uploads
           onElicitation: async (elicitation: any) => {
@@ -2105,7 +2108,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           },
           onComplete: async (msgs: Message[]) => {
             if (!isCurrentRun()) return
-            latestMessages = [...msgs, ...compressionSummaryMessages]
+            latestMessages = msgs
             reasoningQueue.flushNow()
             contentQueue.flushNow()
             cleanupQueues()
@@ -2130,7 +2133,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             emitError(err.message)
           },
         })
-        latestMessages = [...resultMessages, ...compressionSummaryMessages]
+        latestMessages = resultMessages
         await finalizeRun('idle', latestMessages)
       } catch (error) {
         const queues = get().streamingQueues.get(conversationId)
@@ -2286,6 +2289,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           queues.reasoning.destroy()
           queues.content.destroy()
         }
+
+        // Commit draft to conversation messages BEFORE aborting the agent loop.
+        // This ensures the draft is in c.messages when finalizeRun runs.
         let committedPartial = false
         set((state) => {
           state.agentLoops.delete(conversationId)
@@ -2299,8 +2305,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             if (committedPartial) {
               c.updatedAt = Date.now()
             }
-            c.status = 'idle'
-            c.activeRunId = null
+            // Clean up streaming/draft UI state but let finalizeRun handle run lifecycle
             c.draftAssistant = null
             c.currentToolCall = null
             c.activeToolCalls = []
@@ -2311,6 +2316,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             c.isContentStreaming = false
             c.isReasoningStreaming = false
             c.workflowExecution = null
+            // NOTE: Do NOT set status='idle' or activeRunId=null here.
+            // Let finalizeRun (triggered by onComplete) handle run lifecycle cleanup.
           }
         })
         if (committedPartial) {
