@@ -9,13 +9,16 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react'
-import { type FileChange } from '@/opfs/types/opfs-types'
+import { type FileChange, type ConflictInfo } from '@/opfs/types/opfs-types'
 import { isImageFile, readFileFromNativeFS, readFileFromOPFS } from '@/opfs'
 import { useConversationContextStore, getActiveConversation } from '@/store/conversation-context.store'
 import { useSettingsStore } from '@/store/settings.store'
+import { useConversationStore } from '@/store/conversation.store'
+import { useAgentStore } from '@/store/agent.store'
 import { getApiKeyRepository } from '@/sqlite'
 import { createLLMProvider } from '@/agent/llm/provider-factory'
 import { buildCommitSummaryDiffSections } from '@/workers/commit-summary-worker-manager'
+import { createUserMessage } from '@/agent/message-types'
 import { BrandButton } from '@creatorweave/ui'
 import { Badge } from '@/components/ui/badge'
 import { PendingFileList } from './PendingFileList'
@@ -26,6 +29,65 @@ import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
 import { sendChangeReviewToConversation } from './review-request'
 import { toast } from 'sonner'
 import { pauseHmr, resumeHmr } from '@/lib/sync-guard'
+
+/**
+ * Send conflict resolution request to agent via conversation
+ */
+async function sendConflictsToAgent(
+  conflicts: ConflictInfo[],
+  changes: FileChange[]
+): Promise<void> {
+  const settings = useSettingsStore.getState()
+  if (!settings.hasApiKey) {
+    toast.error('请先配置 API Key')
+    return
+  }
+
+  const conversationStore = useConversationStore.getState()
+  const { directoryHandle } = useAgentStore.getState()
+
+  // Build conflict resolution message
+  const conflictPaths = conflicts.map((c) => c.path).join(', ')
+  const conflictFiles = changes.filter((c) => conflicts.some((conf) => conf.path === c.path))
+
+  const messageContent = [
+    `检测到 ${conflicts.length} 个文件冲突，需要在审批前解决：`,
+    '',
+    '冲突文件：',
+    conflictFiles.map((c) => `  - ${c.type}: ${c.path}`).join('\n'),
+    '',
+    '请使用以下方式处理：',
+    '1. 使用 `read` 工具查看磁盘当前版本',
+    '2. 使用 `force_sync_files` 强制覆盖磁盘文件',
+    '3. 或者手动合并后再尝试审批',
+    '',
+    `冲突详情: ${conflictPaths}`,
+  ].join('\n')
+
+  const userMessage = createUserMessage(messageContent)
+
+  // Get or create active conversation
+  let targetConvId = conversationStore.activeConversationId
+  if (!targetConvId) {
+    const conv = conversationStore.createNew('冲突处理')
+    targetConvId = conv.id
+    await conversationStore.setActive(targetConvId)
+  }
+
+  // Add message to conversation
+  const currentConv = conversationStore.conversations.find((c) => c.id === targetConvId)
+  const currentMessages = currentConv ? [...currentConv.messages, userMessage] : [userMessage]
+  conversationStore.updateMessages(targetConvId, currentMessages)
+
+  // Run agent to handle conflicts
+  await conversationStore.runAgent(
+    targetConvId,
+    settings.providerType,
+    settings.modelName,
+    settings.maxTokens,
+    directoryHandle
+  )
+}
 
 /**
  * Empty state when no changes detected
@@ -261,37 +323,26 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
       // Unwatch the specific paths that will be written to avoid triggering HMR
       await pauseHmr(approvedPaths)
 
-      let snapshotConflicts: Array<{ path: string }> = []
+      // Create snapshot (conflicts should have been handled before this point)
       if (approvedPaths.length > 0) {
-        const snapshotResult = await conversation.createApprovedSnapshotForPaths(
+        await conversation.createApprovedSnapshotForPaths(
           approvedPaths,
           summary.trim(),
           nativeDir
         )
-        // Capture conflicts detected during snapshot creation (let agent handle them)
-        if (snapshotResult?.conflicts && snapshotResult.conflicts.length > 0) {
-          snapshotConflicts = snapshotResult.conflicts
-          // Notify agent about conflicts via toast - agent will handle resolution
-          toast.warning(
-            `检测到 ${snapshotConflicts.length} 个文件冲突，Agent 将自动处理`,
-            { description: snapshotConflicts.slice(0, 3).map((c) => c.path).join(', ') + (snapshotConflicts.length > 3 ? '...' : '') }
-          )
-        }
       }
 
+      // Sync to disk
       const pendingResult = await conversation.syncToDisk(
         nativeDir,
         approvedPaths
       )
 
-      // Collect all conflicts (from snapshot creation + sync)
-      const allConflicts = [...snapshotConflicts, ...pendingResult.conflicts]
-
       // Show sync result
       if (pendingResult.failed > 0) {
         const conflictHint =
-          allConflicts.length > 0
-            ? `，其中 ${allConflicts.length} 个存在冲突`
+          pendingResult.conflicts.length > 0
+            ? `，其中 ${pendingResult.conflicts.length} 个存在冲突`
             : ''
         setSyncError(`${pendingResult.failed} 个文件审批应用失败${conflictHint}`)
         return false
@@ -325,6 +376,31 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
       : pendingChanges.changes
     if (filesToSync.length === 0) return
 
+    // First, detect conflicts before showing approval dialog
+    try {
+      const activeConversation = await getActiveConversation()
+      if (activeConversation) {
+        const nativeDir = await activeConversation.conversation.getNativeDirectoryHandle()
+        if (nativeDir) {
+          const filePaths = filesToSync.map((c) => c.path)
+          const conflicts = await activeConversation.conversation.detectSyncConflicts(nativeDir, filePaths)
+
+          if (conflicts.length > 0) {
+            // Send conflicts to agent for resolution
+            await sendConflictsToAgent(conflicts, filesToSync)
+            toast.info(
+              `检测到 ${conflicts.length} 个文件冲突，已发送消息给 Agent 处理`,
+              { description: conflicts.slice(0, 3).map((c) => c.path).join(', ') + (conflicts.length > 3 ? '...' : '') }
+            )
+            return
+          }
+        }
+      }
+    } catch {
+      // Continue with sync even if conflict detection fails
+    }
+
+    // No conflicts, show approval dialog
     setPendingApproveFiles(filesToSync)
     setSyncError(null)
     setSummaryError(null)
