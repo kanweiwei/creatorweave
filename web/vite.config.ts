@@ -4,6 +4,7 @@ import path from 'path'
 import { sqlitePlugin } from './src/sqlite/vite-plugin-sqlite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { syncGuardPlugin } from './vite-plugin-sync-guard'
+import { docsSyncPlugin } from './vite-plugin-docs-sync'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -16,6 +17,7 @@ export default defineConfig({
   plugins: [
     react(),
     syncGuardPlugin(),
+    ...(isVitest ? [] : [docsSyncPlugin()]),
     sqlitePlugin(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -199,6 +201,10 @@ export default defineConfig({
       // See: https://sqlite.org/wasm/doc/trunk/persistence.md
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+    // Allow serving docs from public directory
+    fs: {
+      allow: ['..'],
     },
   },
   build: {
