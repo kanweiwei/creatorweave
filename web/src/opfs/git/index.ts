@@ -11,7 +11,8 @@
 
 import { getSQLiteDB } from '@/sqlite'
 import { getFSOverlayRepository } from '@/sqlite/repositories/fs-overlay.repository'
-import type { SnapshotRecord } from '@/sqlite/repositories/fs-overlay.repository'
+import type { SnapshotFileRecord, SnapshotRecord } from '@/sqlite/repositories/fs-overlay.repository'
+import { structuredPatch } from 'diff'
 
 export interface GitStatusResult {
   workspaceId: string
@@ -81,6 +82,7 @@ export interface GitShowResult {
   committedAt: number | null
   opCount: number
   files: SnapshotFileInfo[]
+  diff?: GitDiffResult
 }
 
 export interface SnapshotFileInfo {
@@ -262,28 +264,20 @@ export async function gitDiff(
   let totalDeletions = 0
 
   for (const op of filteredOps) {
-    const additions = op.type === 'create' ? 1 : op.type === 'delete' ? 0 : 1
-    const deletions = op.type === 'delete' ? 1 : op.type === 'create' ? 0 : 1
-    totalAdditions += additions
-    totalDeletions += deletions
+    const snapshotIdForDiff = op.snapshotId || to || targetSnapshotId || undefined
+    let resolved: DiffFile | null = null
 
-    files.push({
-      path: op.path,
-      kind: op.type === 'create' ? 'add' : op.type === 'delete' ? 'delete' : 'modify',
-      additions,
-      deletions,
-      hunks: [
-        {
-          header: `@@ -1 +1 @@ ${op.type}: ${op.path}`,
-          lines: [
-            {
-              type: 'context',
-              content: `... ${op.path} (${op.type})`,
-            },
-          ],
-        },
-      ],
-    })
+    if (snapshotIdForDiff) {
+      const snapshotFile = await repo.getSnapshotFileContent(snapshotIdForDiff, op.path)
+      if (snapshotFile) {
+        resolved = buildDiffFileFromSnapshotContent(op.path, op.type, snapshotFile)
+      }
+    }
+
+    const diffFile = resolved || buildFallbackDiffFile(op.path, op.type)
+    totalAdditions += diffFile.additions || 0
+    totalDeletions += diffFile.deletions || 0
+    files.push(diffFile)
   }
 
   return {
@@ -319,6 +313,8 @@ export function formatGitDiff(diff: GitDiffResult): string {
       lines.push(`+++ /dev/null`)
     } else {
       lines.push(`diff --git a/${file.path} b/${file.path}`)
+      lines.push(`--- a/${file.path}`)
+      lines.push(`+++ b/${file.path}`)
     }
 
     for (const hunk of file.hunks) {
@@ -352,10 +348,29 @@ export async function gitLog(
 ): Promise<GitLogResult> {
   const repo = getFSOverlayRepository()
   const limit = options?.limit || 10
+  const hasFilter = Boolean(options?.status || options?.path)
+  const fetchLimit = hasFilter ? Math.max(limit * 20, 200) : limit + 1
+  const snapshots = await repo.listSnapshots(workspaceId, fetchLimit)
 
-  const snapshots = await repo.listSnapshots(workspaceId, limit + 1)
-  const hasMore = snapshots.length > limit
-  const commits = snapshots.slice(0, limit).map(mapSnapshotToCommit)
+  let filtered = snapshots
+
+  if (options?.status) {
+    filtered = filtered.filter((snapshot) => snapshot.status === options.status)
+  }
+
+  if (options?.path) {
+    const prefix = options.path
+    const matched = await Promise.all(
+      filtered.map(async (snapshot) => {
+        const ops = await repo.listSnapshotOps(workspaceId, snapshot.id)
+        return ops.some((op) => op.path.startsWith(prefix)) ? snapshot : null
+      })
+    )
+    filtered = matched.filter((snapshot): snapshot is SnapshotRecord => snapshot !== null)
+  }
+
+  const hasMore = filtered.length > limit
+  const commits = filtered.slice(0, limit).map(mapSnapshotToCommit)
 
   // Get HEAD commit (most recent)
   const head = commits.length > 0 ? commits[0].id : null
@@ -421,7 +436,11 @@ export function formatGitLogOneline(log: GitLogResult): string {
 
 export async function gitShow(
   workspaceId: string,
-  snapshotId?: string
+  snapshotId?: string,
+  options?: {
+    includeDiff?: boolean
+    path?: string
+  }
 ): Promise<GitShowResult | null> {
   const repo = getFSOverlayRepository()
 
@@ -444,6 +463,14 @@ export async function gitShow(
   }
 
   const files = await repo.listSnapshotFiles(targetId)
+  let diff: GitDiffResult | undefined
+  if (options?.includeDiff) {
+    diff = await gitDiff(workspaceId, {
+      mode: 'snapshot',
+      snapshotId: targetId,
+      path: options.path,
+    })
+  }
 
   return {
     id: snapshot.id,
@@ -459,6 +486,7 @@ export async function gitShow(
       beforeSize: f.beforeContentSize,
       afterSize: f.afterContentSize,
     })),
+    diff,
   }
 }
 
@@ -481,6 +509,12 @@ export function formatGitShow(data: GitShowResult): string {
         ? ` (${file.beforeSize} -> ${file.afterSize})`
         : ''
     lines.push(`  ${file.opType}: ${file.path}${sizeStr}`)
+  }
+
+  if (data.diff) {
+    lines.push('')
+    lines.push('Diff:')
+    lines.push(formatGitDiff(data.diff))
   }
 
   return lines.join('\n')
@@ -581,5 +615,97 @@ function formatRestoreMessage(restored: number, discarded: number, total: number
     return `Restored ${restored}, discarded ${discarded} of ${total} file(s)`
   } else {
     return `Restored ${restored} of ${total} file(s) from snapshot`
+  }
+}
+
+function buildFallbackDiffFile(path: string, opType: 'create' | 'modify' | 'delete'): DiffFile {
+  const additions = opType === 'create' ? 1 : opType === 'delete' ? 0 : 1
+  const deletions = opType === 'delete' ? 1 : opType === 'create' ? 0 : 1
+  return {
+    path,
+    kind: opType === 'create' ? 'add' : opType === 'delete' ? 'delete' : 'modify',
+    additions,
+    deletions,
+    hunks: [
+      {
+        header: `@@ -1 +1 @@ ${opType}: ${path}`,
+        lines: [
+          {
+            type: 'context',
+            content: `... ${path} (${opType})`,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function buildDiffFileFromSnapshotContent(
+  path: string,
+  opType: 'create' | 'modify' | 'delete',
+  snapshotFile: SnapshotFileRecord
+): DiffFile {
+  const kind: DiffFile['kind'] = opType === 'create' ? 'add' : opType === 'delete' ? 'delete' : 'modify'
+
+  if (snapshotFile.beforeContentKind === 'binary' || snapshotFile.afterContentKind === 'binary') {
+    return {
+      path,
+      kind,
+      additions: 0,
+      deletions: 0,
+      hunks: [
+        {
+          header: '@@ binary @@',
+          lines: [{ type: 'context', content: '[binary files differ]' }],
+        },
+      ],
+    }
+  }
+
+  const beforeText = snapshotFile.beforeContentKind === 'text' ? (snapshotFile.beforeContentText || '') : ''
+  const afterText = snapshotFile.afterContentKind === 'text' ? (snapshotFile.afterContentText || '') : ''
+
+  const patch = structuredPatch(path, path, beforeText, afterText, '', '', {
+    context: 3,
+  })
+
+  let additions = 0
+  let deletions = 0
+
+  const hunks: DiffHunk[] = patch.hunks.map((hunk) => {
+    const lines: DiffLine[] = hunk.lines.map((rawLine) => {
+      if (rawLine.startsWith('+')) {
+        additions += 1
+        return { type: 'add', content: rawLine.slice(1) }
+      }
+      if (rawLine.startsWith('-')) {
+        deletions += 1
+        return { type: 'delete', content: rawLine.slice(1) }
+      }
+      if (rawLine.startsWith(' ')) {
+        return { type: 'context', content: rawLine.slice(1) }
+      }
+      return { type: 'context', content: rawLine }
+    })
+
+    return {
+      header: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+      lines,
+    }
+  })
+
+  if (hunks.length === 0) {
+    hunks.push({
+      header: '@@ -0,0 +0,0 @@',
+      lines: [{ type: 'context', content: '[no textual changes]' }],
+    })
+  }
+
+  return {
+    path,
+    kind,
+    additions,
+    deletions,
+    hunks,
   }
 }

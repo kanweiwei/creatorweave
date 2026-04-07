@@ -220,6 +220,14 @@ export const gitShowDefinition: ToolDefinition = {
           type: 'string',
           description: 'Snapshot ID to show. If omitted, shows the latest snapshot.',
         },
+        include_diff: {
+          type: 'boolean',
+          description: 'Include unified diff for this snapshot. Default: false',
+        },
+        path: {
+          type: 'string',
+          description: 'Optional path prefix filter when include_diff=true',
+        },
         format: {
           type: 'string',
           enum: ['json', 'text'],
@@ -237,9 +245,14 @@ export const gitShowExecutor: ToolExecutor = async (args, context) => {
       return JSON.stringify({ error: 'No active workspace' })
     }
     const snapshotId = args.snapshot_id as string | undefined
+    const includeDiff = args.include_diff as boolean | undefined
+    const path = args.path as string | undefined
     const format = args.format as string || 'text'
 
-    const result = await gitShow(workspaceId, snapshotId)
+    const result = await gitShow(workspaceId, snapshotId, {
+      includeDiff: includeDiff === true,
+      path,
+    })
 
     if (!result) {
       return JSON.stringify({ error: 'No snapshots found' })
