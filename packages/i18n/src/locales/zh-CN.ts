@@ -651,7 +651,7 @@ export const zhCN = {
       },
       conversations: {
         title: '对话',
-        description: '与 AI 聊天来分析您的代码库。每个对话都有独立的工作区。',
+        description: '通过自然语言与 AI 交互。每个对话都有独立的工作区。',
       },
       fileTree: {
         title: '文件浏览器',
@@ -660,6 +660,10 @@ export const zhCN = {
       skills: {
         title: '技能',
         description: '管理和执行可复用的技能任务。',
+      },
+      multiAgent: {
+        title: '多智能体',
+        description: '创建多个 AI 智能体协同工作，分工处理复杂任务。',
       },
       tools: {
         title: '工具面板',

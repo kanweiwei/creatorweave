@@ -1,5 +1,8 @@
 /**
  * Agent Mode Switch - Toggle between Plan (read-only) and Act (full access) modes.
+ *
+ * Design: Industrial, utilitarian aesthetic with clean typography.
+ * No emojis - uses simple geometric icons instead.
  */
 
 import { BrandSwitch } from '@creatorweave/ui'
@@ -25,21 +28,87 @@ export interface AgentModeSwitchProps {
 const MODE_CONFIG = {
   plan: {
     label: 'Plan',
-    icon: '🔍',
-    activeClass: 'bg-amber-100 text-amber-800 border-amber-200',
-    dotClass: 'bg-amber-400',
+    description: 'Read-only analysis mode',
+    // Subtle amber/ochre for "contemplation"
+    bgLight: 'bg-amber-50',
+    bgDark: 'dark:bg-amber-950/40',
+    borderLight: 'border-amber-200/60',
+    borderDark: 'dark:border-amber-800/50',
+    textLight: 'text-amber-700',
+    textDark: 'dark:text-amber-400',
+    dotBg: 'bg-amber-400',
+    dotRing: 'ring-amber-400/30',
+    accentBg: 'bg-amber-100/80',
+    accentBorder: 'border-amber-300/50',
   },
   act: {
     label: 'Act',
-    icon: '⚡',
-    activeClass: 'bg-blue-100 text-blue-800 border-blue-200',
-    dotClass: 'bg-blue-500',
+    description: 'Full read/write access',
+    // Confident blue for "action"
+    bgLight: 'bg-blue-50',
+    bgDark: 'dark:bg-blue-950/40',
+    borderLight: 'border-blue-200/60',
+    borderDark: 'dark:border-blue-800/50',
+    textLight: 'text-blue-700',
+    textDark: 'dark:text-blue-400',
+    dotBg: 'bg-blue-500',
+    dotRing: 'ring-blue-500/30',
+    accentBg: 'bg-blue-100/80',
+    accentBorder: 'border-blue-300/50',
   },
 } as const
+
+// Simple geometric SVG icons - no emoji
+const PlanIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="8" cy="8" r="3" />
+    <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
+    <path d="M3.22 3.22l1.42 1.42M11.36 11.36l1.42 1.42M3.22 12.78l1.42-1.42M11.36 4.64l1.42-1.42" />
+  </svg>
+)
+
+const ActIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M8 1L10 6h4l-3.5 2.5L12 14l-4-2.5L4 14l1.5-5.5L2 6h4L8 1z" />
+  </svg>
+)
+
+// Arrow icon for tooltip
+const ArrowIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 12 12"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M2 6h8M7 3l3 3-3 3" />
+  </svg>
+)
 
 /**
  * Compact toggle - pill-shaped button with icon, label, and mode indicator dot.
  * Clicking toggles between Plan and Act mode.
+ *
+ * Design: Industrial pill with subtle border, icon, and pulsing indicator dot.
  */
 export function AgentModeSwitchCompact({
   mode,
@@ -49,6 +118,7 @@ export function AgentModeSwitchCompact({
 }: AgentModeSwitchProps) {
   const config = MODE_CONFIG[mode]
   const nextMode: AgentMode = mode === 'plan' ? 'act' : 'plan'
+  const nextConfig = MODE_CONFIG[nextMode]
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -58,43 +128,112 @@ export function AgentModeSwitchCompact({
             onClick={() => onModeChange(nextMode)}
             disabled={disabled}
             className={`
-              group relative inline-flex items-center gap-1.5
+              group relative inline-flex items-center gap-2
               rounded-full border px-2.5 py-1
-              text-xs font-semibold tracking-wide uppercase
+              text-[11px] font-semibold uppercase tracking-wider
               transition-all duration-200 ease-out
-              ${config.activeClass}
+              ${config.bgLight} ${config.bgDark}
+              ${config.borderLight} ${config.borderDark}
+              ${config.textLight} ${config.textDark}
               ${disabled
                 ? 'opacity-40 cursor-not-allowed'
-                : 'cursor-pointer hover:scale-105 active:scale-95'
+                : 'cursor-pointer hover:brightness-95 active:brightness-90 dark:hover:brightness-110'
               }
               ${className}
             `}
             aria-label={`Current: ${mode === 'plan' ? 'Plan' : 'Act'} mode. Click to switch.`}
           >
-            {/* Pulsing dot */}
+            {/* Icon */}
+            {mode === 'plan' ? (
+              <PlanIcon className="h-3 w-3 opacity-80" />
+            ) : (
+              <ActIcon className="h-3 w-3 opacity-80" />
+            )}
+
+            {/* Label */}
+            <span>{config.label}</span>
+
+            {/* Divider line */}
+            <span className="mx-0.5 h-3 w-px bg-current opacity-20" />
+
+            {/* Pulsing indicator dot */}
             <span
               className={`
                 inline-block h-1.5 w-1.5 rounded-full
-                ${config.dotClass}
+                ${config.dotBg}
                 ${disabled ? '' : 'animate-pulse'}
               `}
             />
-            <span>{config.icon}</span>
-            <span>{config.label}</span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={6} className="max-w-[220px]">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium">
-              {config.icon} {config.label} Mode
-            </p>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              {getModeDescription(mode)}
-            </p>
-            {!disabled && (
-              <p className="text-[10px] text-muted-foreground/70">
-                Click to switch → {MODE_CONFIG[nextMode].icon} {MODE_CONFIG[nextMode].label}
+        <TooltipContent
+          side="bottom"
+          sideOffset={8}
+          className="p-0 rounded-xl !bg-transparent !text-neutral-900 dark:!text-neutral-100 !shadow-xl border-0"
+        >
+          <div
+            className={`
+              w-64 overflow-hidden rounded-xl border shadow-lg
+              bg-white dark:bg-neutral-900
+              border-neutral-200/80 dark:border-neutral-700/80
+            `}
+          >
+            {/* Header with accent bar */}
+            <div
+              className={`
+                flex items-center gap-3 px-4 py-3
+                ${config.bgLight} ${config.bgDark}
+              `}
+            >
+              <div
+                className={`
+                  flex h-10 w-10 items-center justify-center rounded-lg
+                  ${config.accentBg}
+                  border ${config.accentBorder}
+                `}
+              >
+                {mode === 'plan' ? (
+                  <PlanIcon className={`h-5 w-5 ${config.textLight} ${config.textDark}`} />
+                ) : (
+                  <ActIcon className={`h-5 w-5 ${config.textLight} ${config.textDark}`} />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className={`text-sm font-bold uppercase tracking-wide ${config.textLight} ${config.textDark}`}>
+                  {config.label} Mode
+                </div>
+                <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  {mode === 'plan' ? 'Read-only analysis' : 'Full access enabled'}
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
+              <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+                {getModeDescription(mode)}
               </p>
+            </div>
+
+            {/* Switch hint */}
+            {!disabled && (
+              <div
+                className={`
+                  flex items-center justify-between border-t px-4 py-2.5
+                  border-neutral-100 dark:border-neutral-800
+                  ${nextConfig.bgLight} ${nextConfig.bgDark}
+                `}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                    Switch to
+                  </span>
+                  <span className={`text-xs font-semibold uppercase ${nextConfig.textLight} ${nextConfig.textDark}`}>
+                    {nextConfig.label}
+                  </span>
+                </div>
+                <ArrowIcon className={`h-3.5 w-3.5 ${nextConfig.textLight} ${nextConfig.textDark} opacity-60`} />
+              </div>
             )}
           </div>
         </TooltipContent>
@@ -105,6 +244,8 @@ export function AgentModeSwitchCompact({
 
 /**
  * Full switch variant - uses a toggle Switch with Plan/Act labels on each side.
+ *
+ * Design: Clean horizontal layout with labels and toggle switch.
  */
 export function AgentModeSwitch({
   mode,
@@ -113,6 +254,8 @@ export function AgentModeSwitch({
   className = '',
 }: AgentModeSwitchProps) {
   const isAct = mode === 'act'
+  const planConfig = MODE_CONFIG.plan
+  const actConfig = MODE_CONFIG.act
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -120,25 +263,26 @@ export function AgentModeSwitch({
         <TooltipTrigger asChild>
           <div
             className={`
-              inline-flex items-center gap-2 rounded-lg
-              border border-neutral-200 bg-white px-3 py-1.5
-              dark:border-neutral-700 dark:bg-neutral-900
+              inline-flex items-center gap-2.5 rounded-lg
+              border border-neutral-200/80 bg-white px-3 py-1.5
+              dark:border-neutral-700/80 dark:bg-neutral-900
               ${disabled ? 'opacity-40' : ''}
               ${className}
             `}
           >
-            {/* Plan label */}
-            <span
+            {/* Plan label with icon */}
+            <div
               className={`
-                text-xs font-medium transition-colors duration-200
+                flex items-center gap-1.5 text-xs font-medium transition-colors duration-200
                 ${!isAct
-                  ? 'text-amber-700 dark:text-amber-400'
+                  ? `${planConfig.textLight} ${planConfig.textDark}`
                   : 'text-neutral-400 dark:text-neutral-500'
                 }
               `}
             >
-              🔍 Plan
-            </span>
+              <PlanIcon className="h-3.5 w-3.5" />
+              <span>Plan</span>
+            </div>
 
             <BrandSwitch
               checked={isAct}
@@ -148,22 +292,66 @@ export function AgentModeSwitch({
               className="data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-amber-500"
             />
 
-            {/* Act label */}
-            <span
+            {/* Act label with icon */}
+            <div
               className={`
-                text-xs font-medium transition-colors duration-200
+                flex items-center gap-1.5 text-xs font-medium transition-colors duration-200
                 ${isAct
-                  ? 'text-blue-700 dark:text-blue-400'
+                  ? `${actConfig.textLight} ${actConfig.textDark}`
                   : 'text-neutral-400 dark:text-neutral-500'
                 }
               `}
             >
-              ⚡ Act
-            </span>
+              <ActIcon className="h-3.5 w-3.5" />
+              <span>Act</span>
+            </div>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={6}>
-          <p className="text-xs">{getModeDescription(mode)}</p>
+        <TooltipContent side="bottom" sideOffset={8} className="p-0 rounded-xl !bg-transparent !text-neutral-900 dark:!text-neutral-100 !shadow-xl border-0">
+          <div
+            className={`
+              w-56 overflow-hidden rounded-xl border shadow-lg
+              bg-white dark:bg-neutral-900
+              border-neutral-200/80 dark:border-neutral-700/80
+            `}
+          >
+            {/* Header */}
+            <div
+              className={`
+                flex items-center gap-3 px-4 py-3
+                ${isAct ? `${actConfig.bgLight} ${actConfig.bgDark}` : `${planConfig.bgLight} ${planConfig.bgDark}`}
+              `}
+            >
+              <div
+                className={`
+                  flex h-9 w-9 items-center justify-center rounded-lg
+                  ${isAct ? `${actConfig.accentBg} ${actConfig.accentBorder}` : `${planConfig.accentBg} ${planConfig.accentBorder}`}
+                  border
+                `}
+              >
+                {isAct ? (
+                  <ActIcon className={`h-4 w-4 ${actConfig.textLight} ${actConfig.textDark}`} />
+                ) : (
+                  <PlanIcon className={`h-4 w-4 ${planConfig.textLight} ${planConfig.textDark}`} />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className={`text-sm font-bold uppercase tracking-wide ${isAct ? `${actConfig.textLight} ${actConfig.textDark}` : `${planConfig.textLight} ${planConfig.textDark}`}`}>
+                  {mode} Mode
+                </div>
+                <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  {mode === 'plan' ? 'Read-only' : 'Full access'}
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
+              <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+                {getModeDescription(mode)}
+              </p>
+            </div>
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

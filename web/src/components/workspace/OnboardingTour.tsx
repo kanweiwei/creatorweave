@@ -148,7 +148,7 @@ export function OnboardingTour({
 
       {/* Tour dialog */}
       <div className="fixed z-[10000] flex items-center justify-center p-4">
-        <div className="border-subtle w-full max-w-md rounded-lg border bg-white shadow-xl dark:bg-neutral-900">
+        <div className="border-subtle w-[400px] max-w-[90vw] rounded-lg border bg-white shadow-xl dark:bg-neutral-900">
           {/* Header */}
           <div className="border-subtle flex items-start justify-between border-b px-4 py-3">
             <div className="flex-1">
@@ -264,7 +264,7 @@ export function getDefaultOnboardingSteps(locale: Locale = DEFAULT_LOCALE): Tour
       description: getStepDescription(
         locale,
         'conversations',
-        'Chat with AI to analyze your codebase. Each conversation has its own workspace.'
+        'Interact with AI using natural language. Each conversation has its own workspace.'
       ),
       target: '[data-tour="conversations"]',
       position: 'right',
@@ -290,6 +290,16 @@ export function getDefaultOnboardingSteps(locale: Locale = DEFAULT_LOCALE): Tour
       ),
       target: '[data-tour="skills"]',
       position: 'bottom',
+    },
+    {
+      id: 'multiAgent',
+      title: getStepTitle(locale, 'multiAgent', 'Multi-Agent'),
+      description: getStepDescription(
+        locale,
+        'multiAgent',
+        'Create multiple AI agents to work together on complex tasks.'
+      ),
+      position: 'center',
     },
     {
       id: 'tools',

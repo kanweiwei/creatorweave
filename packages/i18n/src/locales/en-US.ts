@@ -642,7 +642,7 @@ export const enUS = {
       },
       conversations: {
         title: 'Conversations',
-        description: 'Chat with AI to analyze your codebase. Each conversation has its own workspace.',
+        description: 'Interact with AI using natural language. Each conversation has its own workspace.',
       },
       fileTree: {
         title: 'File Browser',
@@ -651,6 +651,10 @@ export const enUS = {
       skills: {
         title: 'Skills',
         description: 'Manage and execute reusable skills for common tasks.',
+      },
+      multiAgent: {
+        title: 'Multi-Agent',
+        description: 'Create multiple AI agents to work together on complex tasks.',
       },
       tools: {
         title: 'Tools Panel',
