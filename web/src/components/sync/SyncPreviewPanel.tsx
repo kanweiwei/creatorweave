@@ -25,6 +25,7 @@ import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
 import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
 import { sendChangeReviewToConversation } from './review-request'
 import { toast } from 'sonner'
+import { pauseHmr, resumeHmr } from '@/lib/sync-guard'
 
 /**
  * Empty state when no changes detected
@@ -239,6 +240,9 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
     setIsSyncing(true)
     setSyncError(null)
 
+    // Extract approved paths upfront so it's available in finally block
+    const approvedPaths = filesToSync.map((c) => c.path)
+
     try {
       // Get active workspace
       const activeConversation = await getActiveConversation()
@@ -253,7 +257,9 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         throw new Error('请先选择项目目录')
       }
 
-      const approvedPaths = filesToSync.map((c) => c.path)
+      // Pause Vite HMR during sync to prevent mid-sync page reloads
+      // Unwatch the specific paths that will be written to avoid triggering HMR
+      await pauseHmr(approvedPaths)
 
       if (approvedPaths.length > 0) {
         await conversation.createApprovedSnapshotForPaths(
@@ -290,6 +296,8 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
       setSyncError(err instanceof Error ? err.message : '审批通过失败')
       return false
     } finally {
+      // Resume HMR — re-add paths and trigger full-reload to apply all suppressed changes
+      await resumeHmr(approvedPaths)
       setIsSyncing(false)
       // Clear selection after sync
       setSelectedItems(new Set())

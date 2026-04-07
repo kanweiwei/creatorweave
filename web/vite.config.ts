@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { sqlitePlugin } from './src/sqlite/vite-plugin-sqlite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { syncGuardPlugin } from './vite-plugin-sync-guard'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -14,6 +15,7 @@ export default defineConfig({
   base: '/',
   plugins: [
     react(),
+    syncGuardPlugin(),
     sqlitePlugin(),
     VitePWA({
       registerType: 'autoUpdate',
