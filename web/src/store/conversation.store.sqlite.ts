@@ -547,6 +547,7 @@ interface ConversationState {
   deleteUserMessage: (conversationId: string, userMessageId: string) => boolean
   deleteAgentLoop: (conversationId: string, userMessageId: string) => boolean
   regenerateUserMessage: (conversationId: string, userMessageId: string) => void
+  editAndResendUserMessage: (conversationId: string, userMessageId: string, newContent: string) => void
   deleteConversation: (id: string) => Promise<void>
   deleteConversations: (ids: string[]) => Promise<{
     successIds: string[]
@@ -975,6 +976,73 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       if (updatedConv) {
         persistConversation(updatedConv).catch((error) => {
           console.error('[conversation.store] Failed to persist on regenerate:', error)
+        })
+      }
+
+      // 获取设置并执行
+      const settingsState = useSettingsStore.getState()
+      const provider = settingsState.providerType
+      const model = settingsState.modelName
+
+      if (provider && model) {
+        get().runAgent(conversationId, provider, model, 8192, null)
+      }
+    },
+
+    editAndResendUserMessage: (conversationId, userMessageId, newContent) => {
+      const state = get()
+      if (state.isConversationRunning(conversationId)) {
+        toast.error('请先停止当前运行，再编辑发送')
+        return
+      }
+
+      const conv = state.conversations.find((c) => c.id === conversationId)
+      if (!conv) return
+
+      const userMsgIndex = conv.messages.findIndex((m) => m.id === userMessageId)
+      if (userMsgIndex < 0 || conv.messages[userMsgIndex].role !== 'user') return
+
+      // 找到该用户消息所属轮次中，需要清理的所有后续消息（直到下一个 user）
+      const idsToDelete = new Set<string>()
+      for (let i = userMsgIndex + 1; i < conv.messages.length; i++) {
+        const msg = conv.messages[i]
+        if (msg.role === 'user') break
+        idsToDelete.add(msg.id)
+      }
+
+      set((draft) => {
+        const conv = draft.conversations.find((c) => c.id === conversationId)
+        if (!conv) return
+
+        // 更新用户消息内容
+        conv.messages[userMsgIndex] = {
+          ...conv.messages[userMsgIndex],
+          content: newContent,
+          timestamp: Date.now(),
+        }
+
+        // 删除该 user 消息后、下一个 user 之前的所有非 user 消息
+        if (idsToDelete.size > 0) {
+          conv.messages = conv.messages.filter((m) => !idsToDelete.has(m.id))
+        }
+
+        // 重置流式状态
+        conv.status = 'idle'
+        conv.streamingContent = ''
+        conv.streamingReasoning = ''
+        conv.completedContent = null
+        conv.completedReasoning = null
+        conv.currentToolCall = null
+        conv.activeToolCalls = []
+        conv.error = null
+        conv.updatedAt = Date.now()
+      })
+
+      // 持久化
+      const updatedConv = get().conversations.find((c) => c.id === conversationId)
+      if (updatedConv) {
+        persistConversation(updatedConv).catch((error) => {
+          console.error('[conversation.store] Failed to persist on editAndResend:', error)
         })
       }
 
@@ -1645,7 +1713,6 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           ? Math.max(1, Math.min(100, Math.floor(configuredMaxIterations)))
           : 20
 
-        // Read agentMode from workspace-preferences store (workspace-level isolation)
         const agentMode = getCurrentWorkspaceAgentMode()
 
         const agentLoop = new AgentLoop({

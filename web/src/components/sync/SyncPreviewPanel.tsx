@@ -31,6 +31,66 @@ import { toast } from 'sonner'
 import { pauseHmr, resumeHmr } from '@/lib/sync-guard'
 
 /**
+ * 生成简化的 unified diff，只显示有变化的行
+ * 限制输出行数，避免超出 LLM 上下文
+ */
+function buildSimpleDiff(
+  opfsContent: string | null,
+  diskContent: string | null,
+  maxLines: number = 60
+): string {
+  const opfsLines = (opfsContent ?? '').split('\n')
+  const diskLines = (diskContent ?? '').split('\n')
+
+  const diff: string[] = []
+
+  // 找到所有不同的行
+  const changes: Array<{ lineNum: number; type: '+' | '-' | '~'; content: string }> = []
+  const maxLength = Math.max(opfsLines.length, diskLines.length)
+
+  for (let i = 0; i < maxLength; i++) {
+    const opfsLine = opfsLines[i]
+    const diskLine = diskLines[i]
+
+    if (opfsLine !== diskLine) {
+      if (opfsLine !== undefined) {
+        changes.push({ lineNum: i + 1, type: '-', content: opfsLine })
+      }
+      if (diskLine !== undefined) {
+        changes.push({ lineNum: i + 1, type: '+', content: diskLine })
+      }
+    }
+  }
+
+  // 限制变化的行数
+  const limitedChanges = changes.slice(0, maxLines)
+  const hasMore = changes.length > maxLines
+
+  // 分组相邻的变化
+  let lastLineNum = 0
+  for (const change of limitedChanges) {
+    // 如果和上一行行号差距 > 3，增加分隔
+    if (change.lineNum - lastLineNum > 5 && lastLineNum > 0) {
+      diff.push(`... (${change.lineNum - lastLineNum - 1} 行未显示) ...`)
+    }
+    const prefix = change.type === '-' ? '-' : change.type === '+' ? '+' : '~'
+    const lineNumStr = String(change.lineNum).padStart(4, ' ')
+    diff.push(`${lineNumStr}${prefix} ${change.content}`)
+    lastLineNum = change.lineNum
+  }
+
+  if (hasMore) {
+    diff.push(`... (还有 ${changes.length - maxLines} 行变化未显示) ...`)
+  }
+
+  if (diff.length === 0) {
+    return '(两个版本内容相同)'
+  }
+
+  return diff.join('\n')
+}
+
+/**
  * Send conflict resolution request to agent via conversation
  */
 async function sendConflictsToAgent(
@@ -46,9 +106,38 @@ async function sendConflictsToAgent(
   const conversationStore = useConversationStore.getState()
   const { directoryHandle } = useAgentStore.getState()
 
-  // Build conflict resolution message
-  const conflictPaths = conflicts.map((c) => c.path).join(', ')
+  // Get active conversation to access workspace
+  const activeConv = await getActiveConversation()
+  if (!activeConv) {
+    toast.error('无法获取活动工作区')
+    return
+  }
+
+  const nativeDir = await activeConv.conversation.getNativeDirectoryHandle()
+  const conversationId = activeConv.conversationId
+
+  // Build conflict resolution message with actual content
   const conflictFiles = changes.filter((c) => conflicts.some((conf) => conf.path === c.path))
+
+  const conflictDetails: string[] = []
+  for (const conflict of conflicts) {
+    const fileChange = conflictFiles.find((c) => c.path === conflict.path)
+    if (!fileChange || isImageFile(conflict.path)) continue
+
+    // Read both OPFS and disk versions
+    const opfsContent = await readFileFromOPFS(conversationId, conflict.path)
+    const diskContent = nativeDir ? await readFileFromNativeFS(nativeDir, conflict.path) : null
+
+    conflictDetails.push('')
+    conflictDetails.push(`## ${conflict.path}`)
+    conflictDetails.push('')
+    conflictDetails.push('```diff')
+    conflictDetails.push(buildSimpleDiff(opfsContent, diskContent))
+    conflictDetails.push('```')
+    conflictDetails.push('')
+    conflictDetails.push('标注说明: `-` = OPFS版本(待审批), `+` = 磁盘版本')
+    conflictDetails.push('')
+  }
 
   const messageContent = [
     `检测到 ${conflicts.length} 个文件冲突，需要在审批前解决：`,
@@ -56,12 +145,14 @@ async function sendConflictsToAgent(
     '冲突文件：',
     conflictFiles.map((c) => `  - ${c.type}: ${c.path}`).join('\n'),
     '',
-    '请使用以下方式处理：',
-    '1. 使用 `read` 工具查看磁盘当前版本',
-    '2. 使用 `force_sync_files` 强制覆盖磁盘文件',
-    '3. 或者手动合并后再尝试审批',
+    '以下是冲突文件的差异（只显示变化的部分）：',
+    ...conflictDetails,
+    '## 合并指引',
     '',
-    `冲突详情: ${conflictPaths}`,
+    '请仔细对比 OPFS 版本（待审批的草稿）和磁盘版本（外部的最新修改），',
+    '然后使用 `edit` 或 `write` 工具将合并后的正确内容写入文件。',
+    '',
+    '注意：编辑后会更新 OPFS 草稿内容，后续审批将使用新的合并版本。',
   ].join('\n')
 
   const userMessage = createUserMessage(messageContent)
@@ -383,6 +474,7 @@ export const SyncPreviewPanel: React.FC<SyncPreviewPanelProps> = ({
         const nativeDir = await activeConversation.conversation.getNativeDirectoryHandle()
         if (nativeDir) {
           const filePaths = filesToSync.map((c) => c.path)
+
           const conflicts = await activeConversation.conversation.detectSyncConflicts(nativeDir, filePaths)
 
           if (conflicts.length > 0) {

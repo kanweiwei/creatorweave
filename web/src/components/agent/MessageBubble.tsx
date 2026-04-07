@@ -5,7 +5,8 @@
  * Streaming is just a transient state prop, not a different component.
  */
 
-import { User, Bot, Trash2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { User, Bot, Trash2, Pencil } from 'lucide-react'
 import type { Message } from '@/agent/message-types'
 import { ReasoningSection } from './ReasoningSection'
 import { MarkdownContent } from './MarkdownContent'
@@ -51,6 +52,8 @@ interface MessageBubbleProps {
   onCancel?: () => void
   /** 是否正在处理（流式输出） */
   isProcessing?: boolean
+  /** 编辑并发送回调 */
+  onEditAndResend?: (userMessageId: string, newContent: string) => void
 }
 
 export function MessageBubble({
@@ -64,10 +67,54 @@ export function MessageBubble({
   onRegenerate,
   onCancel,
   isProcessing = false,
+  onEditAndResend,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isStreamingReasoning = streaming?.reasoning ?? false
   const isStreamingContent = streaming?.content ?? false
+
+  // Edit state for user messages
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus()
+      // Auto-resize textarea to fit content
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+    }
+  }, [isEditing])
+
+  const handleStartEdit = () => {
+    setEditText(message.content || '')
+    setIsEditing(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditText('')
+  }
+
+  const handleSubmitEdit = () => {
+    const trimmed = editText.trim()
+    if (trimmed && trimmed !== message.content && onEditAndResend) {
+      onEditAndResend(message.id, trimmed)
+    }
+    setIsEditing(false)
+    setEditText('')
+  }
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmitEdit()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      handleCancelEdit()
+    }
+  }
 
   // User message rendering
   if (isUser) {
@@ -80,9 +127,39 @@ export function MessageBubble({
 
         {/* Content */}
         <div className="min-w-0 max-w-[90%]">
-          <div className="ml-auto max-w-full rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">
-            <div className="whitespace-pre-wrap break-words overflow-x-auto">{message.content}</div>
-          </div>
+          {isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                ref={textareaRef}
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+                className="w-full resize-none rounded-lg border border-primary-300 bg-white px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-primary-700 dark:bg-neutral-900 dark:text-neutral-100"
+                rows={1}
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="rounded px-2.5 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitEdit}
+                  disabled={!editText.trim() || editText.trim() === message.content}
+                  className="rounded bg-primary-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-40"
+                >
+                  发送
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="ml-auto max-w-full rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">
+              <div className="whitespace-pre-wrap break-words overflow-x-auto">{message.content}</div>
+            </div>
+          )}
 
           {/* Timestamp + Copy + Delete buttons */}
           <div className="mt-1 flex items-center justify-end gap-2 text-xs text-neutral-400">
@@ -92,8 +169,21 @@ export function MessageBubble({
                 minute: '2-digit',
               })}
             </span>
+            {/* Edit button */}
+            {onEditAndResend && !isEditing && (
+              <button
+                type="button"
+                className="inline-flex items-center rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                disabled={isProcessing}
+                onClick={handleStartEdit}
+                title="编辑并重新发送"
+                aria-label="编辑并重新发送"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             {/* 顺序: Regenerate → Copy → Delete */}
-            {onRegenerate && (
+            {onRegenerate && !isEditing && (
               <RegenerateButton
                 userMessageId={message.id}
                 messageContent={message.content || ''}
@@ -103,8 +193,8 @@ export function MessageBubble({
                 isRunning={isProcessing}
               />
             )}
-            <CopyButton content={message.content || ''} title="复制" />
-            {onDeleteAgentLoop && (
+            {!isEditing && <CopyButton content={message.content || ''} title="复制" />}
+            {onDeleteAgentLoop && !isEditing && (
               <button
                 type="button"
                 className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"

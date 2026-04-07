@@ -49,8 +49,6 @@ import { switchAgentModeDefinition, createSwitchModeExecutor } from './tools/swi
 
 // Changeset tools (snapshot, sync, conflicts)
 import {
-  forceSyncFilesDefinition,
-  forceSyncFilesExecutor,
   detectConflictsDefinition,
   detectConflictsExecutor,
   createSnapshotDefinition,
@@ -84,7 +82,6 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: createSnapshotDefinition, executor: createSnapshotExecutor },
   { definition: rollbackSnapshotDefinition, executor: rollbackSnapshotExecutor },
   { definition: detectConflictsDefinition, executor: detectConflictsExecutor },
-  { definition: forceSyncFilesDefinition, executor: forceSyncFilesExecutor },
   // Meta tools
   { definition: switchAgentModeDefinition, executor: createSwitchModeExecutor() },
 ]

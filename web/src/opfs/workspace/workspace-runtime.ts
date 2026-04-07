@@ -371,9 +371,35 @@ export class WorkspaceRuntime {
   ): Promise<{ content: FileContent; metadata: FileMetadata }> {
     if (!this.initialized) await this.initialize()
 
-    // If path has pending changes, always read workspace state (OPFS files/),
-    // never fallback to native disk to avoid showing stale on-disk content.
+    // If path has pending changes, check for conflicts first.
+    // If disk mtime differs from OPFS baseline, disk is newer - read disk.
+    // This handles the conflict scenario where disk has been updated but OPFS hasn't.
     const isPendingPath = this.pendingManager.hasPendingPath(path)
+    if (directoryHandle && isPendingPath) {
+      // Check if disk has been modified since OPFS recorded baseline
+      try {
+        const diskMeta = await this.getFileMetadata(directoryHandle, path)
+        const pendingChanges = await this.pendingManager.getAll()
+        const pending = pendingChanges.find((p) => p.path === path || p.path === `/${path}`)
+        if (pending && pending.fsMtime && diskMeta.mtime > pending.fsMtime) {
+          // Disk is newer than OPFS baseline - disk has been modified externally
+          // Read disk version to see the latest changes
+          const diskContent = await this.readFromNativeFS(path, directoryHandle)
+          return {
+            content: diskContent.content,
+            metadata: {
+              path,
+              mtime: diskMeta.mtime,
+              size: diskMeta.size,
+              contentType: diskMeta.contentType,
+            },
+          }
+        }
+      } catch {
+        // Ignore errors, fall through to OPFS read
+      }
+    }
+
     if (directoryHandle && !isPendingPath) {
       // Try to read from files/ first
       if (this.hasFileInIndex(path)) {
@@ -394,7 +420,7 @@ export class WorkspaceRuntime {
       return await this.readFromNativeFS(path, directoryHandle)
     }
 
-    // Read from files/ only (no native FS available or has pending changes)
+    // Read from files/ only (no native FS available or has pending changes without conflict)
     if (this.hasFileInIndex(path)) {
       const fromFilesDir = await this.readFromFilesDir(path)
       if (fromFilesDir) {
@@ -411,6 +437,22 @@ export class WorkspaceRuntime {
     }
 
     throw new Error(`File not found in OPFS workspace: ${path}`)
+  }
+
+  /**
+   * Get file metadata from native filesystem
+   */
+  private async getFileMetadata(
+    directoryHandle: FileSystemDirectoryHandle,
+    path: string
+  ): Promise<{ mtime: number; size: number; contentType: 'text' | 'binary' }> {
+    const fileHandle = await this.getFileHandle(directoryHandle, path)
+    const file = await fileHandle.getFile()
+    return {
+      mtime: file.lastModified,
+      size: file.size,
+      contentType: getFileContentType(path),
+    }
   }
 
   /**

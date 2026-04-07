@@ -134,6 +134,7 @@ export function ConversationView({
   const mountConversation = useConversationStore((s) => s.mountConversation)
   const unmountConversation = useConversationStore((s) => s.unmountConversation)
   const regenerateUserMessage = useConversationStore((s) => s.regenerateUserMessage)
+  const editAndResendUserMessage = useConversationStore((s) => s.editAndResendUserMessage)
 
   const { providerType, modelName, maxTokens, hasApiKey, enableThinking, thinkingLevel, setEnableThinking, setThinkingLevel } = useSettingsStore()
   const { agentMode, setAgentMode } = useWorkspacePreferencesStore()
@@ -378,6 +379,11 @@ export function ConversationView({
     if (ok) {
       toast.success(t('conversation.toast.deletedTurn'))
     }
+  }
+
+  const handleEditAndResend = (userMessageId: string, newContent: string) => {
+    if (!convId) return
+    editAndResendUserMessage(convId, userMessageId, newContent)
   }
 
   const handleCreateAgent = async () => {
@@ -672,6 +678,7 @@ export function ConversationView({
                     key={turn.message.id}
                     message={turn.message}
                     onDeleteAgentLoop={handleDeleteAgentLoop}
+                    onEditAndResend={handleEditAndResend}
                     onRegenerate={
                       convId ? (userMessageId: string) => regenerateUserMessage(convId, userMessageId) : undefined
                     }

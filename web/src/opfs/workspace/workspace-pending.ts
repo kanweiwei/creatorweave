@@ -140,11 +140,13 @@ export class WorkspacePendingManager {
     const allowedPaths = onlyPaths ? new Set(onlyPaths.map((p) => normalizeComparePath(p))) : null
 
     for (const change of this.getSyncCandidates()) {
-      if (allowedPaths && !allowedPaths.has(normalizeComparePath(change.path))) {
+      const changePathNormalized = normalizeComparePath(change.path)
+      if (allowedPaths && !allowedPaths.has(changePathNormalized)) {
         continue
       }
       const check = await this.checkNativeConflict(directoryHandle, change)
       if (!check.isConflict) continue
+
       conflicts.push({
         path: change.path,
         workspaceId: this.workspaceId,
