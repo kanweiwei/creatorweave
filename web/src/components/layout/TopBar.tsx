@@ -24,6 +24,7 @@ import {
   Menu,
   ArrowLeft,
   Terminal,
+  BookOpen,
 } from 'lucide-react'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { useHasApiKey } from '@/store/settings.store'
@@ -226,6 +227,13 @@ export function TopBar({
           <ActionTooltip label={t('topbar.tooltips.mcpSettings')}>
             <BrandButton iconButton onClick={() => setMcpSettingsOpen(true)}>
               <Server className="h-[14px] w-[14px]" />
+            </BrandButton>
+          </ActionTooltip>
+
+          {/* Documentation */}
+          <ActionTooltip label={t('topbar.tooltips.docs')}>
+            <BrandButton iconButton onClick={() => window.open('/docs', '_blank')}>
+              <BookOpen className="h-[14px] w-[14px]" />
             </BrandButton>
           </ActionTooltip>
 

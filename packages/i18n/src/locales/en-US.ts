@@ -50,6 +50,7 @@ export const enUS = {
       skillsManager: 'Skills Manager',
       mcpSettings: 'MCP Service Settings',
       appSettings: 'App Settings',
+      docs: 'Documentation',
     },
     projectSwitcher: {
       createProject: 'New Project',

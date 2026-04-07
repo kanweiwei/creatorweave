@@ -52,6 +52,7 @@ export const zhCN = {
       skillsManager: '技能管理',
       mcpSettings: 'MCP 服务配置',
       appSettings: '应用设置',
+      docs: '帮助文档',
     },
     projectSwitcher: {
       createProject: '新建项目',

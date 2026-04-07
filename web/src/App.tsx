@@ -18,6 +18,7 @@ import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { ProjectHome } from '@/components/project/ProjectHome'
 import { WebContainerStandalonePreview } from '@/components/webcontainer/WebContainerStandalonePreview'
 import { StandalonePreview } from '@/components/file-viewer/StandalonePreview'
+import { DocsPage } from '@/pages/docs/DocsPage'
 import { shouldApplyRouteWorkspaceToConversation } from '@/app/route-sync'
 
 type AppRoute =
@@ -26,6 +27,7 @@ type AppRoute =
   | { kind: 'legacyWorkspace' }
   | { kind: 'webcontainerPreview' }
   | { kind: 'filePreview'; path: string }
+  | { kind: 'docs'; category?: 'user' | 'developer'; page?: string }
   | { kind: 'unknown' }
 
 function resolveRoute(pathname: string): AppRoute {
@@ -53,6 +55,16 @@ function resolveRoute(pathname: string): AppRoute {
   }
 
   const segments = normalized.split('/').filter(Boolean)
+
+  // Docs route: /docs, /docs/user, /docs/user/getting-started
+  if (segments[0] === 'docs') {
+    return {
+      kind: 'docs',
+      category: segments[1] as 'user' | 'developer' | undefined,
+      page: segments[2],
+    }
+  }
+
   if (segments[0] !== 'projects' || !segments[1]) {
     return { kind: 'unknown' }
   }
@@ -101,6 +113,11 @@ function toPath(route: AppRoute): string {
 
   if (route.kind === 'filePreview') {
     return `/preview?path=${encodeURIComponent(route.path)}`
+  }
+
+  if (route.kind === 'docs') {
+    const parts = ['docs', route.category, route.page].filter(Boolean)
+    return '/' + parts.join('/')
   }
 
   const encodedProjectId = encodeURIComponent(route.projectId)
@@ -554,9 +571,15 @@ function App() {
       setCurrentRoute(resolveRoute(window.location.pathname))
     }
 
+    const handleRouteChange = () => {
+      setCurrentRoute(resolveRoute(window.location.pathname))
+    }
+
     window.addEventListener('popstate', handlePopstate)
+    window.addEventListener('routechange', handleRouteChange)
     return () => {
       window.removeEventListener('popstate', handlePopstate)
+      window.removeEventListener('routechange', handleRouteChange)
     }
   }, [])
 
@@ -593,6 +616,10 @@ function App() {
       }
 
       if (currentRoute.kind === 'filePreview') {
+        return
+      }
+
+      if (currentRoute.kind === 'docs') {
         return
       }
 
@@ -854,6 +881,12 @@ function App() {
     <WebContainerStandalonePreview />
   ) : currentRoute.kind === 'filePreview' ? (
     <StandalonePreview filePath={currentRoute.path} />
+  ) : currentRoute.kind === 'docs' ? (
+    <DocsPage
+      category={currentRoute.category}
+      page={currentRoute.page}
+      onBack={() => navigateToRoute({ kind: 'projectsHome' })}
+    />
   ) : isMobile ? (
     <MobileLayout>{workspaceView}</MobileLayout>
   ) : (
