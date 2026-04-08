@@ -667,6 +667,9 @@ export const koKR = {
       descriptionSuffix: '데이터는 당신의 기기에 남습니다.',
       projectCount: '{count} 프로젝트',
       workspaceCount: '{count} 워크스페이스',
+      docsHub: '문서 센터',
+      userDocs: '사용자 문서',
+      developerDocs: '개발자 문서',
     },
     sidebar: {
       continueWork: '계속하기',
@@ -678,6 +681,9 @@ export const koKR = {
       startFreshDescription: '문제가 있나요? 처음부터 시작할 수 있습니다. 모든 프로젝트와 대화가 삭제됩니다.',
       resetApp: '앱 초기화',
       resetting: '초기화 중...',
+      helpDocs: '도움말 문서',
+      helpDocsDescription: '사용자/개발자 문서를 확인해 사용 가이드와 기술 정보를 빠르게 찾으세요.',
+      openDocs: '문서 센터 열기',
       appearance: '외관',
     },
     theme: {

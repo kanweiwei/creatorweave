@@ -36,6 +36,9 @@ import {
   Sun,
   Moon,
   Globe,
+  BookOpen,
+  Code2,
+  FileText,
 } from 'lucide-react'
 import { useTheme, ACCENT_COLORS, type AccentColor } from '@/store/theme.store'
 import { useT, useLocale, LOCALE_LABELS, type Locale } from '@/i18n'
@@ -361,6 +364,9 @@ interface ProjectHomeProps {
   onArchiveProject: (projectId: string, archived: boolean) => void | Promise<void>
   onDeleteProject: (projectId: string) => void | Promise<void>
   onClearLocalData: () => void | Promise<void>
+  onOpenDocs?: () => void | Promise<void>
+  onOpenUserDocs?: () => void | Promise<void>
+  onOpenDeveloperDocs?: () => void | Promise<void>
   isClearingLocalData?: boolean
 }
 
@@ -377,6 +383,9 @@ export function ProjectHome({
   onArchiveProject,
   onDeleteProject,
   onClearLocalData,
+  onOpenDocs,
+  onOpenUserDocs,
+  onOpenDeveloperDocs,
   isClearingLocalData = false,
 }: ProjectHomeProps) {
   // Theme
@@ -725,12 +734,44 @@ export function ProjectHome({
         <div className="home-hero-bg" />
         <div className="relative z-10 max-w-5xl mx-auto px-6 pt-16 pb-12 sm:pt-24 sm:pb-16">
           <div className="home-reveal">
-            <div className="flex items-center gap-2 mb-6">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-50 border border-primary/10 dark:border-primary/20">
                 <Shield className="w-3.5 h-3.5 text-primary-600 dark:text-primary-600" />
                 <span className="home-body text-xs text-primary-600 dark:text-primary-600 font-medium">
                   {t('projectHome.hero.badge')}
                 </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <BrandButton
+                  variant="outline"
+                  className="h-9 px-3 text-xs"
+                  onClick={() => {
+                    void onOpenDocs?.()
+                  }}
+                >
+                  <FileText className="w-3.5 h-3.5 mr-1.5" />
+                  {t('projectHome.hero.docsHub')}
+                </BrandButton>
+                <BrandButton
+                  variant="ghost"
+                  className="h-9 px-3 text-xs"
+                  onClick={() => {
+                    void onOpenUserDocs?.()
+                  }}
+                >
+                  <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                  {t('projectHome.hero.userDocs')}
+                </BrandButton>
+                <BrandButton
+                  variant="ghost"
+                  className="h-9 px-3 text-xs"
+                  onClick={() => {
+                    void onOpenDeveloperDocs?.()
+                  }}
+                >
+                  <Code2 className="w-3.5 h-3.5 mr-1.5" />
+                  {t('projectHome.hero.developerDocs')}
+                </BrandButton>
               </div>
             </div>
           </div>

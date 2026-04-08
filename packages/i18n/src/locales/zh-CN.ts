@@ -691,6 +691,9 @@ export const zhCN = {
       descriptionSuffix: '数据始终在你的设备上。',
       projectCount: '{count} 项目',
       workspaceCount: '{count} 工作区',
+      docsHub: '文档中心',
+      userDocs: '用户文档',
+      developerDocs: '开发者文档',
     },
     // 侧边栏卡片
     sidebar: {
@@ -703,6 +706,9 @@ export const zhCN = {
       startFreshDescription: '遇到问题？可以从头开始。这会删除所有项目和对话记录。',
       resetApp: '重置应用',
       resetting: '重置中...',
+      helpDocs: '帮助文档',
+      helpDocsDescription: '查看用户与开发者文档，快速找到使用说明和技术资料。',
+      openDocs: '打开文档中心',
       appearance: '外观',
     },
     // 主题设置

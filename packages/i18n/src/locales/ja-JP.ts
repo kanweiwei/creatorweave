@@ -667,6 +667,9 @@ export const jaJP = {
       descriptionSuffix: 'データはあなたのデバイスに残ります。',
       projectCount: '{count} プロジェクト',
       workspaceCount: '{count} ワークスペース',
+      docsHub: 'ドキュメントセンター',
+      userDocs: 'ユーザードキュメント',
+      developerDocs: '開発者ドキュメント',
     },
     sidebar: {
       continueWork: '続ける',
@@ -678,6 +681,9 @@ export const jaJP = {
       startFreshDescription: '問題がありますか？最初からやり直せます。すべてのプロジェクトと会話が削除されます。',
       resetApp: 'アプリをリセット',
       resetting: 'リセット中...',
+      helpDocs: 'ヘルプドキュメント',
+      helpDocsDescription: 'ユーザー向け・開発者向けドキュメントを参照して、使い方と技術情報を確認できます。',
+      openDocs: 'ドキュメントセンターを開く',
       appearance: '外観',
     },
     theme: {

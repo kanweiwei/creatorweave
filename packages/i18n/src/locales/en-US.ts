@@ -682,6 +682,9 @@ export const enUS = {
       descriptionSuffix: 'Your data stays on your device.',
       projectCount: '{count} projects',
       workspaceCount: '{count} workspaces',
+      docsHub: 'Docs Hub',
+      userDocs: 'User Docs',
+      developerDocs: 'Developer Docs',
     },
     // Sidebar cards
     sidebar: {
@@ -694,6 +697,9 @@ export const enUS = {
       startFreshDescription: 'Having issues? Start from scratch. This deletes all projects and conversations.',
       resetApp: 'Reset App',
       resetting: 'Resetting...',
+      helpDocs: 'Docs',
+      helpDocsDescription: 'Browse user and developer documentation for guides and technical references.',
+      openDocs: 'Open Docs Hub',
       appearance: 'Appearance',
     },
     // Theme settings
