@@ -36,8 +36,6 @@ import {
   Sun,
   Moon,
   Globe,
-  BookOpen,
-  Code2,
   FileText,
 } from 'lucide-react'
 import { useTheme, ACCENT_COLORS, type AccentColor } from '@/store/theme.store'
@@ -365,8 +363,6 @@ interface ProjectHomeProps {
   onDeleteProject: (projectId: string) => void | Promise<void>
   onClearLocalData: () => void | Promise<void>
   onOpenDocs?: () => void | Promise<void>
-  onOpenUserDocs?: () => void | Promise<void>
-  onOpenDeveloperDocs?: () => void | Promise<void>
   isClearingLocalData?: boolean
 }
 
@@ -384,8 +380,6 @@ export function ProjectHome({
   onDeleteProject,
   onClearLocalData,
   onOpenDocs,
-  onOpenUserDocs,
-  onOpenDeveloperDocs,
   isClearingLocalData = false,
 }: ProjectHomeProps) {
   // Theme
@@ -751,26 +745,6 @@ export function ProjectHome({
                 >
                   <FileText className="w-3.5 h-3.5 mr-1.5" />
                   {t('projectHome.hero.docsHub')}
-                </BrandButton>
-                <BrandButton
-                  variant="ghost"
-                  className="h-9 px-3 text-xs"
-                  onClick={() => {
-                    void onOpenUserDocs?.()
-                  }}
-                >
-                  <BookOpen className="w-3.5 h-3.5 mr-1.5" />
-                  {t('projectHome.hero.userDocs')}
-                </BrandButton>
-                <BrandButton
-                  variant="ghost"
-                  className="h-9 px-3 text-xs"
-                  onClick={() => {
-                    void onOpenDeveloperDocs?.()
-                  }}
-                >
-                  <Code2 className="w-3.5 h-3.5 mr-1.5" />
-                  {t('projectHome.hero.developerDocs')}
                 </BrandButton>
               </div>
             </div>

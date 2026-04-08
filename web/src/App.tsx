@@ -876,8 +876,6 @@ function App() {
       onDeleteProject={handleDeleteProject}
       onClearLocalData={handleClearLocalData}
       onOpenDocs={() => navigateToRoute({ kind: 'docs' })}
-      onOpenUserDocs={() => navigateToRoute({ kind: 'docs', category: 'user' })}
-      onOpenDeveloperDocs={() => navigateToRoute({ kind: 'docs', category: 'developer' })}
       isClearingLocalData={isClearingLocalData}
     />
   ) : currentRoute.kind === 'webcontainerPreview' ? (

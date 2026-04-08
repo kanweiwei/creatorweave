@@ -91,11 +91,9 @@ vi.mock('@/i18n', () => ({
 }))
 
 describe('ProjectHome docs entry', () => {
-  it('opens docs pages from hero actions', async () => {
+  it('shows single docs hub action in hero', async () => {
     const user = userEvent.setup()
     const onOpenDocs = vi.fn()
-    const onOpenUserDocs = vi.fn()
-    const onOpenDeveloperDocs = vi.fn()
 
     render(
       <ProjectHome
@@ -109,17 +107,13 @@ describe('ProjectHome docs entry', () => {
         onDeleteProject={vi.fn()}
         onClearLocalData={vi.fn()}
         onOpenDocs={onOpenDocs}
-        onOpenUserDocs={onOpenUserDocs}
-        onOpenDeveloperDocs={onOpenDeveloperDocs}
       />
     )
 
     await user.click(screen.getByRole('button', { name: '文档中心' }))
-    await user.click(screen.getByRole('button', { name: '用户文档' }))
-    await user.click(screen.getByRole('button', { name: '开发者文档' }))
 
     expect(onOpenDocs).toHaveBeenCalledTimes(1)
-    expect(onOpenUserDocs).toHaveBeenCalledTimes(1)
-    expect(onOpenDeveloperDocs).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: '用户文档' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '开发者文档' })).not.toBeInTheDocument()
   })
 })
