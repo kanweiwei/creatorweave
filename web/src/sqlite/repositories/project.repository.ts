@@ -141,6 +141,7 @@ export class ProjectRepository {
     }
 
     const db = getSQLiteDB()
+    const now = Date.now()
 
     // Avoid opaque FK errors by validating existence first.
     const existing = await db.queryFirst<{ id: string }>('SELECT id FROM projects WHERE id = ?', [projectId])
@@ -154,8 +155,11 @@ export class ProjectRepository {
        ON CONFLICT(singleton_id) DO UPDATE SET
          project_id = excluded.project_id,
          last_modified = excluded.last_modified`,
-      [projectId, Date.now()]
+      [projectId, now]
     )
+
+    // Treat opening/switching project as project activity for "recent work" sorting.
+    await db.execute('UPDATE projects SET updated_at = ? WHERE id = ?', [now, projectId])
   }
 
   async clearActiveProject(): Promise<void> {

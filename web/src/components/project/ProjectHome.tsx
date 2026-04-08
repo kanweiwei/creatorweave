@@ -396,6 +396,11 @@ export function ProjectHome({
     return formatRelativeTimeWithLocale(date, dateFnsLocale)
   }
 
+  const getProjectActivityAt = (project: Project) => {
+    const workspaceActivityAt = projectStats[project.id]?.lastWorkspaceAccessAt || 0
+    return Math.max(project.updatedAt, workspaceActivityAt)
+  }
+
   // Time group labels
   const getTimeGroupLabels = (): Record<TimeGroup, string> => ({
     today: t('projectHome.timeline.today'),
@@ -462,8 +467,8 @@ export function ProjectHome({
       filtered = filtered.filter((p) => p.status === 'archived')
     }
 
-    // Sort by update time
-    const sorted = filtered.sort((a, b) => b.updatedAt - a.updatedAt)
+    // Sort by project activity time
+    const sorted = filtered.sort((a, b) => getProjectActivityAt(b) - getProjectActivityAt(a))
 
     // Apply search
     const keyword = search.trim().toLowerCase()
@@ -479,18 +484,18 @@ export function ProjectHome({
     }
 
     searched.forEach((project) => {
-      const group = getTimeGroup(project.updatedAt)
+      const group = getTimeGroup(getProjectActivityAt(project))
       groups[group].push(project)
     })
 
     return groups
-  }, [projects, search, statusFilter])
+  }, [projects, projectStats, search, statusFilter])
 
   // Recent project
   const recentProject = useMemo(() => {
     const active = projects.filter((p) => p.status !== 'archived')
-    return active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || null
-  }, [projects])
+    return active.sort((a, b) => getProjectActivityAt(b) - getProjectActivityAt(a))[0] || null
+  }, [projects, projectStats])
 
   // Project stats
   const totalProjects = projects.filter((p) => p.status !== 'archived').length
@@ -623,6 +628,7 @@ export function ProjectHome({
     const stats = projectStats[project.id]
     const isArchived = project.status === 'archived'
     const isProjectActionPending = pendingProjectAction?.projectId === project.id
+    const activityAt = getProjectActivityAt(project)
 
     return (
       <div
@@ -645,7 +651,7 @@ export function ProjectHome({
             <div className="home-body flex items-center gap-3 text-xs text-tertiary dark:text-muted">
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {formatRelativeTime(project.updatedAt)}
+                {formatRelativeTime(activityAt)}
               </span>
               <span className="flex items-center gap-1">
                 <FolderOpen className="w-3 h-3" />
@@ -794,7 +800,7 @@ export function ProjectHome({
                   {recentProject.name}
                 </h3>
                 <p className="home-body text-xs text-tertiary dark:text-muted mb-4">
-                  {formatRelativeTime(recentProject.updatedAt)}
+                  {formatRelativeTime(getProjectActivityAt(recentProject))}
                 </p>
                 <BrandButton
                   onClick={() => void onOpenProject(recentProject.id)}

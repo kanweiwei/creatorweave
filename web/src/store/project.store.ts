@@ -156,9 +156,18 @@ export const useProjectStore = create<ProjectState>()(
 
         await repo.setActiveProject(projectId)
         await bootstrapProjectOpfs(projectId)
+        const now = Date.now()
 
         set({
           activeProjectId: projectId,
+          projects: get().projects.map((project) =>
+            project.id === projectId
+              ? {
+                  ...project,
+                  updatedAt: now,
+                }
+              : project
+          ),
           isLoading: false,
         })
 

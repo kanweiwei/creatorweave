@@ -36,6 +36,7 @@ const t = (key: string) => {
     'projectHome.sidebar.createNewDescription': '创建描述',
     'projectHome.sidebar.shortcutHint': '快捷键: N',
     'projectHome.sidebar.createProject': '创建项目',
+    'projectHome.sidebar.continueWork': '继续工作',
     'projectHome.sidebar.startFresh': '重新开始',
     'projectHome.sidebar.startFreshDescription': '重置描述',
     'projectHome.sidebar.resetApp': '重置应用',
@@ -66,6 +67,7 @@ const t = (key: string) => {
     'projectHome.dialogs.createButton': '创建',
     'projectHome.dialogs.creating': '创建中',
     'projectHome.dialogs.startFreshConfirmPlaceholder': '重新开始',
+    'projectHome.project.open': '打开',
     'projectHome.accentColors.teal': '青色',
     'projectHome.accentColors.rose': '玫瑰',
     'projectHome.accentColors.amber': '琥珀',
@@ -115,5 +117,55 @@ describe('ProjectHome docs entry', () => {
     expect(onOpenDocs).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: '用户文档' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '开发者文档' })).not.toBeInTheDocument()
+  })
+
+  it('prefers recent project activity for continue work', async () => {
+    const user = userEvent.setup()
+    const onOpenProject = vi.fn()
+    const now = Date.now()
+
+    render(
+      <ProjectHome
+        projects={[
+          {
+            id: 'project-a',
+            name: '最近工作项目',
+            status: 'active',
+            createdAt: now - 86400000 * 30,
+            updatedAt: now - 86400000 * 30,
+          },
+          {
+            id: 'project-b',
+            name: '刚创建项目',
+            status: 'active',
+            createdAt: now - 1000 * 60 * 10,
+            updatedAt: now - 1000 * 60 * 10,
+          },
+        ]}
+        projectStats={{
+          'project-a': {
+            projectId: 'project-a',
+            workspaceCount: 1,
+            lastWorkspaceAccessAt: now - 1000 * 60 * 2,
+          },
+          'project-b': {
+            projectId: 'project-b',
+            workspaceCount: 1,
+            lastWorkspaceAccessAt: now - 1000 * 60 * 20,
+          },
+        }}
+        activeProjectId=""
+        onOpenProject={onOpenProject}
+        onCreateProject={vi.fn()}
+        onRenameProject={vi.fn()}
+        onArchiveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onClearLocalData={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: '继续工作' }))
+
+    expect(onOpenProject).toHaveBeenCalledWith('project-a')
   })
 })
