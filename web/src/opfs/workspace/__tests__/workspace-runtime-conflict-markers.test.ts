@@ -94,4 +94,80 @@ describe('WorkspaceRuntime conflict marker materialization', () => {
 
     expect(runtime.writeToFilesDir).not.toHaveBeenCalled()
   })
+
+  it('prefers OPFS conflict markers on pending read even when disk is newer', async () => {
+    const runtime = new WorkspaceRuntime('w1', {} as FileSystemDirectoryHandle, '/tmp') as any
+    runtime.initialized = true
+    runtime.filesIndex = new Set(['src/a.ts'])
+    runtime.pendingManager = {
+      hasPendingPath: vi.fn(() => true),
+      getAll: vi.fn(async () => [
+        {
+          id: 'p1',
+          path: 'src/a.ts',
+          type: 'modify',
+          fsMtime: 100,
+          timestamp: 100,
+        },
+      ]),
+    }
+
+    const markerContent = `${CONFLICT_MARKER_START}\nleft\n${CONFLICT_MARKER_MIDDLE}\nright\n${CONFLICT_MARKER_END}\n`
+    runtime.readFromFilesDir = vi.fn(async () => ({
+      content: markerContent,
+      mtime: 101,
+      size: markerContent.length,
+      contentType: 'text',
+    }))
+    runtime.getFileMetadata = vi.fn(async () => ({
+      mtime: 200,
+      size: 20,
+      contentType: 'text',
+    }))
+    runtime.readFromNativeFS = vi.fn(async () => ({
+      content: 'disk newer content',
+      metadata: {
+        path: 'src/a.ts',
+        mtime: 200,
+        size: 20,
+        contentType: 'text',
+      },
+    }))
+
+    const result = await runtime.readFile('src/a.ts', {} as FileSystemDirectoryHandle)
+
+    expect(result.content).toBe(markerContent)
+    expect(runtime.readFromNativeFS).not.toHaveBeenCalled()
+  })
+
+  it('prefers native disk for non-pending reads to observe external changes', async () => {
+    const runtime = new WorkspaceRuntime('w1', {} as FileSystemDirectoryHandle, '/tmp') as any
+    runtime.initialized = true
+    runtime.filesIndex = new Set(['src/a.ts'])
+    runtime.pendingManager = {
+      hasPendingPath: vi.fn(() => false),
+    }
+    runtime.readFromFilesDir = vi.fn(async () => ({
+      content: 'stale opfs content',
+      mtime: 100,
+      size: 18,
+      contentType: 'text',
+    }))
+    runtime.readFromNativeFS = vi.fn(async () => ({
+      content: 'fresh disk content',
+      metadata: {
+        path: 'src/a.ts',
+        mtime: 200,
+        size: 17,
+        contentType: 'text',
+      },
+    }))
+    runtime.deleteFromFilesDirIfExists = vi.fn(async () => {})
+
+    const result = await runtime.readFile('src/a.ts', {} as FileSystemDirectoryHandle)
+
+    expect(result.content).toBe('fresh disk content')
+    expect(runtime.readFromNativeFS).toHaveBeenCalledTimes(1)
+    expect(runtime.deleteFromFilesDirIfExists).toHaveBeenCalledWith('src/a.ts')
+  })
 })

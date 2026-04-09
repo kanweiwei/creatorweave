@@ -364,7 +364,7 @@ export class WorkspaceRuntime {
   // ============ File Operations ============
 
   /**
-   * Read file from workspace (files/ first, then native FS)
+   * Read file from workspace
    * @param path File path
    * @param directoryHandle Real filesystem directory handle
    * @returns File content and metadata
@@ -380,6 +380,35 @@ export class WorkspaceRuntime {
     // This handles the conflict scenario where disk has been updated but OPFS hasn't.
     const isPendingPath = this.pendingManager.hasPendingPath(path)
     if (directoryHandle && isPendingPath) {
+      let fromFilesDir: {
+        content: FileContent
+        mtime: number
+        size: number
+        contentType: 'text' | 'binary'
+      } | null = null
+      if (this.hasFileInIndex(path)) {
+        fromFilesDir = await this.readFromFilesDir(path)
+      }
+
+      // If conflict markers are materialized in OPFS, always return OPFS content first
+      // so the agent can resolve <<<<<<< / ======= / >>>>>>> markers.
+      if (
+        fromFilesDir &&
+        fromFilesDir.contentType === 'text' &&
+        typeof fromFilesDir.content === 'string' &&
+        hasConflictMarkers(fromFilesDir.content)
+      ) {
+        return {
+          content: fromFilesDir.content,
+          metadata: {
+            path,
+            mtime: fromFilesDir.mtime,
+            size: fromFilesDir.size,
+            contentType: fromFilesDir.contentType,
+          },
+        }
+      }
+
       // Check if disk has been modified since OPFS recorded baseline
       try {
         const diskMeta = await this.getFileMetadata(directoryHandle, path)
@@ -402,26 +431,37 @@ export class WorkspaceRuntime {
       } catch {
         // Ignore errors, fall through to OPFS read
       }
+
+      // Pending path defaults to OPFS draft content.
+      if (fromFilesDir) {
+        return {
+          content: fromFilesDir.content,
+          metadata: {
+            path,
+            mtime: fromFilesDir.mtime,
+            size: fromFilesDir.size,
+            contentType: fromFilesDir.contentType,
+          },
+        }
+      }
     }
 
     if (directoryHandle && !isPendingPath) {
-      // Try to read from files/ first
+      // For non-pending files, always prefer native disk view so external
+      // filesystem changes are visible to tools immediately.
+      const native = await this.readFromNativeFS(path, directoryHandle)
+
+      // Best-effort cache eviction: once disk is the source of truth for a
+      // non-pending path, clear stale OPFS body to reduce storage usage.
       if (this.hasFileInIndex(path)) {
-        const fromFilesDir = await this.readFromFilesDir(path)
-        if (fromFilesDir) {
-          return {
-            content: fromFilesDir.content,
-            metadata: {
-              path,
-              mtime: fromFilesDir.mtime,
-              size: fromFilesDir.size,
-              contentType: fromFilesDir.contentType,
-            },
-          }
+        try {
+          await this.deleteFromFilesDirIfExists(path)
+        } catch {
+          // Ignore cleanup failures; read should still succeed.
         }
       }
-      // Fallback to native filesystem
-      return await this.readFromNativeFS(path, directoryHandle)
+
+      return native
     }
 
     // Read from files/ only (no native FS available or has pending changes without conflict)
