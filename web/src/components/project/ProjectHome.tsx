@@ -733,7 +733,7 @@ export function ProjectHome({
       {/* Hero 区域 */}
       <header className="relative overflow-hidden">
         <div className="home-hero-bg" />
-        <div className="relative z-10 max-w-5xl mx-auto px-6 pt-16 pb-12 sm:pt-24 sm:pb-16">
+        <div className="relative z-10 max-w-5xl mx-auto px-6 pt-8 pb-8 sm:pt-10 sm:pb-10">
           <div className="home-reveal">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-50 border border-primary/10 dark:border-primary/20">
@@ -784,8 +784,8 @@ export function ProjectHome({
       </header>
 
       {/* 主内容区 */}
-      <main className="relative z-10 max-w-5xl mx-auto px-6 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+      <main className="relative z-10 max-w-5xl mx-auto px-6 pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
           {/* 左侧：快捷操作 */}
           <aside className="lg:col-span-4 space-y-4">
             {/* 继续工作 */}

@@ -242,17 +242,15 @@ async function handleRecover() {
     }
   }
 
-  // Step 2: Fallback to in-memory (should rarely reach here with opfs-sahpool)
-  // @ts-ignore - sqlite3InitModule types are incomplete
-  sqlite3 = await sqlite3InitModule({
-    print: (msg: string) => console.log('[SQLite Worker]', msg),
-    printErr: (msg: string) => console.error('[SQLite Worker]', msg),
-  })
-
-  db = new sqlite3!.oo1.DB(':memory:', 'ct')
-  dbMode = 'memory'
-  await initializeSchema(db)
-  console.warn('[SQLite Worker] Using in-memory database as fallback')
+  // Step 2: DO NOT fallback to in-memory during recovery!
+  // In-memory mode creates an isolated empty database per worker/tab,
+  // causing multi-tab data desync (tabs see different data).
+  // During recovery, we must either succeed with OPFS or fail explicitly.
+  const errorMsg =
+    'Recovery failed to reconnect to OPFS database. ' +
+    'Your data is safe in OPFS, but please refresh the page to restore access.'
+  console.error('[SQLite Worker] Recovery failed:', errorMsg)
+  throw new Error('RECOVERY_FAILED: ' + errorMsg)
 }
 
 async function handleInit(reportProgress = false, _id: string = 'init') {
@@ -371,9 +369,17 @@ async function handleInit(reportProgress = false, _id: string = 'init') {
     db = new sqlite3.oo1.OpfsDb(DB_NAME)
     dbMode = 'opfs'
   } else {
-    console.warn('[SQLite Worker] OPFS not available, falling back to in-memory database')
-    db = new sqlite3!.oo1.DB(':memory:', 'ct')
-    dbMode = 'memory'
+    // OPFS completely unavailable - this MUST NOT fallback to memory mode
+    // because memory mode creates an isolated empty database per worker/tab,
+    // causing different tabs to see different data (the "multi-tab desync" bug).
+    // Instead, throw an error which will trigger recovery or ask user to refresh.
+    const errorMsg =
+      'OPFS is not available in this browser/context. ' +
+      'Cross-origin isolation may not be properly configured, ' +
+      'or this browser does not support OPFS. ' +
+      'Please refresh the page or use a supported browser (Chrome/Edge with secure context).'
+    console.error('[SQLite Worker] ' + errorMsg)
+    throw new Error('OPFS_NOT_AVAILABLE: ' + errorMsg)
   }
 
   // Initialize schema using migration + schema-healing.
