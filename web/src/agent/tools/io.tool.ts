@@ -15,6 +15,7 @@ import { useRemoteStore } from '@/store/remote.store'
 import { resolveVfsTarget, type AgentTarget } from './vfs-resolver'
 import { ensureReadFileState, getReadStateKey } from './read-state'
 import { resolveNativeDirectoryHandle } from './tool-utils'
+import { toolErrorJson, toolOkJson } from './tool-envelope'
 
 //=============================================================================
 // Read Tool
@@ -91,14 +92,15 @@ export const readExecutor: ToolExecutor = async (args, context) => {
   const maxSize = args.max_size as number | undefined
   if (maxSize !== undefined) {
     if (typeof maxSize !== 'number' || !Number.isFinite(maxSize) || maxSize <= 0) {
-      return JSON.stringify({ error: 'max_size must be > 0' })
+      return toolErrorJson('read', 'invalid_arguments', 'max_size must be > 0')
     }
   }
   if (args.offset !== undefined || args.limit !== undefined) {
-    return JSON.stringify({
-      error:
-        'offset/limit are no longer supported. Use start_line/line_count instead.',
-    })
+    return toolErrorJson(
+      'read',
+      'invalid_arguments',
+      'offset/limit are no longer supported. Use start_line/line_count instead.'
+    )
   }
   const rangeOptions: ReadRangeOptions = {
     startLine: args.start_line as number | undefined,
@@ -107,12 +109,12 @@ export const readExecutor: ToolExecutor = async (args, context) => {
 
   const modeCount = Number(Boolean(path)) + Number(Boolean(paths?.length)) + Number(Boolean(reads?.length))
   if (modeCount !== 1) {
-    return JSON.stringify({ error: 'Provide exactly one of: path, paths, reads' })
+    return toolErrorJson('read', 'invalid_arguments', 'Provide exactly one of: path, paths, reads')
   }
 
   const validationError = validateReadRange(rangeOptions)
   if (validationError) {
-    return JSON.stringify({ error: validationError })
+    return toolErrorJson('read', 'invalid_arguments', validationError)
   }
 
   // Batch mode: multiple files
@@ -123,13 +125,13 @@ export const readExecutor: ToolExecutor = async (args, context) => {
   if (reads && Array.isArray(reads) && reads.length > 0) {
     for (const read of reads) {
       if (!read.path) {
-        return JSON.stringify({ error: 'reads[].path is required' })
+        return toolErrorJson('read', 'invalid_arguments', 'reads[].path is required')
       }
       const err = validateReadRange({
         startLine: read.start_line,
         lineCount: read.line_count,
       })
-      if (err) return JSON.stringify({ error: `Invalid reads for "${read.path}": ${err}` })
+      if (err) return toolErrorJson('read', 'invalid_arguments', `Invalid reads for "${read.path}": ${err}`)
     }
     return executeBatchRead(reads, maxSize, context)
   }
@@ -162,55 +164,72 @@ async function executeSingleRead(
     if (target.kind === 'agent') {
       const content = await target.agentManager.readPath(target.agentId, target.path)
       if (content == null) {
-        return JSON.stringify({ error: `File not found: ${path}` })
+        return toolErrorJson('read', 'file_not_found', `File not found: ${path}`)
       }
       const size = new TextEncoder().encode(content).length
       if (maxSize && size > maxSize) {
-        return JSON.stringify({
-          error: 'too_large',
-          path,
-          fileSize: size,
-          maxSize,
-          message: `File size ${size} exceeds requested max_size ${maxSize}.`,
-        })
+        return toolErrorJson(
+          'read',
+          'too_large',
+          `File size ${size} exceeds requested max_size ${maxSize}.`,
+          { details: { path, fileSize: size, maxSize } }
+        )
       }
       const rendered = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(rendered, options))
-      return rendered
+      return toolOkJson('read', {
+        path,
+        kind: 'text',
+        content: rendered,
+        metadata: { size, contentType: 'text' },
+        range: {
+          start_line: options.startLine,
+          line_count: options.lineCount,
+        },
+      }, { source: 'agent' })
     }
 
     const result = await readFile(target.path, context.directoryHandle, context.workspaceId)
     const { content, metadata } = result
     if (maxSize && metadata.size > maxSize) {
-      return JSON.stringify({
-        error: 'too_large',
-        path,
-        fileSize: metadata.size,
-        maxSize,
-        message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
-      })
+      return toolErrorJson(
+        'read',
+        'too_large',
+        `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
+        { details: { path, fileSize: metadata.size, maxSize } }
+      )
     }
 
     if (typeof content === 'string') {
       const formatted = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
-      return formatted
+      return toolOkJson('read', {
+        path,
+        kind: 'text',
+        content: formatted,
+        metadata: { size: metadata.size, contentType: metadata.contentType },
+        range: {
+          start_line: options.startLine,
+          line_count: options.lineCount,
+        },
+      }, { source: 'workspace' })
     }
 
     if (hasRangeOptions(options)) {
-      return JSON.stringify({
-        error: 'range_not_supported_for_binary',
-        path,
-        message: 'offset/limit/start_line/line_count can only be used for text files.',
-      })
+      return toolErrorJson(
+        'read',
+        'range_not_supported_for_binary',
+        'offset/limit/start_line/line_count can only be used for text files.',
+        { details: { path } }
+      )
     }
     const base64 = await encodeBinaryContentAsBase64(content)
-    return JSON.stringify({
-      binary: true,
+    return toolOkJson('read', {
+      path,
+      kind: 'binary_base64',
       content: base64,
-      size: metadata.size,
-      contentType: metadata.contentType,
-    })
+      metadata: { size: metadata.size, contentType: metadata.contentType },
+    }, { source: 'workspace' })
   } catch (error) {
     if (isOPFSWorkspaceMiss(error)) {
       try {
@@ -227,44 +246,56 @@ async function executeSingleRead(
           const result = await readFile(target.path, nativeHandle, context.workspaceId)
           const { content, metadata } = result
           if (maxSize && metadata.size > maxSize) {
-            return JSON.stringify({
-              error: 'too_large',
-              path,
-              fileSize: metadata.size,
-              maxSize,
-              message: `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
-            })
+            return toolErrorJson(
+              'read',
+              'too_large',
+              `File size ${metadata.size} exceeds requested max_size ${maxSize}.`,
+              { details: { path, fileSize: metadata.size, maxSize } }
+            )
           }
           if (typeof content === 'string') {
             const formatted = applyTextRange(content, options)
             readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
-            return formatted
+            return toolOkJson('read', {
+              path,
+              kind: 'text',
+              content: formatted,
+              metadata: { size: metadata.size, contentType: metadata.contentType },
+              range: {
+                start_line: options.startLine,
+                line_count: options.lineCount,
+              },
+            }, { source: 'native_fallback' })
           }
           if (hasRangeOptions(options)) {
-            return JSON.stringify({
-              error: 'range_not_supported_for_binary',
-              path,
-              message: 'offset/limit/start_line/line_count can only be used for text files.',
-            })
+            return toolErrorJson(
+              'read',
+              'range_not_supported_for_binary',
+              'offset/limit/start_line/line_count can only be used for text files.',
+              { details: { path } }
+            )
           }
           const base64 = await encodeBinaryContentAsBase64(content)
-          return JSON.stringify({
-            binary: true,
+          return toolOkJson('read', {
+            path,
+            kind: 'binary_base64',
             content: base64,
-            size: metadata.size,
-            contentType: metadata.contentType,
-          })
+            metadata: { size: metadata.size, contentType: metadata.contentType },
+          }, { source: 'native_fallback' })
         }
       } catch (fallbackError) {
         error = fallbackError
       }
     }
     if (error instanceof DOMException && error.name === 'NotFoundError') {
-      return JSON.stringify({ error: `File not found: ${path}` })
+      return toolErrorJson('read', 'file_not_found', `File not found: ${path}`)
     }
-    return JSON.stringify({
-      error: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
-    })
+    return toolErrorJson(
+      'read',
+      'internal_error',
+      `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -291,9 +322,12 @@ async function executeBatchRead(
   const results: Array<{
     path: string
     success: boolean
+    kind?: 'text' | 'binary_base64'
     content?: string
-    binary?: boolean
-    error?: string
+    error?: {
+      code: string
+      message: string
+    }
     metadata?: unknown
   }> =
     []
@@ -316,7 +350,10 @@ async function executeBatchRead(
           results.push({
             path: filePath,
             success: false,
-            error: `too_large: file size ${size} exceeds requested max_size ${maxSize}`,
+            error: {
+              code: 'too_large',
+              message: `file size ${size} exceeds requested max_size ${maxSize}`,
+            },
             metadata: { size, contentType: 'text' },
           })
           errorCount++
@@ -330,6 +367,7 @@ async function executeBatchRead(
         results.push({
           path: filePath,
           success: true,
+          kind: 'text',
           content: rendered,
           metadata: { size, contentType: 'text' },
         })
@@ -362,7 +400,10 @@ async function executeBatchRead(
         results.push({
           path: filePath,
           success: false,
-          error: `too_large: file size ${metadata.size} exceeds requested max_size ${maxSize}`,
+          error: {
+            code: 'too_large',
+            message: `file size ${metadata.size} exceeds requested max_size ${maxSize}`,
+          },
           metadata: { size: metadata.size, contentType: metadata.contentType },
         })
         errorCount++
@@ -377,7 +418,10 @@ async function executeBatchRead(
           results.push({
             path: filePath,
             success: false,
-            error: 'range_not_supported_for_binary',
+            error: {
+              code: 'range_not_supported_for_binary',
+              message: 'start_line/line_count are not supported for binary files',
+            },
             metadata: { size: metadata.size, contentType: metadata.contentType },
           })
           errorCount++
@@ -387,7 +431,7 @@ async function executeBatchRead(
         results.push({
           path: filePath,
           success: true,
-          binary: true,
+          kind: 'binary_base64',
           content: base64,
           metadata: { size: metadata.size, contentType: metadata.contentType },
         })
@@ -402,6 +446,7 @@ async function executeBatchRead(
       results.push({
         path: filePath,
         success: true,
+        kind: 'text',
         content: rendered,
         metadata: { size: metadata.size, contentType: metadata.contentType },
       })
@@ -416,14 +461,16 @@ async function executeBatchRead(
       results.push({
         path: filePath,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: {
+          code: 'internal_error',
+          message: error instanceof Error ? error.message : String(error),
+        },
       })
       errorCount++
     }
   }
 
-  return JSON.stringify({
-    success: true,
+  return toolOkJson('read', {
     total: reads.length,
     successCount,
     errorCount,
@@ -562,7 +609,7 @@ export const writeExecutor: ToolExecutor = async (args, context) => {
 
   // Single file mode
   if (!path || content === undefined) {
-    return JSON.stringify({ error: 'Either (path + content) or files must be provided' })
+    return toolErrorJson('write', 'invalid_arguments', 'Either (path + content) or files must be provided')
   }
   return executeSingleWrite(path, content, context)
 }
@@ -612,19 +659,21 @@ async function executeSingleWrite(
       session.broadcastFileChange(path, isNew ? 'create' : 'modify', preview)
     }
 
-    return JSON.stringify({
-      success: true,
+    return toolOkJson('write', {
       path,
-      action: isNew ? 'created' : 'updated',
+      action: isNew ? 'create' : 'modify',
       size: content.length,
       status,
       pendingCount,
       message,
     })
   } catch (error) {
-    return JSON.stringify({
-      error: `Failed to write file: ${error instanceof Error ? error.message : String(error)}`,
-    })
+    return toolErrorJson(
+      'write',
+      'internal_error',
+      `Failed to write file: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -633,7 +682,7 @@ async function executeBatchWrite(
   context: ToolContext
 ): Promise<string> {
   const { writeFile, getPendingChanges, hasCachedFile } = useOPFSStore.getState()
-  const results: Array<{ path: string; success: boolean; error?: string }> = []
+  const results: Array<{ path: string; success: boolean; error?: { code: string; message: string } }> = []
   let created = 0
   let updated = 0
   let hasWorkspaceWrites = false
@@ -668,7 +717,10 @@ async function executeBatchWrite(
       results.push({
         path: file.path,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: {
+          code: 'internal_error',
+          message: error instanceof Error ? error.message : String(error),
+        },
       })
     }
   }
@@ -679,8 +731,7 @@ async function executeBatchWrite(
     session.broadcastFileChange('batch', 'modify', `Batch write: ${created} created, ${updated} updated`)
   }
 
-  return JSON.stringify({
-    success: true,
+  return toolOkJson('write', {
     total: files.length,
     created,
     updated,

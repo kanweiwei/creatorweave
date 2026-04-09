@@ -43,6 +43,20 @@ function makeContext(overrides?: Partial<ToolContext>): ToolContext {
   }
 }
 
+function unwrapOk(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(true)
+  expect(parsed.version).toBe(2)
+  return parsed.data
+}
+
+function unwrapError(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(false)
+  expect(parsed.version).toBe(2)
+  return parsed.error
+}
+
 describe('file edit tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -59,8 +73,9 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: '1', new_text: '2' },
       makeContext({ readFileState: new Map() })
     )
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('Read file before editing')
+    const error = unwrapError(result)
+    expect(error.code).toBe('read_required')
+    expect(error.message).toContain('Read file before editing')
     expect(writeFileMock).not.toHaveBeenCalled()
   })
 
@@ -81,9 +96,10 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: 'old', new_text: 'new' },
       makeContext({ readFileState })
     )
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toContain('replace_all')
+    expect(error.code).toBe('ambiguous_match')
+    expect(error.message).toContain('replace_all')
     expect(writeFileMock).not.toHaveBeenCalled()
   })
 
@@ -104,11 +120,10 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: 'old', new_text: 'new', replace_all: true },
       makeContext({ readFileState })
     )
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.replaceAll).toBe(true)
-    expect(Array.isArray(parsed.structuredPatch)).toBe(true)
+    expect(data.replaceAll).toBe(true)
+    expect(Array.isArray(data.structuredPatch)).toBe(true)
     expect(writeFileMock).toHaveBeenCalledWith(
       'src/a.ts',
       'const x = new\nconst y = new\n',
@@ -122,9 +137,10 @@ describe('file edit tool', () => {
       { path: 'src/**/*.ts', find: 'old', replace: 'new' },
       makeContext()
     )
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toContain('Batch edit capability has been removed')
+    expect(error.code).toBe('invalid_arguments')
+    expect(error.message).toContain('Batch edit capability has been removed')
   })
 
   it('uses read state key for agent namespace edits', async () => {
@@ -156,8 +172,7 @@ describe('file edit tool', () => {
       makeContext({ readFileState })
     )
 
-    const parsed = JSON.parse(result)
-    expect(parsed.success).toBe(true)
+    unwrapOk(result)
     expect(writePathMock).toHaveBeenCalledWith('novel-editor', 'SOUL.md', 'hello new')
   })
 
@@ -175,9 +190,8 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: 'const x = old', new_text: 'const x = new' },
       makeContext({ readFileState })
     )
-    const parsed = JSON.parse(result)
+    unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
     expect(writeFileMock).toHaveBeenCalled()
   })
 
@@ -195,9 +209,10 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: 'old', new_text: 'new' },
       makeContext({ readFileState })
     )
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toContain('Read file before editing')
+    expect(error.code).toBe('read_required')
+    expect(error.message).toContain('Read file before editing')
     expect(writeFileMock).not.toHaveBeenCalled()
   })
 
@@ -215,10 +230,9 @@ describe('file edit tool', () => {
       { path: 'src/a.ts', old_text: 'value', new_text: 'value' },
       makeContext({ readFileState })
     )
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.noop).toBe(true)
+    expect(data.noop).toBe(true)
     expect(writeFileMock).toHaveBeenCalledWith('src/a.ts', 'const x = value\n', null, 'ws-1')
   })
 })

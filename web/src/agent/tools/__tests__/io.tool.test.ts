@@ -28,6 +28,20 @@ const context: ToolContext = {
   directoryHandle: null,
 }
 
+function unwrapOk(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(true)
+  expect(parsed.version).toBe(2)
+  return parsed.data
+}
+
+function unwrapError(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(false)
+  expect(parsed.version).toBe(2)
+  return parsed.error
+}
+
 describe('io read tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -42,7 +56,9 @@ describe('io read tool', () => {
 
     const readFileState = new Map()
     const result = await readExecutor({ path: 'big.txt' }, { ...context, readFileState })
-    expect(result).toBe(largeContent)
+    const data = unwrapOk(result)
+    expect(data.kind).toBe('text')
+    expect(data.content).toBe(largeContent)
     const entry = readFileState.get('workspace:big.txt')
     expect(entry?.isPartialView).toBe(false)
     expect(entry?.offset).toBeUndefined()
@@ -57,8 +73,9 @@ describe('io read tool', () => {
     })
 
     const result = await readExecutor({ path: 'a.txt', offset: 2, limit: 2 }, context)
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('offset/limit are no longer supported')
+    const error = unwrapError(result)
+    expect(error.code).toBe('invalid_arguments')
+    expect(error.message).toContain('offset/limit are no longer supported')
   })
 
   it('supports line range read for single file', async () => {
@@ -72,7 +89,8 @@ describe('io read tool', () => {
       { path: 'a.txt', start_line: 2, line_count: 2 },
       { ...context, readFileState }
     )
-    expect(result).toBe('line2\nline3')
+    const data = unwrapOk(result)
+    expect(data.content).toBe('line2\nline3')
     const entry = readFileState.get('workspace:a.txt')
     expect(entry?.isPartialView).toBe(false)
     expect(entry?.offset).toBe(2)
@@ -95,13 +113,12 @@ describe('io read tool', () => {
       },
       context
     )
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.total).toBe(2)
-    expect(parsed.successCount).toBe(2)
-    const aResult = parsed.results.find((r: { path: string }) => r.path === 'a.txt')
-    const bResult = parsed.results.find((r: { path: string }) => r.path === 'b.txt')
+    expect(data.total).toBe(2)
+    expect(data.successCount).toBe(2)
+    const aResult = data.results.find((r: { path: string }) => r.path === 'a.txt')
+    const bResult = data.results.find((r: { path: string }) => r.path === 'b.txt')
     expect(aResult?.content).toBe('a3')
     expect(bResult?.content).toBe('line2')
   })
@@ -113,9 +130,9 @@ describe('io read tool', () => {
     })
 
     const result = await readExecutor({ path: 'a.txt', max_size: 5 }, context)
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toBe('too_large')
-    expect(parsed.maxSize).toBe(5)
+    const error = unwrapError(result)
+    expect(error.code).toBe('too_large')
+    expect(error.details.maxSize).toBe(5)
   })
 
   it('falls back to native directory when file is missing in OPFS workspace and syncs via read cache', async () => {
@@ -135,7 +152,8 @@ describe('io read tool', () => {
     })
 
     const result = await readExecutor({ path: 'src/components/agent/ConversationView.tsx' }, { directoryHandle: null })
-    expect(result).toBe('export const ConversationView = () => null')
+    const data = unwrapOk(result)
+    expect(data.content).toBe('export const ConversationView = () => null')
     expect(getNativeDirectoryHandleMock).toHaveBeenCalledOnce()
     expect(readFileMock).toHaveBeenNthCalledWith(
       1,
@@ -159,22 +177,22 @@ describe('io read tool', () => {
     getActiveConversationMock.mockRejectedValueOnce(new Error('conversation context unavailable'))
 
     const result = await readExecutor({ paths: ['a.txt'] }, { directoryHandle: null })
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.total).toBe(1)
-    expect(parsed.successCount).toBe(1)
-    expect(parsed.errorCount).toBe(0)
-    expect(parsed.results[0]?.path).toBe('a.txt')
-    expect(parsed.results[0]?.content).toBe('line1\nline2')
+    expect(data.total).toBe(1)
+    expect(data.successCount).toBe(1)
+    expect(data.errorCount).toBe(0)
+    expect(data.results[0]?.path).toBe('a.txt')
+    expect(data.results[0]?.content).toBe('line1\nline2')
     expect(readFileMock).toHaveBeenCalledOnce()
     expect(readFileMock).toHaveBeenCalledWith('a.txt', null, undefined)
   })
 
   it('validates max_size must be greater than 0', async () => {
     const result = await readExecutor({ path: 'a.txt', max_size: 0 }, context)
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('max_size must be > 0')
+    const error = unwrapError(result)
+    expect(error.code).toBe('invalid_arguments')
+    expect(error.message).toContain('max_size must be > 0')
   })
 
   it('returns binary payload in batch mode without nested JSON encoding', async () => {
@@ -184,12 +202,11 @@ describe('io read tool', () => {
     })
 
     const result = await readExecutor({ paths: ['bin.dat'] }, context)
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.successCount).toBe(1)
-    expect(parsed.results[0].binary).toBe(true)
-    expect(parsed.results[0].content).toBe('AQIDBA==')
+    expect(data.successCount).toBe(1)
+    expect(data.results[0].kind).toBe('binary_base64')
+    expect(data.results[0].content).toBe('AQIDBA==')
   })
 
   it('reads large binary files without stack overflow', async () => {
@@ -199,11 +216,11 @@ describe('io read tool', () => {
     })
 
     const result = await readExecutor({ path: 'large.bin' }, context)
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.binary).toBe(true)
-    expect(parsed.size).toBe(1_000_000)
-    expect(typeof parsed.content).toBe('string')
-    expect(parsed.content.length).toBeGreaterThan(0)
+    expect(data.kind).toBe('binary_base64')
+    expect(data.metadata.size).toBe(1_000_000)
+    expect(typeof data.content).toBe('string')
+    expect(data.content.length).toBeGreaterThan(0)
   })
 })

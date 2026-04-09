@@ -28,6 +28,20 @@ const directoryHandle = {
 
 const context: ToolContext = { directoryHandle }
 
+function unwrapOk(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(true)
+  expect(parsed.version).toBe(2)
+  return parsed.data
+}
+
+function unwrapError(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(false)
+  expect(parsed.version).toBe(2)
+  return parsed.error
+}
+
 describe('search tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -43,8 +57,8 @@ describe('search tool', () => {
 
   it('requires query', async () => {
     const result = await searchExecutor({ mode: 'literal' }, context)
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('query is required')
+    const error = unwrapError(result)
+    expect(error.message).toContain('query is required')
   })
 
   it('declares query and mode as required in schema', () => {
@@ -53,16 +67,15 @@ describe('search tool', () => {
 
   it('requires mode', async () => {
     const result = await searchExecutor({ query: 'TODO' }, context)
-    const parsed = JSON.parse(result)
-    expect(parsed.error).toContain('mode is required')
+    const error = unwrapError(result)
+    expect(error.message).toContain('mode is required')
   })
 
   it('searches with provided directory handle', async () => {
     const result = await searchExecutor({ query: 'TODO', mode: 'literal', max_results: 20 }, context)
-    const parsed = JSON.parse(result)
+    const data = unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
-    expect(parsed.totalMatches).toBe(1)
+    expect(data.totalMatches).toBe(1)
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
       expect.objectContaining({ query: 'TODO', regex: false, maxResults: 20 })
@@ -91,9 +104,8 @@ describe('search tool', () => {
     })
 
     const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
-    const parsed = JSON.parse(result)
+    unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
     expect(getFilesDirMock).toHaveBeenCalled()
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
@@ -105,9 +117,9 @@ describe('search tool', () => {
     getActiveConversationMock.mockResolvedValue(undefined)
 
     const result = await searchExecutor({ query: 'TODO', mode: 'literal' }, { directoryHandle: null })
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toContain('No active workspace')
+    expect(error.message).toContain('No active workspace')
   })
 
   it('rejects regex-like query when mode=literal', async () => {
@@ -118,10 +130,10 @@ describe('search tool', () => {
       },
       context
     )
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toContain('query looks like regex')
-    expect(parsed.hint).toContain('set mode="regex"')
+    expect(error.message).toContain('query looks like regex')
+    expect(error.hint).toContain('set mode="regex"')
     expect(searchInDirectoryMock).not.toHaveBeenCalled()
   })
 
@@ -133,9 +145,8 @@ describe('search tool', () => {
       },
       context
     )
-    const parsed = JSON.parse(result)
+    unwrapOk(result)
 
-    expect(parsed.success).toBe(true)
     expect(searchInDirectoryMock).toHaveBeenCalledWith(
       directoryHandle,
       expect.objectContaining({
@@ -165,11 +176,11 @@ describe('search tool', () => {
       },
       context
     )
-    const parsed = JSON.parse(result)
+    const error = unwrapError(result)
 
-    expect(parsed.error).toBe('path_not_found')
-    expect(parsed.requestedPath).toBe('web/src/agent')
-    expect(parsed.resolvedRootName).toBe('web')
-    expect(parsed.hint).toContain('Try')
+    expect(error.code).toBe('path_not_found')
+    expect(error.details.requestedPath).toBe('web/src/agent')
+    expect(error.details.resolvedRootName).toBe('web')
+    expect(error.hint).toContain('Try')
   })
 })

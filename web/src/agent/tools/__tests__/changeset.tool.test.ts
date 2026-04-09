@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '../tool-types'
-import { createSnapshotExecutor, rollbackSnapshotExecutor } from '../changeset.tool'
+import { createSnapshotExecutor, detectConflictsExecutor, rollbackSnapshotExecutor } from '../changeset.tool'
 
 const createDraftSnapshotMock = vi.fn()
 const rollbackSnapshotMock = vi.fn()
@@ -78,5 +78,46 @@ describe('snapshot tools', () => {
     expect(parsed.success).toBe(false)
     expect(parsed.reverted).toBe(1)
     expect(parsed.unresolved).toEqual(['src/a.ts'])
+  })
+
+  it('detect_conflicts returns envelope with no conflicts', async () => {
+    const detectSyncConflictsMock = vi.fn().mockResolvedValue([])
+    getActiveConversationMock.mockResolvedValue({
+      conversation: { detectSyncConflicts: detectSyncConflictsMock },
+    })
+
+    const result = await detectConflictsExecutor({}, { directoryHandle: {} as FileSystemDirectoryHandle })
+    const parsed = JSON.parse(result)
+
+    expect(parsed.ok).toBe(true)
+    expect(parsed.version).toBe(2)
+    expect(parsed.data.hasConflicts).toBe(false)
+    expect(parsed.data.conflicts).toEqual([])
+  })
+
+  it('detect_conflicts returns envelope with conflict metadata', async () => {
+    const detectSyncConflictsMock = vi.fn().mockResolvedValue([
+      {
+        path: 'src/a.ts',
+        opfsMtime: 100,
+        currentFsMtime: 200,
+      },
+    ])
+    getActiveConversationMock.mockResolvedValue({
+      conversation: { detectSyncConflicts: detectSyncConflictsMock },
+    })
+
+    const result = await detectConflictsExecutor(
+      { paths: ['src/a.ts'] },
+      { directoryHandle: {} as FileSystemDirectoryHandle }
+    )
+    const parsed = JSON.parse(result)
+
+    expect(parsed.ok).toBe(true)
+    expect(parsed.version).toBe(2)
+    expect(parsed.meta.requiresResolution).toBe(true)
+    expect(parsed.data.hasConflicts).toBe(true)
+    expect(parsed.data.conflicts[0].conflictType).toBe('mtime_or_marker')
+    expect(parsed.data.conflicts[0].resolvableByEdit).toBe(true)
   })
 })

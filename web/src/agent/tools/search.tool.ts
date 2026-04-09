@@ -4,6 +4,7 @@ import type { PendingFileOverlay } from '@/workers/search-worker-manager'
 import { useOPFSStore } from '@/store/opfs.store'
 import { getWorkspaceManager } from '@/opfs'
 import { resolveNativeDirectoryHandle } from './tool-utils'
+import { toolErrorJson, toolOkJson } from './tool-envelope'
 
 function looksRegexLikeQuery(query: string): boolean {
   // Guard against common LLM misuse where regex operators are passed while regex=false.
@@ -141,21 +142,20 @@ export const searchDefinition: ToolDefinition = {
 export const searchExecutor: ToolExecutor = async (args, context) => {
   const query = typeof args.query === 'string' ? args.query.trim() : ''
   if (!query) {
-    return JSON.stringify({ error: 'query is required' })
+    return toolErrorJson('search', 'invalid_arguments', 'query is required')
   }
   const mode = typeof args.mode === 'string' ? args.mode : ''
   if (mode !== 'literal' && mode !== 'regex') {
-    return JSON.stringify({
-      error: 'mode is required and must be one of: literal, regex',
-    })
+    return toolErrorJson('search', 'invalid_arguments', 'mode is required and must be one of: literal, regex')
   }
   const useRegex = mode === 'regex'
   if (!useRegex && looksRegexLikeQuery(query)) {
-    return JSON.stringify({
-      error:
-        'query looks like regex but mode="literal". Use mode="regex" for patterns like "|" or ".*".',
-      hint: 'If you intend a regex OR/pattern search, set mode="regex".',
-    })
+    return toolErrorJson(
+      'search',
+      'invalid_arguments',
+      'query looks like regex but mode="literal". Use mode="regex" for patterns like "|" or ".*".',
+      { hint: 'If you intend a regex OR/pattern search, set mode="regex".' }
+    )
   }
 
   // 根据 contextUsage 智能调整 max_results
@@ -178,7 +178,7 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
     directoryHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
   }
   if (!directoryHandle) {
-    return JSON.stringify({ error: 'No active workspace' })
+    return toolErrorJson('search', 'no_active_workspace', 'No active workspace')
   }
 
   try {
@@ -213,8 +213,7 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
       pendingOverlays: Object.keys(pendingOverlays).length > 0 ? pendingOverlays : undefined,
     })
 
-    return JSON.stringify({
-      success: true,
+    return toolOkJson('search', {
       query,
       ...result,
       message: `Found ${result.totalMatches} matches in ${result.scannedFiles} files.`,
@@ -222,19 +221,26 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
   } catch (error) {
     const structured = parseStructuredError(error)
     if (structured?.code === 'path_not_found') {
-      return JSON.stringify({
-        error: 'path_not_found',
-        message:
-          typeof structured.message === 'string'
-            ? structured.message
-            : 'Requested search path was not found under current root.',
-        requestedPath: structured.requestedPath,
-        resolvedRootName: structured.resolvedRootName,
-        hint: 'Try path="src/..." relative to current root, or omit path to search from root.',
-      })
+      return toolErrorJson(
+        'search',
+        'path_not_found',
+        typeof structured.message === 'string'
+          ? structured.message
+          : 'Requested search path was not found under current root.',
+        {
+          details: {
+            requestedPath: structured.requestedPath as string | undefined,
+            resolvedRootName: structured.resolvedRootName as string | undefined,
+          },
+          hint: 'Try path="src/..." relative to current root, or omit path to search from root.',
+        }
+      )
     }
-    return JSON.stringify({
-      error: `Search failed: ${error instanceof Error ? error.message : String(error)}`,
-    })
+    return toolErrorJson(
+      'search',
+      'internal_error',
+      `Search failed: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }

@@ -47,6 +47,13 @@ function makeContext(overrides?: Partial<ToolContext>): ToolContext {
   }
 }
 
+function unwrapOk(result: string) {
+  const parsed = JSON.parse(result)
+  expect(parsed.ok).toBe(true)
+  expect(parsed.version).toBe(2)
+  return parsed.data
+}
+
 describe('io write tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -77,10 +84,9 @@ describe('io write tool', () => {
       makeContext()
     )
 
-    const parsed = JSON.parse(result)
-    expect(parsed.success).toBe(true)
-    expect(parsed.action).toBe('updated')
-    expect(parsed.message).toContain('updated')
+    const data = unwrapOk(result)
+    expect(data.action).toBe('modify')
+    expect(data.message).toContain('updated')
   })
 
   it('counts workspace batch writes using pending types (create vs modify)', async () => {
@@ -148,10 +154,9 @@ describe('io write tool', () => {
       makeContext()
     )
 
-    const parsed = JSON.parse(result)
-    expect(parsed.success).toBe(true)
-    expect(parsed.created).toBe(1)
-    expect(parsed.updated).toBe(1)
+    const data = unwrapOk(result)
+    expect(data.created).toBe(1)
+    expect(data.updated).toBe(1)
   })
 
   it('auto-creates missing agent for single write to agents namespace', async () => {
@@ -183,8 +188,7 @@ describe('io write tool', () => {
       makeContext()
     )
 
-    const parsed = JSON.parse(result)
-    expect(parsed.success).toBe(true)
+    unwrapOk(result)
     expect(createAgentMock).toHaveBeenCalledTimes(1)
     expect(writePathMock).toHaveBeenCalledWith('novel-editor', 'SOUL.md', 'soul')
   })
@@ -224,9 +228,8 @@ describe('io write tool', () => {
       makeContext()
     )
 
-    const parsed = JSON.parse(result)
-    expect(parsed.success).toBe(true)
-    expect(parsed.failed).toBe(0)
+    const data = unwrapOk(result)
+    expect(data.failed).toBe(0)
     expect(createAgentMock).toHaveBeenCalledTimes(1)
     expect(createAgentMock).toHaveBeenCalledWith('novel-editor')
     expect(writePathMock).toHaveBeenCalledTimes(3)

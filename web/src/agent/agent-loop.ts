@@ -45,6 +45,7 @@ import { streamSimple as piAiStreamSimple } from '@mariozechner/pi-ai'
 import { PiAIProvider } from './llm/pi-ai-provider'
 import { useSettingsStore } from '@/store/settings.store'
 import { isToolAllowedInMode, type AgentMode } from './agent-mode'
+import { isToolEnvelopeV2 } from './tools/tool-envelope'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
@@ -595,10 +596,22 @@ export class AgentLoop {
 
   private parseToolArgs(args: string): Record<string, unknown> {
     try {
-      return JSON.parse(args)
+      const parsed = JSON.parse(args) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+      return { __invalid_arguments: true }
     } catch {
-      return {}
+      return { __invalid_arguments: true }
     }
+  }
+
+  private coerceToolArgs(params: unknown): Record<string, unknown> {
+    if (params == null) return {}
+    if (typeof params === 'object' && !Array.isArray(params)) {
+      return params as Record<string, unknown>
+    }
+    throw new Error('invalid_arguments: Tool arguments must be a JSON object')
   }
 
   private buildContextOverflowError(payload: {
@@ -733,15 +746,19 @@ export class AgentLoop {
       const parsed = JSON.parse(trimmed) as unknown
 
       // 特殊处理 search 工具的结果
+      const searchPayload =
+        toolName === 'search' && isToolEnvelopeV2(parsed) && parsed.ok
+          ? parsed.data
+          : parsed
       if (
         toolName === 'search' &&
-        parsed &&
-        typeof parsed === 'object' &&
-        'results' in parsed &&
-        'totalMatches' in parsed &&
-        Array.isArray((parsed as { results?: unknown[] }).results)
+        searchPayload &&
+        typeof searchPayload === 'object' &&
+        'results' in searchPayload &&
+        'totalMatches' in searchPayload &&
+        Array.isArray((searchPayload as { results?: unknown[] }).results)
       ) {
-        const searchResult = parsed as {
+        const searchResult = searchPayload as {
           results: Array<{
             path: string
             line: number
@@ -759,13 +776,17 @@ export class AgentLoop {
         let left = 0
         let right = Math.min(searchResult.results.length, 200) // 最多 200 条
         let bestCount = 0
-        let bestResult: Record<string, unknown> = {
+        const emptySearchSummary = {
           ...searchResult,
           results: [],
           truncated: true,
           originalTotalMatches: searchResult.totalMatches,
           message: `Found ${searchResult.totalMatches} matches in ${searchResult.scannedFiles || 0} files. Results too large to display. Use filters like glob, path, or reduce search scope.`,
         }
+        let bestResult: Record<string, unknown> =
+          toolName === 'search' && isToolEnvelopeV2(parsed) && parsed.ok
+            ? { ...parsed, data: emptySearchSummary }
+            : emptySearchSummary
 
         while (left <= right) {
           const mid = Math.floor((left + right) / 2)
@@ -783,11 +804,19 @@ export class AgentLoop {
             message: `Found ${searchResult.totalMatches} matches in ${searchResult.scannedFiles || 0} files. Showing first ${testResults.length} results.`,
           }
 
-          const testTokens = this.estimateTextTokens(JSON.stringify(testResult))
+          const candidateResult =
+            toolName === 'search' && isToolEnvelopeV2(parsed) && parsed.ok
+              ? { ...parsed, data: testResult }
+              : testResult
+
+          const testTokens = this.estimateTextTokens(JSON.stringify(candidateResult))
 
           if (testTokens <= availableForTool) {
             bestCount = testResults.length
-            bestResult = testResult
+            bestResult =
+              toolName === 'search' && isToolEnvelopeV2(parsed) && parsed.ok
+                ? { ...parsed, data: testResult }
+                : testResult
             left = mid + 1
           } else {
             right = mid - 1
@@ -839,6 +868,20 @@ export class AgentLoop {
     try {
       const parsed = JSON.parse(trimmed) as unknown
       details.parsed = parsed
+      if (isToolEnvelopeV2(parsed)) {
+        details.tool = parsed.tool
+        details.version = parsed.version
+        if (!parsed.ok) {
+          details.errorCode = parsed.error.code
+          details.error = parsed.error.message
+          return {
+            content: `Error [${parsed.error.code}]: ${parsed.error.message}`,
+            details,
+            isError: true,
+          }
+        }
+        return { content: rawResult, details, isError: false }
+      }
       if (
         parsed &&
         typeof parsed === 'object' &&
@@ -1094,7 +1137,7 @@ export class AgentLoop {
       description: toolDef.function.description || '',
       parameters: toolDef.function.parameters as never,
       execute: async (toolCallId, params) => {
-        const args = (params || {}) as Record<string, unknown>
+        const args = this.coerceToolArgs(params)
         const toolCall: ToolCall = {
           id: toolCallId,
           type: 'function',
@@ -1187,7 +1230,9 @@ export class AgentLoop {
           }
 
           if (finalIsError) {
-            throw new Error(finalContent.replace(/^Error:\s*/i, '') || 'Tool execution failed')
+            throw new Error(
+              finalContent.replace(/^Error(?:\s*\[[^\]]+\])?:\s*/i, '') || 'Tool execution failed'
+            )
           }
 
           let elicitationData: {

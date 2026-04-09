@@ -1,6 +1,7 @@
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { getActiveConversation, useConversationContextStore } from '@/store/conversation-context.store'
 import { resolveNativeDirectoryHandle } from './tool-utils'
+import { toolErrorJson, toolOkJson } from './tool-envelope'
 
 export const detectConflictsDefinition: ToolDefinition = {
   type: 'function',
@@ -26,29 +27,35 @@ export const detectConflictsExecutor: ToolExecutor = async (args, context) => {
   const paths = args.paths as string[] | undefined
   const active = await getActiveConversation()
   if (!active) {
-    return JSON.stringify({ error: 'No active workspace' })
+    return toolErrorJson('detect_conflicts', 'no_active_workspace', 'No active workspace')
   }
 
   const dirHandle = await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
   if (!dirHandle) {
-    return JSON.stringify({ error: 'No directory handle available. Please select a project directory.' })
+    return toolErrorJson(
+      'detect_conflicts',
+      'no_directory_handle',
+      'No directory handle available. Please select a project directory.'
+    )
   }
 
   try {
     const conflicts = await active.conversation.detectSyncConflicts(dirHandle, paths)
 
     if (conflicts.length === 0) {
-      return JSON.stringify({
+      return toolOkJson('detect_conflicts', {
         hasConflicts: false,
         conflicts: [],
         message: 'No conflicts detected.',
       })
     }
 
-    return JSON.stringify({
+    return toolOkJson('detect_conflicts', {
       hasConflicts: true,
       conflicts: conflicts.map((c) => ({
         path: c.path,
+        conflictType: 'mtime_or_marker',
+        resolvableByEdit: true,
         opfsMtime: c.opfsMtime,
         currentFsMtime: c.currentFsMtime,
       })),
@@ -56,12 +63,14 @@ export const detectConflictsExecutor: ToolExecutor = async (args, context) => {
         `Detected ${conflicts.length} conflict(s). ` +
         'Text conflicts are materialized with <<<<<<< / ======= / >>>>>>> markers in OPFS. ' +
         'Please resolve markers with edit, then re-run detect_conflicts.',
-    })
+    }, { requiresResolution: true })
   } catch (err) {
-    return JSON.stringify({
-      hasConflicts: false,
-      error: err instanceof Error ? err.message : 'Conflict detection failed',
-    })
+    return toolErrorJson(
+      'detect_conflicts',
+      'internal_error',
+      err instanceof Error ? err.message : 'Conflict detection failed',
+      { retryable: true }
+    )
   }
 }
 

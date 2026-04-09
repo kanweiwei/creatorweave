@@ -8,6 +8,7 @@ import { useRemoteStore } from '@/store/remote.store'
 import type { ToolContext, ToolDefinition, ToolExecutor } from './tool-types'
 import { resolveVfsTarget } from './vfs-resolver'
 import { ensureReadFileState, getReadStateKey } from './read-state'
+import { toolErrorJson, toolOkJson } from './tool-envelope'
 
 export const editDefinition: ToolDefinition = {
   type: 'function',
@@ -58,15 +59,15 @@ export const editExecutor: ToolExecutor = async (args, context) => {
     args.max_files !== undefined ||
     looksLikeGlob(path)
   ) {
-    return JSON.stringify({
-      error: 'Batch edit capability has been removed. Use single-file edit with path + old_text + new_text.',
-    })
+    return toolErrorJson(
+      'edit',
+      'invalid_arguments',
+      'Batch edit capability has been removed. Use single-file edit with path + old_text + new_text.'
+    )
   }
 
   if (!path || oldText === undefined || newText === undefined) {
-    return JSON.stringify({
-      error: 'edit requires path + old_text + new_text',
-    })
+    return toolErrorJson('edit', 'invalid_arguments', 'edit requires path + old_text + new_text')
   }
 
   return executeSingleEdit(context, { path, oldText, newText, replaceAll })
@@ -84,9 +85,11 @@ async function executeSingleEdit(
   const { path, oldText, newText, replaceAll } = opts
 
   if (oldText.length === 0) {
-    return JSON.stringify({
-      error: 'old_text cannot be empty. Provide exact existing text to replace.',
-    })
+    return toolErrorJson(
+      'edit',
+      'invalid_arguments',
+      'old_text cannot be empty. Provide exact existing text to replace.'
+    )
   }
 
   const isNoopEdit = oldText === newText
@@ -102,45 +105,54 @@ async function executeSingleEdit(
     if (target.kind === 'workspace') {
       const { content } = await readFile(target.path, context.directoryHandle, context.workspaceId)
       if (typeof content !== 'string') {
-        return JSON.stringify({
-          error: `Cannot edit binary file: ${path}. Use write to replace the entire file.`,
-        })
+        return toolErrorJson(
+          'edit',
+          'binary_not_supported',
+          `Cannot edit binary file: ${path}. Use write to replace the entire file.`
+        )
       }
       fileContent = content
     } else {
       const content = await target.agentManager.readPath(target.agentId, target.path)
       if (content == null) {
-        return JSON.stringify({ error: `File not found: ${path}` })
+        return toolErrorJson('edit', 'file_not_found', `File not found: ${path}`)
       }
       fileContent = content
     }
 
     const snapshot = readFileState.get(readStateKey)
     if (!snapshot || snapshot.isPartialView) {
-      return JSON.stringify({
-        error: 'Read file before editing. Use read(path) first, then retry edit.',
-      })
+      return toolErrorJson(
+        'edit',
+        'read_required',
+        'Read file before editing. Use read(path) first, then retry edit.'
+      )
     }
 
     const isFullRead = snapshot.offset === undefined && snapshot.limit === undefined
     if (isFullRead && snapshot.content !== fileContent) {
-      return JSON.stringify({
-        error: 'File has been modified since read. Read it again before attempting to write it.',
-      })
+      return toolErrorJson(
+        'edit',
+        'stale_snapshot',
+        'File has been modified since read. Read it again before attempting to write it.'
+      )
     }
 
     const matches = fileContent.split(oldText).length - 1
     if (matches === 0) {
-      return JSON.stringify({
-        error: 'old_text not found in file. Make sure it matches exactly (including whitespace).',
-      })
+      return toolErrorJson(
+        'edit',
+        'old_text_not_found',
+        'old_text not found in file. Make sure it matches exactly (including whitespace).'
+      )
     }
 
     if (matches > 1 && !replaceAll && !isNoopEdit) {
-      return JSON.stringify({
-        error:
-          'old_text appears multiple times. Set replace_all=true to replace all occurrences, or provide a more unique snippet.',
-      })
+      return toolErrorJson(
+        'edit',
+        'ambiguous_match',
+        'old_text appears multiple times. Set replace_all=true to replace all occurrences, or provide a more unique snippet.'
+      )
     }
 
     const updatedFile = isNoopEdit
@@ -176,12 +188,13 @@ async function executeSingleEdit(
       session.broadcastFileChange(path, 'modify', preview)
     }
 
-    return JSON.stringify({
-      success: true,
+    const replacedCount = isNoopEdit ? 0 : replaceAll ? matches : 1
+    return toolOkJson('edit', {
       noop: isNoopEdit,
       path,
       filePath: path,
-      action: 'edited',
+      action: 'modify',
+      replacedCount,
       oldString: oldText,
       newString: newText,
       originalFile: fileContent,
@@ -201,10 +214,13 @@ async function executeSingleEdit(
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'NotFoundError') {
-      return JSON.stringify({ error: `File not found: ${path}` })
+      return toolErrorJson('edit', 'file_not_found', `File not found: ${path}`)
     }
-    return JSON.stringify({
-      error: `Failed to edit file: ${error instanceof Error ? error.message : String(error)}`,
-    })
+    return toolErrorJson(
+      'edit',
+      'internal_error',
+      `Failed to edit file: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
