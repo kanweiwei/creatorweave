@@ -5,6 +5,7 @@ import { useOPFSStore } from '@/store/opfs.store'
 import { getWorkspaceManager } from '@/opfs'
 import { resolveNativeDirectoryHandle } from './tool-utils'
 import { toolErrorJson, toolOkJson } from './tool-envelope'
+import { checkSearchLoop } from './loop-guard'
 
 function looksRegexLikeQuery(query: string): boolean {
   // Guard against common LLM misuse where regex operators are passed while regex=false.
@@ -171,6 +172,21 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
     }
   }
 
+  // Loop guard: check consecutive search counter before searching
+  const searchPath = typeof args.path === 'string' ? args.path : ''
+  const searchGlob = typeof args.glob === 'string' ? args.glob : undefined
+  const loopCheck = checkSearchLoop(context, query, searchPath, searchGlob, 0, userMaxResults)
+  if (loopCheck.isBlocked) {
+    return toolErrorJson(
+      'search',
+      'loop_blocked',
+      `BLOCKED: You have run this exact search ${loopCheck.consecutive} times in a row. ` +
+        'The results have NOT changed. You already have this information. ' +
+        'STOP re-searching and proceed with your task.',
+      { hint: 'Stop searching and proceed with your task using the results you already have.' }
+    )
+  }
+
   let directoryHandle: FileSystemDirectoryHandle | null = context.directoryHandle
 
   // OPFS-only fallback: search in active workspace files snapshot.
@@ -213,11 +229,24 @@ export const searchExecutor: ToolExecutor = async (args, context) => {
       pendingOverlays: Object.keys(pendingOverlays).length > 0 ? pendingOverlays : undefined,
     })
 
-    return toolOkJson('search', {
-      query,
-      ...result,
-      message: `Found ${result.totalMatches} matches in ${result.scannedFiles} files.`,
-    })
+    // Pagination hint when results are truncated
+    const paginationHint =
+      result.truncated && userMaxResults > 0
+        ? ` Hint: Results were truncated. Consider narrowing with path, glob, or more specific patterns, or increase max_results for broader results.`
+        : ''
+
+    return toolOkJson(
+      'search',
+      {
+        query,
+        ...result,
+        message: `Found ${result.totalMatches} matches in ${result.scannedFiles} files.`,
+      },
+      {
+        ...(loopCheck.warning ? { _warning: loopCheck.warning } : {}),
+        ...(paginationHint ? { _hint: paginationHint } : {}),
+      }
+    )
   } catch (error) {
     const structured = parseStructuredError(error)
     if (structured?.code === 'path_not_found') {

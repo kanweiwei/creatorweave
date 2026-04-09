@@ -16,6 +16,12 @@ import { resolveVfsTarget, type AgentTarget } from './vfs-resolver'
 import { ensureReadFileState, getReadStateKey } from './read-state'
 import { resolveNativeDirectoryHandle } from './tool-utils'
 import { toolErrorJson, toolOkJson } from './tool-envelope'
+import {
+  checkReadLoop,
+  recordReadMtime,
+  checkFileStaleness,
+  refreshReadTimestamp,
+} from './loop-guard'
 
 //=============================================================================
 // Read Tool
@@ -157,9 +163,32 @@ async function executeSingleRead(
   const { readFile } = useOPFSStore.getState()
   const readFileState = ensureReadFileState(context)
 
+  // Loop guard: check consecutive read counter before reading (defined outside try for scope)
+  let loopCheckResult: ReturnType<typeof checkReadLoop> | null = null
+  let resolvedPathForLoopGuard: string | null = null
+
   try {
     const target = await resolveVfsTarget(path, context, 'read')
     const readStateKey = getReadStateKey(target)
+
+    // Loop guard: check consecutive read counter before reading
+    resolvedPathForLoopGuard = getResolvedPathForLoopGuard(target)
+    loopCheckResult = checkReadLoop(context, resolvedPathForLoopGuard, options.startLine ?? 1, options.lineCount ?? 0)
+    if (loopCheckResult.isBlocked) {
+      return toolErrorJson(
+        'read',
+        'loop_blocked',
+        `BLOCKED: You have read this exact file region ${loopCheckResult.consecutive} times in a row. ` +
+          'The content has NOT changed. You already have this information. ' +
+          'STOP re-reading and proceed with your task.',
+        { hint: 'Stop reading and proceed with writing or responding.' }
+      )
+    }
+
+    const buildMeta = (extra?: Record<string, unknown>) => ({
+      ...(loopCheckResult!.warning ? { _warning: loopCheckResult!.warning } : {}),
+      ...extra,
+    })
 
     if (target.kind === 'agent') {
       const content = await target.agentManager.readPath(target.agentId, target.path)
@@ -177,6 +206,8 @@ async function executeSingleRead(
       }
       const rendered = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(rendered, options))
+      // Agent reads don't have real filesystem mtime — use wall clock as approximation
+      recordReadMtime(context, loopCheckResult!.dedupKey, Date.now(), size)
       return toolOkJson('read', {
         path,
         kind: 'text',
@@ -186,7 +217,7 @@ async function executeSingleRead(
           start_line: options.startLine,
           line_count: options.lineCount,
         },
-      }, { source: 'agent' })
+      }, buildMeta({ source: 'agent' }))
     }
 
     const result = await readFile(target.path, context.directoryHandle, context.workspaceId)
@@ -203,6 +234,8 @@ async function executeSingleRead(
     if (typeof content === 'string') {
       const formatted = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
+      // Record mtime for future dedup — OPFS returns metadata.mtime
+      recordReadMtime(context, loopCheckResult!.dedupKey, metadata.mtime, metadata.size)
       return toolOkJson('read', {
         path,
         kind: 'text',
@@ -212,7 +245,7 @@ async function executeSingleRead(
           start_line: options.startLine,
           line_count: options.lineCount,
         },
-      }, { source: 'workspace' })
+      }, buildMeta({ source: 'workspace' }))
     }
 
     if (hasRangeOptions(options)) {
@@ -229,7 +262,7 @@ async function executeSingleRead(
       kind: 'binary_base64',
       content: base64,
       metadata: { size: metadata.size, contentType: metadata.contentType },
-    }, { source: 'workspace' })
+    }, buildMeta({ source: 'workspace' }))
   } catch (error) {
     if (isOPFSWorkspaceMiss(error)) {
       try {
@@ -256,6 +289,8 @@ async function executeSingleRead(
           if (typeof content === 'string') {
             const formatted = applyTextRange(content, options)
             readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
+            // Record mtime for future dedup
+            recordReadMtime(context, loopCheckResult!.dedupKey, metadata.mtime, metadata.size)
             return toolOkJson('read', {
               path,
               kind: 'text',
@@ -265,7 +300,10 @@ async function executeSingleRead(
                 start_line: options.startLine,
                 line_count: options.lineCount,
               },
-            }, { source: 'native_fallback' })
+            }, {
+              ...(loopCheckResult!.warning ? { _warning: loopCheckResult!.warning } : {}),
+              source: 'native_fallback',
+            })
           }
           if (hasRangeOptions(options)) {
             return toolErrorJson(
@@ -281,9 +319,13 @@ async function executeSingleRead(
             kind: 'binary_base64',
             content: base64,
             metadata: { size: metadata.size, contentType: metadata.contentType },
-          }, { source: 'native_fallback' })
+          }, {
+            ...(loopCheckResult!.warning ? { _warning: loopCheckResult!.warning } : {}),
+            source: 'native_fallback',
+          })
         }
       } catch (fallbackError) {
+        // eslint-disable-next-line no-ex-assign -- intentionally propagates to outer error handler
         error = fallbackError
       }
     }
@@ -623,10 +665,41 @@ async function executeSingleWrite(
 
   try {
     const target = await resolveVfsTarget(path, context, 'write')
+    const resolvedPath = getResolvedPathForLoopGuard(target)
+
+    // Staleness check: warn if file was modified externally since last read
+    let stalenessWarning: string | null = null
+    if (target.kind === 'workspace') {
+      try {
+        const nativeHandle = await resolveNativeDirectoryHandle(
+          context.directoryHandle,
+          context.workspaceId
+        )
+        if (nativeHandle) {
+          const fileHandle = await nativeHandle.getFileHandle(
+            target.path.split('/').pop()!,
+            { create: false }
+          ).catch(() => null)
+          if (fileHandle) {
+            // getFile() returns a File object with lastModified
+            const file = await fileHandle.getFile()
+            stalenessWarning = checkFileStaleness(context, resolvedPath, file.lastModified)
+          }
+        }
+      } catch {
+        // Staleness check is best-effort — proceed with write if it fails
+      }
+    }
+
     let isNew = false
     let pendingCount = 0
     let status: 'pending' | 'saved' = 'saved'
     let message = ''
+
+    const buildMeta = (extra?: Record<string, unknown>) => ({
+      ...(stalenessWarning ? { _warning: stalenessWarning } : {}),
+      ...extra,
+    })
 
     if (target.kind === 'workspace') {
       const wasCachedBeforeWrite = hasCachedFile(target.path)
@@ -659,6 +732,9 @@ async function executeSingleWrite(
       session.broadcastFileChange(path, isNew ? 'create' : 'modify', preview)
     }
 
+    // Refresh timestamp after successful write to avoid false staleness on consecutive edits
+    refreshReadTimestamp(context, resolvedPath, Date.now())
+
     return toolOkJson('write', {
       path,
       action: isNew ? 'create' : 'modify',
@@ -666,7 +742,7 @@ async function executeSingleWrite(
       status,
       pendingCount,
       message,
-    })
+    }, buildMeta())
   } catch (error) {
     return toolErrorJson(
       'write',
@@ -695,6 +771,33 @@ async function executeBatchWrite(
   for (const file of files) {
     try {
       const target = await resolveVfsTarget(file.path, context, 'write')
+      const resolvedPath = getResolvedPathForLoopGuard(target)
+
+      // Staleness check (best-effort)
+      if (target.kind === 'workspace') {
+        try {
+          const fileHandle = await writeDirectoryHandle?.getFileHandle(
+            target.path.split('/').pop()!,
+            { create: false }
+          ).catch(() => null)
+          if (fileHandle) {
+            // getFile() returns a File object with lastModified
+            const file = await fileHandle.getFile()
+            const warning = checkFileStaleness(context, resolvedPath, file.lastModified)
+            if (warning) {
+              results.push({
+                path: target.path,
+                success: false,
+                error: { code: 'file_stale', message: warning },
+              })
+              continue
+            }
+          }
+        } catch {
+          // Staleness check is best-effort — proceed if it fails
+        }
+      }
+
       let isNew = false
 
       if (target.kind === 'workspace') {
@@ -710,6 +813,8 @@ async function executeBatchWrite(
         await target.agentManager.writePath(target.agentId, target.path, file.content)
       }
 
+      // Refresh timestamp after successful write
+      refreshReadTimestamp(context, resolvedPath, Date.now())
       results.push({ path: file.path, success: true })
       if (isNew) created++
       else updated++
@@ -753,4 +858,16 @@ async function ensureAgentExistsForWrite(target: AgentTarget, cache?: Set<string
   }
 
   cache?.add(cacheKey)
+}
+
+/**
+ * Extract a stable resolved path string for loop guard tracking.
+ * For workspace targets: uses the resolved absolute path.
+ * For agent targets: constructs a synthetic path for tracking.
+ */
+function getResolvedPathForLoopGuard(target: Awaited<ReturnType<typeof resolveVfsTarget>>): string {
+  if (target.kind === 'workspace') {
+    return target.path
+  }
+  return `vfs://agents/${target.agentId}/${target.path}`
 }

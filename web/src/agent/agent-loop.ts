@@ -46,6 +46,7 @@ import { PiAIProvider } from './llm/pi-ai-provider'
 import { useSettingsStore } from '@/store/settings.store'
 import { isToolAllowedInMode, type AgentMode } from './agent-mode'
 import { isToolEnvelopeV2 } from './tools/tool-envelope'
+import { notifyOtherToolCall } from './tools/loop-guard'
 
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
@@ -1198,6 +1199,12 @@ export class AgentLoop {
           } finally {
             // 无论工具执行成功或失败，都恢复原始上下文
             this.toolContext = originalToolContext
+            // Loop guard: reset consecutive counter after non-read/non-search tool execution.
+            // This ensures that read→write→read doesn't accumulate consecutive reads.
+            const toolName = toolDef.function.name
+            if (toolName !== 'read' && toolName !== 'search') {
+              notifyOtherToolCall(this.toolContext)
+            }
           }
 
           // 在 normalizeToolResult 之前就截断过大的结果
