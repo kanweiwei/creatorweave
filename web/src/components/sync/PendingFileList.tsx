@@ -7,14 +7,17 @@
  * - 支持全选/批量操作
  * - 支持单个文件删除
  * - hover 预览效果
+ * - HTML 文件右键审查元素
  */
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { type ChangeDetectionResult, type FileChange } from '@/opfs/types/opfs-types'
 import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-helpers'
 import { BrandButton, BrandCheckbox } from '@creatorweave/ui'
 import { Badge } from '@/components/ui/badge'
-import { RefreshCw, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { RefreshCw, Trash2, X, ChevronDown, ChevronRight, MousePointer2, Copy } from 'lucide-react'
+import { readFileFromOPFS } from '@/opfs'
+import { getActiveConversation } from '@/store/conversation-context.store'
 
 type SnapshotGroup = {
   key: string
@@ -47,6 +50,11 @@ interface PendingFileListProps {
   onSelectionChange?: (selected: Set<string>) => void
 }
 
+/** Check if a file path points to an HTML file */
+function isHtmlFile(path: string): boolean {
+  return path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm')
+}
+
 export const PendingFileList: React.FC<PendingFileListProps> = ({
   changes,
   onSelectFile,
@@ -65,6 +73,38 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
   const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({
     draft: true,
   })
+
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    change: FileChange
+  } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close context menu on outside click or escape
+  useEffect(() => {
+    if (!contextMenu) return
+
+    const handleClick = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null)
+    }
+    // Delay to avoid the same right-click closing immediately
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClick)
+      document.addEventListener('keydown', handleKeyDown)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
 
   // 按 snapshot 分组
   const groupedChanges = useMemo(() => {
@@ -169,6 +209,34 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
     [onRemoveFile]
   )
 
+  // Handle right-click context menu for HTML files
+  const handleContextMenu = useCallback((e: React.MouseEvent, change: FileChange) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, change })
+  }, [])
+
+  // Handle "Inspect Element" from context menu
+  const handleInspectElement = useCallback(async (change: FileChange) => {
+    setContextMenu(null)
+    if (change.type === 'delete') return
+
+    try {
+      const activeConversation = await getActiveConversation()
+      if (!activeConversation) return
+
+      const { conversationId } = activeConversation
+      const htmlContent = await readFileFromOPFS(conversationId, change.path)
+      if (!htmlContent) return
+
+      // Save to localStorage and open in new tab (same pattern as WorkspaceLayout.handleElementInspect)
+      localStorage.setItem('preview-content-' + change.path, htmlContent)
+      window.open(`/preview?path=${encodeURIComponent(change.path)}`, '_blank')
+    } catch (err) {
+      console.error('[PendingFileList] Failed to open inspector:', err)
+    }
+  }, [])
+
   // 检查是否有选中项
   const hasSelection = selectedCount > 0
 
@@ -247,6 +315,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                 {group.expanded && group.changes.map((change, index) => {
                   const isSelected = selectedItems.has(change.path) || change.path === selectedPath
                   const typeInfo = getChangeTypeInfo(change.type)
+                  const isHtml = isHtmlFile(change.path) && change.type !== 'delete'
 
                   return (
                     <div
@@ -254,6 +323,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                       className={`group flex items-center gap-2 px-3 py-2 transition-colors hover:bg-hover ${
                         isSelected ? 'bg-primary-50/50' : ''
                       }`}
+                      onContextMenu={isHtml ? (e) => handleContextMenu(e, change) : undefined}
                     >
                       {/* 选择框 */}
                       <BrandCheckbox
@@ -286,6 +356,20 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
                         {typeInfo.label}
                       </Badge>
 
+                      {/* HTML inspect button (visible on hover for HTML files) */}
+                      {isHtml && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleInspectElement(change)
+                          }}
+                          className="shrink-0 p-1 text-emerald-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                          title="审查元素"
+                        >
+                          <MousePointer2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       {/* 删除按钮 */}
                       <BrandButton
                         variant="ghost"
@@ -303,6 +387,48 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
           })}
         </div>
       </div>
+
+      {/* Right-click context menu for HTML files */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-[100] min-w-[160px] rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {/* Inspect Element */}
+          {isHtmlFile(contextMenu.change.path) && contextMenu.change.type !== 'delete' && (
+            <button
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              onClick={() => handleInspectElement(contextMenu.change)}
+            >
+              <MousePointer2 className="w-4 h-4 text-emerald-500" />
+              审查元素
+            </button>
+          )}
+          {/* Copy Path */}
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            onClick={() => {
+              navigator.clipboard.writeText(contextMenu.change.path).catch(() => {})
+              setContextMenu(null)
+            }}
+          >
+            <Copy className="w-4 h-4 text-neutral-400" />
+            复制路径
+          </button>
+          {/* Remove from list */}
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+            onClick={() => {
+              onRemoveFile?.(contextMenu.change.path)
+              setContextMenu(null)
+            }}
+          >
+            <X className="w-4 h-4" />
+            从列表移除
+          </button>
+        </div>
+      )}
 
       {/* 底部操作栏 */}
       <div className="border-subtle flex items-center justify-between border-t bg-elevated px-3 py-2">

@@ -3,9 +3,10 @@
  *
  * Displays side-by-side diff between OPFS and Native FS versions.
  * Uses Monaco DiffEditor for text comparison.
+ * For HTML files, provides "Inspect Element" to preview in a new tab with element inspector.
  */
 
-import React, { Suspense, useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { type FileChange } from '@/opfs/types/opfs-types'
 import { getActiveConversation } from '@/store/conversation-context.store'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@creatorweave/ui'
@@ -17,7 +18,7 @@ import {
   readBinaryFileFromOPFS,
   readBinaryFileFromNativeFS,
 } from '@/opfs'
-import { Columns2, UnfoldVertical, Copy, X } from 'lucide-react'
+import { Columns2, UnfoldVertical, Copy, X, MousePointer2 } from 'lucide-react'
 
 const MonacoDiffEditor = React.lazy(() => import('./MonacoDiffEditor'))
 
@@ -57,6 +58,11 @@ type FileContentState = {
   showNativePanel: boolean
   loading: boolean
   error: string | null
+}
+
+/** Check if a file path points to an HTML file */
+function isHtmlFile(path: string): boolean {
+  return path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm')
 }
 
 function getImageMimeType(path: string): string {
@@ -130,6 +136,28 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange, snap
     () => Object.values(commentsByPath).flat().sort((a, b) => a.createdAt - b.createdAt),
     [commentsByPath]
   )
+
+  /**
+   * Open HTML file in a new tab with element inspector.
+   * Uses the OPFS (modified) version of the file content.
+   * Follows the same pattern as handleElementInspect in WorkspaceLayout.
+   */
+  const handleInspectElement = useCallback(async () => {
+    if (!fileChange || fileChange.type === 'delete') return
+
+    try {
+      // Use the OPFS (modified) version which is the pending change
+      const htmlContent = content.opfs
+      if (htmlContent === null) return
+
+      // Save to localStorage so the StandalonePreview page can read it
+      localStorage.setItem('preview-content-' + fileChange.path, htmlContent)
+      // Open in new tab with inspector enabled
+      window.open(`/preview?path=${encodeURIComponent(fileChange.path)}`, '_blank')
+    } catch (err) {
+      console.error('[FileDiffViewer] Failed to open inspector:', err)
+    }
+  }, [fileChange, content.opfs])
 
   useEffect(() => {
     if (!fileChange) {
@@ -356,6 +384,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange, snap
   }
 
   const isImage = !isSnapshotMode && isImageFile(fileChange.path)
+  const isHtml = !isSnapshotMode && isHtmlFile(fileChange.path) && fileChange.type !== 'delete'
   const originalText = content.showNativePanel ? (content.native ?? '') : ''
   const modifiedText = content.opfs ?? ''
 
@@ -653,6 +682,24 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange, snap
             <span className="text-[11px] text-neutral-400 dark:text-neutral-500">
               {snapshotDiff?.snapshotTitle || '快照对比'} · {formatTime(snapshotDiff?.capturedAt)}
             </span>
+          )}
+          {/* Inspect Element button for HTML files */}
+          {isHtml && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleInspectElement}
+                    className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-emerald-600 transition-colors hover:bg-emerald-100/60 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300"
+                  >
+                    <MousePointer2 className="h-3 w-3" />
+                    审查元素
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>在新标签页中预览 HTML 并审查元素</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           {!isImage && (
             <TooltipProvider delayDuration={200}>
