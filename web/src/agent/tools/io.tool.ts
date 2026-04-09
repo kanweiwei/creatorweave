@@ -21,6 +21,7 @@ import {
   recordReadMtime,
   checkFileStaleness,
   refreshReadTimestamp,
+  checkContentSizeLimit,
 } from './loop-guard'
 
 //=============================================================================
@@ -204,6 +205,16 @@ async function executeSingleRead(
           { details: { path, fileSize: size, maxSize } }
         )
       }
+      // Safety limit: prevent huge content from overflowing context
+      const sizeLimitCheck = checkContentSizeLimit(content, size, content.split('\n').length)
+      if (!sizeLimitCheck.ok) {
+        return toolErrorJson(
+          'read',
+          'content_too_large',
+          sizeLimitCheck.error,
+          { details: { totalLines: sizeLimitCheck.totalLines } }
+        )
+      }
       const rendered = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(rendered, options))
       // Agent reads don't have real filesystem mtime — use wall clock as approximation
@@ -232,6 +243,16 @@ async function executeSingleRead(
     }
 
     if (typeof content === 'string') {
+      // Safety limit: prevent huge content from overflowing context
+      const sizeLimitCheck = checkContentSizeLimit(content, metadata.size, content.split('\n').length)
+      if (!sizeLimitCheck.ok) {
+        return toolErrorJson(
+          'read',
+          'content_too_large',
+          sizeLimitCheck.error,
+          { details: { totalLines: sizeLimitCheck.totalLines } }
+        )
+      }
       const formatted = applyTextRange(content, options)
       readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
       // Record mtime for future dedup — OPFS returns metadata.mtime
@@ -287,6 +308,16 @@ async function executeSingleRead(
             )
           }
           if (typeof content === 'string') {
+            // Safety limit: prevent huge content from overflowing context
+            const sizeLimitCheck = checkContentSizeLimit(content, metadata.size, content.split('\n').length)
+            if (!sizeLimitCheck.ok) {
+              return toolErrorJson(
+                'read',
+                'content_too_large',
+                sizeLimitCheck.error,
+                { details: { totalLines: sizeLimitCheck.totalLines } }
+              )
+            }
             const formatted = applyTextRange(content, options)
             readFileState.set(readStateKey, buildReadStateEntry(formatted, options))
             // Record mtime for future dedup
@@ -402,6 +433,22 @@ async function executeBatchRead(
           continue
         }
 
+        // Safety limit: prevent huge content from overflowing context
+        const sizeLimitCheck = checkContentSizeLimit(agentContent, size, agentContent.split('\n').length)
+        if (!sizeLimitCheck.ok) {
+          results.push({
+            path: filePath,
+            success: false,
+            error: {
+              code: 'content_too_large',
+              message: sizeLimitCheck.error,
+            },
+            metadata: { size, contentType: 'text' },
+          })
+          errorCount++
+          continue
+        }
+
         const rendered = applyTextRange(agentContent, {
           startLine: read.start_line,
           lineCount: read.line_count,
@@ -478,6 +525,22 @@ async function executeBatchRead(
           metadata: { size: metadata.size, contentType: metadata.contentType },
         })
         successCount++
+        continue
+      }
+
+      // Safety limit: prevent huge content from overflowing context
+      const sizeLimitCheck = checkContentSizeLimit(content, metadata.size, content.split('\n').length)
+      if (!sizeLimitCheck.ok) {
+        results.push({
+          path: filePath,
+          success: false,
+          error: {
+            code: 'content_too_large',
+            message: sizeLimitCheck.error,
+          },
+          metadata: { size: metadata.size, contentType: metadata.contentType },
+        })
+        errorCount++
         continue
       }
 

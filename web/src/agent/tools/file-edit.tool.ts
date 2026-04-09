@@ -143,7 +143,10 @@ async function executeSingleEdit(
       return toolErrorJson(
         'edit',
         'old_text_not_found',
-        'old_text not found in file. Make sure it matches exactly (including whitespace).'
+        'old_text not found in the file. ' +
+          'Verify the exact content with the read tool first. ' +
+          'Hint: Whitespace and line endings must match exactly. ' +
+          'Consider copying the text directly from the file rather than retyping it.'
       )
     }
 
