@@ -6,6 +6,7 @@
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
 import { useConversationContextStore } from '@/store/conversation-context.store'
+import { toolErrorJson, toolOkJson } from './tool-envelope'
 
 // 导入 Git 工具实现
 import { 
@@ -21,6 +22,18 @@ import {
   gitRestore,
   formatGitRestore
 } from '@/opfs/git'
+
+function parseFormat(raw: unknown): { ok: true; format: 'json' | 'text' } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, format: 'text' }
+  if (raw === 'json' || raw === 'text') return { ok: true, format: raw }
+  return { ok: false, error: `format must be "json" or "text"` }
+}
+
+function ensureWorkspaceId(context: { workspaceId?: string | null }): string | null {
+  const workspaceId = context.workspaceId
+  if (!workspaceId) return null
+  return workspaceId
+}
 
 //=============================================================================
 // git_status - 查看工作区状态
@@ -48,22 +61,37 @@ export const gitStatusDefinition: ToolDefinition = {
 
 export const gitStatusExecutor: ToolExecutor = async (args, context) => {
   try {
-    const workspaceId = context.workspaceId
+    const workspaceId = ensureWorkspaceId(context)
     if (!workspaceId) {
-      return JSON.stringify({ error: 'No active workspace' })
+      return toolErrorJson('git_status', 'no_active_workspace', 'No active workspace')
     }
+
+    const parsedFormat = parseFormat(args.format)
+    if (!parsedFormat.ok) {
+      return toolErrorJson('git_status', 'invalid_arguments', parsedFormat.error)
+    }
+
     const result = await gitStatus(workspaceId)
-    const format = args.format as string || 'text'
-
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2)
+    const output = formatGitStatus(result)
+    if (parsedFormat.format === 'json') {
+      return toolOkJson('git_status', {
+        format: 'json',
+        status: result,
+      })
     }
 
-    return formatGitStatus(result)
-  } catch (error) {
-    return JSON.stringify({
-      error: `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
+    return toolOkJson('git_status', {
+      format: 'text',
+      output,
+      status: result,
     })
+  } catch (error) {
+    return toolErrorJson(
+      'git_status',
+      'internal_error',
+      `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -106,14 +134,29 @@ export const gitDiffDefinition: ToolDefinition = {
 
 export const gitDiffExecutor: ToolExecutor = async (args, context) => {
   try {
-    const workspaceId = context.workspaceId
+    const workspaceId = ensureWorkspaceId(context)
     if (!workspaceId) {
-      return JSON.stringify({ error: 'No active workspace' })
+      return toolErrorJson('git_diff', 'no_active_workspace', 'No active workspace')
     }
-    const mode = (args.mode as 'working' | 'cached' | 'snapshot') || 'working'
+
+    const modeRaw = args.mode
+    const mode = (modeRaw as 'working' | 'cached' | 'snapshot') || 'working'
+    if (mode !== 'working' && mode !== 'cached' && mode !== 'snapshot') {
+      return toolErrorJson(
+        'git_diff',
+        'invalid_arguments',
+        'mode must be one of: working, cached, snapshot'
+      )
+    }
     const snapshotId = args.snapshot_id as string | undefined
+    if (mode === 'snapshot' && !snapshotId) {
+      return toolErrorJson('git_diff', 'invalid_arguments', 'snapshot_id is required when mode="snapshot"')
+    }
     const path = args.path as string | undefined
-    const format = args.format as string || 'text'
+    const parsedFormat = parseFormat(args.format)
+    if (!parsedFormat.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', parsedFormat.error)
+    }
 
     const result = await gitDiff(workspaceId, {
       mode,
@@ -121,15 +164,26 @@ export const gitDiffExecutor: ToolExecutor = async (args, context) => {
       path,
     })
 
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2)
+    const output = formatGitDiff(result)
+    if (parsedFormat.format === 'json') {
+      return toolOkJson('git_diff', {
+        format: 'json',
+        diff: result,
+      })
     }
 
-    return formatGitDiff(result)
-  } catch (error) {
-    return JSON.stringify({
-      error: `Failed to get diff: ${error instanceof Error ? error.message : String(error)}`,
+    return toolOkJson('git_diff', {
+      format: 'text',
+      output,
+      diff: result,
     })
+  } catch (error) {
+    return toolErrorJson(
+      'git_diff',
+      'internal_error',
+      `Failed to get diff: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -175,15 +229,38 @@ export const gitLogDefinition: ToolDefinition = {
 
 export const gitLogExecutor: ToolExecutor = async (args, context) => {
   try {
-    const workspaceId = context.workspaceId
+    const workspaceId = ensureWorkspaceId(context)
     if (!workspaceId) {
-      return JSON.stringify({ error: 'No active workspace' })
+      return toolErrorJson('git_log', 'no_active_workspace', 'No active workspace')
+    }
+    if (args.limit !== undefined) {
+      if (
+        typeof args.limit !== 'number' ||
+        !Number.isFinite(args.limit) ||
+        args.limit <= 0 ||
+        !Number.isInteger(args.limit)
+      ) {
+        return toolErrorJson('git_log', 'invalid_arguments', 'limit must be a positive integer')
+      }
     }
     const limit = (args.limit as number) || 10
     const path = args.path as string | undefined
     const status = args.status as 'committed' | 'approved' | 'rolled_back' | undefined
+    if (status && status !== 'committed' && status !== 'approved' && status !== 'rolled_back') {
+      return toolErrorJson(
+        'git_log',
+        'invalid_arguments',
+        'status must be one of: committed, approved, rolled_back'
+      )
+    }
     const oneline = args.oneline as boolean
-    const format = args.format as string || 'text'
+    if (args.oneline !== undefined && typeof args.oneline !== 'boolean') {
+      return toolErrorJson('git_log', 'invalid_arguments', 'oneline must be boolean')
+    }
+    const parsedFormat = parseFormat(args.format)
+    if (!parsedFormat.ok) {
+      return toolErrorJson('git_log', 'invalid_arguments', parsedFormat.error)
+    }
 
     const result = await gitLog(workspaceId, {
       limit,
@@ -191,15 +268,27 @@ export const gitLogExecutor: ToolExecutor = async (args, context) => {
       status,
     })
 
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2)
+    const output = oneline ? formatGitLogOneline(result) : formatGitLog(result)
+    if (parsedFormat.format === 'json') {
+      return toolOkJson('git_log', {
+        format: 'json',
+        log: result,
+      })
     }
 
-    return oneline ? formatGitLogOneline(result) : formatGitLog(result)
-  } catch (error) {
-    return JSON.stringify({
-      error: `Failed to get log: ${error instanceof Error ? error.message : String(error)}`,
+    return toolOkJson('git_log', {
+      format: 'text',
+      output,
+      log: result,
+      oneline: oneline === true,
     })
+  } catch (error) {
+    return toolErrorJson(
+      'git_log',
+      'internal_error',
+      `Failed to get log: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -240,14 +329,20 @@ export const gitShowDefinition: ToolDefinition = {
 
 export const gitShowExecutor: ToolExecutor = async (args, context) => {
   try {
-    const workspaceId = context.workspaceId
+    const workspaceId = ensureWorkspaceId(context)
     if (!workspaceId) {
-      return JSON.stringify({ error: 'No active workspace' })
+      return toolErrorJson('git_show', 'no_active_workspace', 'No active workspace')
     }
     const snapshotId = args.snapshot_id as string | undefined
+    if (args.include_diff !== undefined && typeof args.include_diff !== 'boolean') {
+      return toolErrorJson('git_show', 'invalid_arguments', 'include_diff must be boolean')
+    }
     const includeDiff = args.include_diff as boolean | undefined
     const path = args.path as string | undefined
-    const format = args.format as string || 'text'
+    const parsedFormat = parseFormat(args.format)
+    if (!parsedFormat.ok) {
+      return toolErrorJson('git_show', 'invalid_arguments', parsedFormat.error)
+    }
 
     const result = await gitShow(workspaceId, snapshotId, {
       includeDiff: includeDiff === true,
@@ -255,18 +350,29 @@ export const gitShowExecutor: ToolExecutor = async (args, context) => {
     })
 
     if (!result) {
-      return JSON.stringify({ error: 'No snapshots found' })
+      return toolErrorJson('git_show', 'not_found', 'No snapshots found')
     }
 
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2)
+    const output = formatGitShow(result)
+    if (parsedFormat.format === 'json') {
+      return toolOkJson('git_show', {
+        format: 'json',
+        show: result,
+      })
     }
 
-    return formatGitShow(result)
-  } catch (error) {
-    return JSON.stringify({
-      error: `Failed to show commit: ${error instanceof Error ? error.message : String(error)}`,
+    return toolOkJson('git_show', {
+      format: 'text',
+      output,
+      show: result,
     })
+  } catch (error) {
+    return toolErrorJson(
+      'git_show',
+      'internal_error',
+      `Failed to show commit: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }
 
@@ -310,17 +416,23 @@ export const gitRestoreDefinition: ToolDefinition = {
 
 export const gitRestoreExecutor: ToolExecutor = async (args, context) => {
   try {
-    const workspaceId = context.workspaceId
+    const workspaceId = ensureWorkspaceId(context)
     if (!workspaceId) {
-      return JSON.stringify({ error: 'No active workspace' })
+      return toolErrorJson('git_restore', 'no_active_workspace', 'No active workspace')
     }
     const paths = args.paths as string[]
     const staged = args.staged as boolean
     const snapshotId = args.snapshot_id as string | undefined
-    const format = args.format as string || 'text'
+    const parsedFormat = parseFormat(args.format)
+    if (!parsedFormat.ok) {
+      return toolErrorJson('git_restore', 'invalid_arguments', parsedFormat.error)
+    }
 
-    if (!paths || paths.length === 0) {
-      return JSON.stringify({ error: 'paths is required' })
+    if (!Array.isArray(paths) || paths.length === 0 || paths.some((path) => typeof path !== 'string' || !path)) {
+      return toolErrorJson('git_restore', 'invalid_arguments', 'paths must be a non-empty string array')
+    }
+    if (args.staged !== undefined && typeof args.staged !== 'boolean') {
+      return toolErrorJson('git_restore', 'invalid_arguments', 'staged must be boolean')
     }
 
     const result = await gitRestore(workspaceId, {
@@ -328,20 +440,32 @@ export const gitRestoreExecutor: ToolExecutor = async (args, context) => {
       staged: staged || false,
       worktree: !staged,
       snapshotId,
+      directoryHandle: context.directoryHandle,
     })
 
     // 刷新状态
     await useConversationContextStore.getState().updateCurrentCounts()
     await useConversationContextStore.getState().refreshPendingChanges(true)
 
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2)
+    const output = formatGitRestore(result)
+    if (parsedFormat.format === 'json') {
+      return toolOkJson('git_restore', {
+        format: 'json',
+        restore: result,
+      })
     }
 
-    return formatGitRestore(result)
-  } catch (error) {
-    return JSON.stringify({
-      error: `Failed to restore: ${error instanceof Error ? error.message : String(error)}`,
+    return toolOkJson('git_restore', {
+      format: 'text',
+      output,
+      restore: result,
     })
+  } catch (error) {
+    return toolErrorJson(
+      'git_restore',
+      'internal_error',
+      `Failed to restore: ${error instanceof Error ? error.message : String(error)}`,
+      { retryable: true }
+    )
   }
 }

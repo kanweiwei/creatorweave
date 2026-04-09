@@ -13,6 +13,8 @@ import { getSQLiteDB } from '@/sqlite'
 import { getFSOverlayRepository } from '@/sqlite/repositories/fs-overlay.repository'
 import type { SnapshotFileRecord, SnapshotRecord } from '@/sqlite/repositories/fs-overlay.repository'
 import { structuredPatch } from 'diff'
+import micromatch from 'micromatch'
+import { getWorkspaceManager } from '@/opfs'
 
 export interface GitStatusResult {
   workspaceId: string
@@ -95,6 +97,9 @@ export interface SnapshotFileInfo {
 export interface GitRestoreResult {
   restored: number
   discarded: number
+  unstaged?: number
+  unresolved?: string[]
+  unmatchedPatterns?: string[]
   message: string
 }
 
@@ -113,26 +118,16 @@ export async function gitStatus(workspaceId: string): Promise<GitStatusResult> {
   const snapshots = await repo.listSnapshots(workspaceId, 20)
   const staged = snapshots.filter((s) => s.status === 'committed' || s.status === 'approved')
 
-  // Separate pending ops by type (simulate git's staging concept)
+  // Pending ops returned here are review-pending records, which map to unstaged.
   const unstaged: FileChange[] = []
   const untracked: FileChange[] = []
 
   for (const op of pendingOps) {
-    if (op.snapshotStatus === 'draft') {
-      // Draft changes - treat as unstaged
-      unstaged.push({
-        path: op.path,
-        type: op.type,
-        status: 'unstaged',
-      })
-    } else {
-      // Committed/approved - treat as staged
-      unstaged.push({
-        path: op.path,
-        type: op.type,
-        status: 'staged',
-      })
-    }
+    unstaged.push({
+      path: op.path,
+      type: op.type,
+      status: 'unstaged',
+    })
   }
 
   // Get current branch name (from workspaces table)
@@ -227,12 +222,24 @@ export async function gitDiff(
       ops = await repo.listSnapshotOps(workspaceId, to)
     }
   } else if (mode === 'cached') {
-    // Show staged changes (approved snapshots not yet synced)
-    const snapshots = await repo.listSnapshots(workspaceId, 50)
-    const approved = snapshots.find((s) => s.status === 'approved')
-    if (approved) {
-      to = approved.id
-      ops = await repo.listSnapshotOps(workspaceId, to)
+    // Show staged changes from approved snapshots not yet synced to disk.
+    const unsyncedSnapshots = await repo.getUnsyncedSnapshots(workspaceId)
+    if (unsyncedSnapshots.length > 0) {
+      to = unsyncedSnapshots[0].snapshotId
+      from = await repo.getCurrentSnapshotId(workspaceId)
+
+      const collected = await Promise.all(
+        unsyncedSnapshots.map(async (snapshot) => repo.listSnapshotOps(workspaceId, snapshot.snapshotId))
+      )
+      const latestByPath = new Map<string, (typeof ops)[number]>()
+      for (const snapshotOps of collected) {
+        for (const op of snapshotOps) {
+          if (!latestByPath.has(op.path)) {
+            latestByPath.set(op.path, op)
+          }
+        }
+      }
+      ops = Array.from(latestByPath.values())
     }
   } else {
     // Show working directory pending changes
@@ -443,26 +450,21 @@ export async function gitShow(
   }
 ): Promise<GitShowResult | null> {
   const repo = getFSOverlayRepository()
+  let snapshot: SnapshotRecord | null = null
+  let targetId: string
 
-  let targetId = snapshotId
-
-  // If no snapshotId provided, get the latest
-  if (!targetId) {
+  if (snapshotId) {
+    snapshot = await repo.getSnapshotById(workspaceId, snapshotId)
+    if (!snapshot) return null
+    targetId = snapshot.id
+  } else {
     const snapshots = await repo.listSnapshots(workspaceId, 1)
-    if (snapshots.length === 0) {
-      return null
-    }
-    targetId = snapshots[0].id
+    if (snapshots.length === 0) return null
+    snapshot = snapshots[0]
+    targetId = snapshot.id
   }
 
-  const snapshots = await repo.listSnapshots(workspaceId, 50)
-  const snapshot = snapshots.find((s) => s.id === targetId)
-
-  if (!snapshot) {
-    return null
-  }
-
-  const files = await repo.listSnapshotFiles(targetId)
+  const files = await repo.listSnapshotFiles(snapshot.id)
   let diff: GitDiffResult | undefined
   if (options?.includeDiff) {
     diff = await gitDiff(workspaceId, {
@@ -531,9 +533,11 @@ export async function gitRestore(
     staged?: boolean
     worktree?: boolean
     snapshotId?: string
+    directoryHandle?: FileSystemDirectoryHandle | null
   }
 ): Promise<GitRestoreResult> {
   const repo = getFSOverlayRepository()
+  const db = getSQLiteDB()
   const paths = options?.paths || []
   const staged = options?.staged || false
   const worktree = options?.worktree !== false
@@ -544,12 +548,37 @@ export async function gitRestore(
 
   let restored = 0
   let discarded = 0
+  let unstaged = 0
+  const unresolved: string[] = []
+  const matchedPaths = new Set<string>()
 
   if (staged) {
-    // Unstage: just discard from pending (don't apply to working tree)
-    for (const path of paths) {
-      await repo.discardPendingPath(workspaceId, path)
-      discarded++
+    // Unstage approved pending ops by moving them back to draft/pending review.
+    const approvedRows = await db.queryAll<{ id: string; path: string }>(
+      `SELECT id, path
+       FROM fs_ops
+       WHERE workspace_id = ?
+         AND status = 'pending'
+         AND review_status = 'approved'`,
+      [workspaceId]
+    )
+    const matched = selectPathMatchedItems(approvedRows, paths)
+    if (matched.length > 0) {
+      const draftChangesetId = await repo.getOrCreateDraftChangeset(workspaceId, 'tool')
+      const now = Date.now()
+      for (const item of matched) {
+        matchedPaths.add(item.path)
+        await db.execute(
+          `UPDATE fs_ops
+           SET changeset_id = ?,
+               review_status = 'pending',
+               approved_at = NULL,
+               updated_at = ?
+           WHERE id = ?`,
+          [draftChangesetId, now, item.id]
+        )
+        unstaged++
+      }
     }
   } else if (worktree) {
     // Restore from snapshot or discard pending changes
@@ -557,33 +586,62 @@ export async function gitRestore(
 
     if (targetSnapshotId) {
       // Restore specific files from a snapshot
+      const manager = await getWorkspaceManager()
+      const workspace = await manager.getWorkspace(workspaceId)
+      if (!workspace) {
+        throw new Error(`Workspace ${workspaceId} not found`)
+      }
+
       const ops = await repo.listSnapshotOps(workspaceId, targetSnapshotId)
-      const targetOps = ops.filter((op) => paths.includes(op.path))
+      const targetOps = selectPathMatchedItems(ops, paths)
+      for (const op of targetOps) matchedPaths.add(op.path)
 
       for (const op of targetOps) {
         if (op.type === 'delete') {
-          // Mark as discarded
-          await repo.discardPendingPath(workspaceId, op.path)
-          discarded++
-        } else {
-          // Content restoration from snapshot requires OPFS write operations.
-          // For now, mark as restored but note actual content restore is pending.
+          await workspace.deleteFile(op.path, options?.directoryHandle)
           restored++
+          continue
         }
+
+        const snapshotFile = await repo.getSnapshotFileContent(targetSnapshotId, op.path)
+        const content = resolveSnapshotAfterContent(snapshotFile)
+        if (content === null) {
+          unresolved.push(op.path)
+          continue
+        }
+        await workspace.writeFile(op.path, content, options?.directoryHandle)
+        restored++
       }
     } else {
       // Discard pending changes
-      for (const path of paths) {
-        await repo.discardPendingPath(workspaceId, path)
+      const pending = await repo.listPendingOps(workspaceId)
+      const targetPending = selectPathMatchedItems(pending, paths)
+      for (const change of targetPending) {
+        matchedPaths.add(change.path)
+        await repo.discardPendingPath(workspaceId, change.path)
         discarded++
       }
     }
   }
 
+  const unmatchedPatterns = paths.filter((pattern) =>
+    !Array.from(matchedPaths).some((path) => isPathPatternMatch(path, pattern))
+  )
+
   return {
     restored,
     discarded,
-    message: formatRestoreMessage(restored, discarded, paths.length),
+    ...(unstaged > 0 ? { unstaged } : {}),
+    ...(unresolved.length > 0 ? { unresolved } : {}),
+    ...(unmatchedPatterns.length > 0 ? { unmatchedPatterns } : {}),
+    message: formatRestoreMessage({
+      staged,
+      restored,
+      discarded,
+      unstaged,
+      unresolved: unresolved.length,
+      total: paths.length,
+    }),
   }
 }
 
@@ -608,14 +666,63 @@ function mapSnapshotToCommit(snapshot: SnapshotRecord): SnapshotCommit {
   }
 }
 
-function formatRestoreMessage(restored: number, discarded: number, total: number): string {
+function formatRestoreMessage(params: {
+  staged: boolean
+  restored: number
+  discarded: number
+  unstaged: number
+  unresolved: number
+  total: number
+}): string {
+  const { staged, restored, discarded, unstaged, unresolved, total } = params
+  if (staged) {
+    return `Unstaged ${unstaged} of ${total} path(s)`
+  }
   if (discarded > 0 && restored === 0) {
     return `Discarded ${discarded} of ${total} file(s) from working tree`
-  } else if (discarded > 0 && restored > 0) {
-    return `Restored ${restored}, discarded ${discarded} of ${total} file(s)`
-  } else {
-    return `Restored ${restored} of ${total} file(s) from snapshot`
   }
+  if (restored > 0 && discarded > 0) {
+    return `Restored ${restored}, discarded ${discarded} of ${total} file(s)`
+  }
+  if (unresolved > 0) {
+    return `Restored ${restored} of ${total} file(s), ${unresolved} unresolved`
+  }
+  return `Restored ${restored} of ${total} file(s) from snapshot`
+}
+
+function normalizeGitPath(path: string): string {
+  let normalized = path.replace(/\\/g, '/')
+  if (normalized.startsWith('/mnt/')) normalized = normalized.slice(5)
+  else if (normalized.startsWith('/')) normalized = normalized.slice(1)
+  return normalized
+}
+
+function hasGlobPattern(path: string): boolean {
+  return /[*?[{\]}()!+@]/.test(path)
+}
+
+function isPathPatternMatch(path: string, pattern: string): boolean {
+  const normalizedPath = normalizeGitPath(path)
+  const normalizedPattern = normalizeGitPath(pattern)
+  if (hasGlobPattern(normalizedPattern)) {
+    return micromatch.isMatch(normalizedPath, normalizedPattern)
+  }
+  return normalizedPath === normalizedPattern
+}
+
+function selectPathMatchedItems<T extends { path: string }>(items: T[], patterns: string[]): T[] {
+  return items.filter((item) => patterns.some((pattern) => isPathPatternMatch(item.path, pattern)))
+}
+
+function resolveSnapshotAfterContent(snapshotFile: SnapshotFileRecord | null): string | ArrayBuffer | null {
+  if (!snapshotFile) return null
+  if (snapshotFile.afterContentKind === 'text') {
+    return snapshotFile.afterContentText || ''
+  }
+  if (snapshotFile.afterContentKind === 'binary' && snapshotFile.afterContentBlob) {
+    return snapshotFile.afterContentBlob.slice().buffer
+  }
+  return null
 }
 
 function buildFallbackDiffFile(path: string, opType: 'create' | 'modify' | 'delete'): DiffFile {

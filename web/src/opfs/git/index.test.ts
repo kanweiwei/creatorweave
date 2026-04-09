@@ -5,6 +5,19 @@ const listSnapshotOpsMock = vi.fn()
 const listPendingOpsMock = vi.fn()
 const getSnapshotFileContentMock = vi.fn()
 const listSnapshotFilesMock = vi.fn()
+const getUnsyncedSnapshotsMock = vi.fn()
+const getCurrentSnapshotIdMock = vi.fn()
+const getSnapshotByIdMock = vi.fn()
+const discardPendingPathMock = vi.fn()
+const getOrCreateDraftChangesetMock = vi.fn()
+
+const queryFirstMock = vi.fn()
+const queryAllMock = vi.fn()
+const executeMock = vi.fn()
+
+const workspaceWriteFileMock = vi.fn()
+const workspaceDeleteFileMock = vi.fn()
+const getWorkspaceMock = vi.fn()
 
 vi.mock('@/sqlite/repositories/fs-overlay.repository', () => ({
   getFSOverlayRepository: () => ({
@@ -13,16 +26,29 @@ vi.mock('@/sqlite/repositories/fs-overlay.repository', () => ({
     listPendingOps: listPendingOpsMock,
     getSnapshotFileContent: getSnapshotFileContentMock,
     listSnapshotFiles: listSnapshotFilesMock,
+    getUnsyncedSnapshots: getUnsyncedSnapshotsMock,
+    getCurrentSnapshotId: getCurrentSnapshotIdMock,
+    getSnapshotById: getSnapshotByIdMock,
+    discardPendingPath: discardPendingPathMock,
+    getOrCreateDraftChangeset: getOrCreateDraftChangesetMock,
   }),
 }))
 
 vi.mock('@/sqlite', () => ({
   getSQLiteDB: () => ({
-    queryFirst: vi.fn(),
+    queryFirst: queryFirstMock,
+    queryAll: queryAllMock,
+    execute: executeMock,
   }),
 }))
 
-import { formatGitDiff, gitDiff } from './index'
+vi.mock('@/opfs', () => ({
+  getWorkspaceManager: () => ({
+    getWorkspace: getWorkspaceMock,
+  }),
+}))
+
+import { formatGitDiff, gitDiff, gitRestore, gitStatus } from './index'
 import { gitLog } from './index'
 import { formatGitShow, gitShow } from './index'
 
@@ -33,6 +59,17 @@ describe('opfs/git gitDiff', () => {
     listPendingOpsMock.mockReset()
     getSnapshotFileContentMock.mockReset()
     listSnapshotFilesMock.mockReset()
+    getUnsyncedSnapshotsMock.mockReset()
+    getCurrentSnapshotIdMock.mockReset()
+    getSnapshotByIdMock.mockReset()
+    discardPendingPathMock.mockReset()
+    getOrCreateDraftChangesetMock.mockReset()
+    queryFirstMock.mockReset()
+    queryAllMock.mockReset()
+    executeMock.mockReset()
+    workspaceWriteFileMock.mockReset()
+    workspaceDeleteFileMock.mockReset()
+    getWorkspaceMock.mockReset()
   })
 
   it('returns real text line changes for snapshot mode', async () => {
@@ -109,6 +146,67 @@ describe('opfs/git gitDiff', () => {
 
     expect(result.files).toHaveLength(1)
     expect(rendered).toContain('[binary files differ]')
+  })
+
+  it('uses unsynced approved snapshots for cached diff instead of first approved snapshot only', async () => {
+    listSnapshotsMock.mockResolvedValue([{ id: 'approved_old', status: 'approved' }])
+    getUnsyncedSnapshotsMock.mockResolvedValue([
+      { snapshotId: 's_new', createdAt: 3, summary: null, opCount: 1 },
+      { snapshotId: 's_old', createdAt: 2, summary: null, opCount: 1 },
+    ])
+    getCurrentSnapshotIdMock.mockResolvedValue('head_1')
+    listSnapshotOpsMock.mockImplementation(async (_workspaceId: string, snapshotId: string) => {
+      if (snapshotId === 's_new') {
+        return [
+          {
+            id: 'op_new',
+            workspaceId: 'ws_1',
+            snapshotId: 's_new',
+            path: 'src/new.ts',
+            type: 'modify',
+            status: 'pending',
+            fsMtime: 0,
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ]
+      }
+      if (snapshotId === 's_old') {
+        return [
+          {
+            id: 'op_old',
+            workspaceId: 'ws_1',
+            snapshotId: 's_old',
+            path: 'src/old.ts',
+            type: 'modify',
+            status: 'pending',
+            fsMtime: 0,
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ]
+      }
+      return []
+    })
+    getSnapshotFileContentMock.mockImplementation(async (snapshotId: string, path: string) => ({
+      snapshotId,
+      workspaceId: 'ws_1',
+      path,
+      opType: 'modify',
+      beforeContentKind: 'text',
+      beforeContentText: 'before\n',
+      beforeContentBlob: null,
+      afterContentKind: 'text',
+      afterContentText: 'after\n',
+      afterContentBlob: null,
+    }))
+
+    const result = await gitDiff('ws_1', { mode: 'cached' })
+
+    expect(getUnsyncedSnapshotsMock).toHaveBeenCalledWith('ws_1')
+    expect(result.to).toBe('s_new')
+    expect(result.from).toBe('head_1')
+    expect(result.files.map((f) => f.path)).toContain('src/new.ts')
   })
 })
 
@@ -218,21 +316,22 @@ describe('opfs/git gitShow', () => {
     listPendingOpsMock.mockReset()
     getSnapshotFileContentMock.mockReset()
     listSnapshotFilesMock.mockReset()
+    getSnapshotByIdMock.mockReset()
   })
 
   it('includes snapshot diff when includeDiff=true', async () => {
-    listSnapshotsMock.mockResolvedValue([
-      {
-        id: 'snap_1',
-        workspaceId: 'ws_1',
-        status: 'committed',
-        summary: 'update demo',
-        source: 'tool',
-        createdAt: 1,
-        committedAt: 1,
-        opCount: 1,
-      },
-    ])
+    const snapshot = {
+      id: 'snap_1',
+      workspaceId: 'ws_1',
+      status: 'committed',
+      summary: 'update demo',
+      source: 'tool',
+      createdAt: 1,
+      committedAt: 1,
+      opCount: 1,
+    }
+    listSnapshotsMock.mockResolvedValue([snapshot])
+    getSnapshotByIdMock.mockResolvedValue(snapshot)
     listSnapshotFilesMock.mockResolvedValue([
       {
         path: 'src/demo.txt',
@@ -278,5 +377,139 @@ describe('opfs/git gitShow', () => {
     expect(rendered).toContain('Diff:')
     expect(rendered).toContain('-old line')
     expect(rendered).toContain('+new line')
+  })
+
+  it('can load snapshot by exact id even when not in latest snapshot window', async () => {
+    listSnapshotsMock.mockResolvedValue([{ id: 'recent_1' }])
+    getSnapshotByIdMock.mockResolvedValue({
+      id: 'snap_old_exact',
+      workspaceId: 'ws_1',
+      status: 'committed',
+      summary: 'old commit',
+      source: 'tool',
+      createdAt: 1,
+      committedAt: 1,
+      opCount: 1,
+    })
+    listSnapshotFilesMock.mockResolvedValue([])
+
+    const result = await gitShow('ws_1', 'snap_old_exact', { includeDiff: false })
+
+    expect(result).not.toBeNull()
+    expect(result?.id).toBe('snap_old_exact')
+  })
+})
+
+describe('opfs/git gitStatus', () => {
+  beforeEach(() => {
+    listSnapshotsMock.mockReset()
+    listPendingOpsMock.mockReset()
+    queryFirstMock.mockReset()
+  })
+
+  it('treats all pending ops as unstaged in file list output', async () => {
+    listPendingOpsMock.mockResolvedValue([
+      {
+        id: 'op1',
+        workspaceId: 'ws_1',
+        path: 'src/a.ts',
+        type: 'modify',
+        fsMtime: 0,
+        timestamp: 0,
+        snapshotStatus: 'approved',
+      },
+    ])
+    listSnapshotsMock.mockResolvedValue([])
+    queryFirstMock.mockResolvedValue({ name: 'main' })
+
+    const result = await gitStatus('ws_1')
+
+    expect(result.unstaged).toHaveLength(1)
+    expect(result.unstaged[0].status).toBe('unstaged')
+  })
+})
+
+describe('opfs/git gitRestore', () => {
+  beforeEach(() => {
+    listSnapshotOpsMock.mockReset()
+    getSnapshotFileContentMock.mockReset()
+    listPendingOpsMock.mockReset()
+    getOrCreateDraftChangesetMock.mockReset()
+    discardPendingPathMock.mockReset()
+    queryAllMock.mockReset()
+    executeMock.mockReset()
+    workspaceWriteFileMock.mockReset()
+    workspaceDeleteFileMock.mockReset()
+    getWorkspaceMock.mockReset()
+
+    getWorkspaceMock.mockResolvedValue({
+      writeFile: workspaceWriteFileMock,
+      deleteFile: workspaceDeleteFileMock,
+    })
+  })
+
+  it('unstages approved pending ops instead of discarding them', async () => {
+    queryAllMock.mockResolvedValue([
+      { id: 'op1', path: 'src/a.ts' },
+      { id: 'op2', path: 'src/b.ts' },
+    ])
+    getOrCreateDraftChangesetMock.mockResolvedValue('draft_1')
+
+    const result = await gitRestore('ws_1', {
+      paths: ['src/a.ts'],
+      staged: true,
+    })
+
+    expect(discardPendingPathMock).not.toHaveBeenCalled()
+    expect(executeMock).toHaveBeenCalled()
+    expect(result.message.toLowerCase()).toContain('unstage')
+  })
+
+  it('restores snapshot content into workspace files instead of fake restored count', async () => {
+    listSnapshotOpsMock.mockResolvedValue([
+      {
+        id: 'op_mod',
+        workspaceId: 'ws_1',
+        snapshotId: 'snap_1',
+        path: 'src/a.ts',
+        type: 'modify',
+        status: 'pending',
+        fsMtime: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      {
+        id: 'op_del',
+        workspaceId: 'ws_1',
+        snapshotId: 'snap_1',
+        path: 'src/b.ts',
+        type: 'delete',
+        status: 'pending',
+        fsMtime: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ])
+    getSnapshotFileContentMock.mockResolvedValue({
+      snapshotId: 'snap_1',
+      workspaceId: 'ws_1',
+      path: 'src/a.ts',
+      opType: 'modify',
+      beforeContentKind: 'text',
+      beforeContentText: 'old',
+      beforeContentBlob: null,
+      afterContentKind: 'text',
+      afterContentText: 'new',
+      afterContentBlob: null,
+    })
+
+    const result = await gitRestore('ws_1', {
+      paths: ['src/a.ts', 'src/b.ts'],
+      snapshotId: 'snap_1',
+    })
+
+    expect(workspaceWriteFileMock).toHaveBeenCalledWith('src/a.ts', 'new', undefined)
+    expect(workspaceDeleteFileMock).toHaveBeenCalledWith('src/b.ts', undefined)
+    expect(result.restored).toBe(2)
   })
 })

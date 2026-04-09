@@ -126,6 +126,55 @@ export class FSOverlayRepository {
     }))
   }
 
+  async getSnapshotById(workspaceId: string, snapshotId: string): Promise<SnapshotRecord | null> {
+    const db = getSQLiteDB()
+    const row = await db.queryFirst<{
+      id: string
+      workspace_id: string
+      status: string
+      summary: string | null
+      source: string
+      created_at: number
+      committed_at: number | null
+      op_count: number
+      is_current: number
+    }>(
+      `SELECT c.id,
+              c.workspace_id,
+              c.status,
+              c.summary,
+              c.source,
+              c.created_at,
+              c.committed_at,
+              COUNT(o.id) AS op_count,
+              CASE WHEN w.current_snapshot_id = c.id THEN 1 ELSE 0 END AS is_current
+       FROM fs_changesets c
+       JOIN workspaces w ON w.id = c.workspace_id
+       LEFT JOIN fs_ops o
+         ON o.changeset_id = c.id
+        AND o.workspace_id = c.workspace_id
+       WHERE c.workspace_id = ?
+         AND c.id = ?
+         AND c.status != 'draft'
+       GROUP BY c.id
+       LIMIT 1`,
+      [workspaceId, snapshotId]
+    )
+
+    if (!row) return null
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      status: row.status,
+      summary: row.summary,
+      source: row.source,
+      createdAt: row.created_at,
+      committedAt: row.committed_at,
+      opCount: Number(row.op_count || 0),
+      isCurrent: row.is_current === 1,
+    }
+  }
+
   async listProjectSnapshots(projectId: string, limit: number = 200): Promise<SnapshotRecord[]> {
     const db = getSQLiteDB()
     const rows = await db.queryAll<{
