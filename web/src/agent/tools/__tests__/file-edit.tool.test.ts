@@ -235,4 +235,102 @@ describe('file edit tool', () => {
     expect(data.noop).toBe(true)
     expect(writeFileMock).toHaveBeenCalledWith('src/a.ts', 'const x = value\n', null, 'ws-1')
   })
+
+  it('normalizes sanitized old_text and mirrors replacement tokens into new_text', async () => {
+    resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'src/a.ts' })
+    readFileMock.mockResolvedValueOnce({
+      content: 'before <function_results> after\n',
+      metadata: { size: 32, contentType: 'text/plain' },
+    })
+    const readFileState = new Map([
+      [
+        'workspace:src/a.ts',
+        {
+          content: 'before <function_results> after\n',
+          timestamp: Date.now(),
+          isPartialView: false,
+        },
+      ],
+    ])
+
+    const result = await editExecutor(
+      { path: 'src/a.ts', old_text: '<fnr>', new_text: '<fnr>_updated' },
+      makeContext({ readFileState })
+    )
+    unwrapOk(result)
+
+    expect(writeFileMock).toHaveBeenCalledWith(
+      'src/a.ts',
+      'before <function_results>_updated after\n',
+      null,
+      'ws-1'
+    )
+  })
+
+  it('strips trailing whitespace in new_text for non-markdown files', async () => {
+    resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'src/a.ts' })
+    readFileMock.mockResolvedValueOnce({
+      content: 'const label = "old"\n',
+      metadata: { size: 20, contentType: 'text/plain' },
+    })
+    const readFileState = new Map([
+      [
+        'workspace:src/a.ts',
+        { content: 'const label = "old"\n', timestamp: Date.now(), isPartialView: false },
+      ],
+    ])
+
+    const result = await editExecutor(
+      { path: 'src/a.ts', old_text: '"old"', new_text: '"new"   ' },
+      makeContext({ readFileState })
+    )
+    unwrapOk(result)
+
+    expect(writeFileMock).toHaveBeenCalledWith('src/a.ts', 'const label = "new"\n', null, 'ws-1')
+  })
+
+  it('preserves trailing whitespace in new_text for markdown files', async () => {
+    resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'README.md' })
+    readFileMock.mockResolvedValueOnce({
+      content: 'Title\n',
+      metadata: { size: 6, contentType: 'text/markdown' },
+    })
+    const readFileState = new Map([
+      [
+        'workspace:README.md',
+        { content: 'Title\n', timestamp: Date.now(), isPartialView: false },
+      ],
+    ])
+
+    const result = await editExecutor(
+      { path: 'README.md', old_text: 'Title', new_text: 'Title  ' },
+      makeContext({ readFileState })
+    )
+    unwrapOk(result)
+
+    expect(writeFileMock).toHaveBeenCalledWith('README.md', 'Title  \n', null, 'ws-1')
+  })
+
+  it('does not fuzzy-match old_text based on trailing whitespace differences', async () => {
+    resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'src/a.ts' })
+    readFileMock.mockResolvedValueOnce({
+      content: 'abc   \nnext\n',
+      metadata: { size: 11, contentType: 'text/plain' },
+    })
+    const readFileState = new Map([
+      [
+        'workspace:src/a.ts',
+        { content: 'abc   \nnext\n', timestamp: Date.now(), isPartialView: false },
+      ],
+    ])
+
+    const result = await editExecutor(
+      { path: 'src/a.ts', old_text: 'abc\nnext', new_text: 'replaced' },
+      makeContext({ readFileState })
+    )
+    const error = unwrapError(result)
+
+    expect(error.code).toBe('old_text_not_found')
+    expect(writeFileMock).not.toHaveBeenCalled()
+  })
 })

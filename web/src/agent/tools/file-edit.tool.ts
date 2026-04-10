@@ -10,6 +10,160 @@ import { resolveVfsTarget } from './vfs-resolver'
 import { ensureReadFileState, getReadStateKey } from './read-state'
 import { toolErrorJson, toolOkJson } from './tool-envelope'
 
+// ── Fuzzy matching helpers ──────────────────────────────────────────
+
+/** Curly quote constants — models can't output these directly */
+const CURLY_QUOTES = {
+  leftSingle: '\u2018',  // '
+  rightSingle: '\u2019', // '
+  leftDouble: '\u201C',  // "
+  rightDouble: '\u201D', // "
+} as const
+
+/** Normalize curly quotes to straight quotes for fuzzy matching */
+function normalizeQuotes(str: string): string {
+  return str
+    .replaceAll(CURLY_QUOTES.leftSingle, "'")
+    .replaceAll(CURLY_QUOTES.rightSingle, "'")
+    .replaceAll(CURLY_QUOTES.leftDouble, '"')
+    .replaceAll(CURLY_QUOTES.rightDouble, '"')
+}
+
+/** Strip trailing whitespace from each line while preserving line endings */
+function stripTrailingWhitespace(str: string): string {
+  const lines = str.split(/(\r\n|\n|\r)/)
+  let result = ''
+  for (let i = 0; i < lines.length; i++) {
+    const part = lines[i]
+    if (part !== undefined) {
+      result += i % 2 === 0 ? part.replace(/\s+$/, '') : part
+    }
+  }
+  return result
+}
+
+/** Model sometimes outputs sanitized versions of special tags */
+const DESANITIZATIONS: Record<string, string> = {
+  '<fnr>': '<function_results>',
+  '<n>': '<name>',
+  '</n>': '</name>',
+  '<o>': '<output>',
+  '</o>': '</output>',
+  '<e>': '<error>',
+  '</e>': '</error>',
+  '<s>': '<system>',
+  '</s>': '</system>',
+  '<r>': '<result>',
+  '</r>': '</result>',
+}
+
+/** Apply de-sanitization and return which replacements were applied */
+function desanitize(str: string): { result: string; applied: Array<{ from: string; to: string }> } {
+  let result = str
+  const applied: Array<{ from: string; to: string }> = []
+  for (const [from, to] of Object.entries(DESANITIZATIONS)) {
+    const before = result
+    result = result.replaceAll(from, to)
+    if (before !== result) applied.push({ from, to })
+  }
+  return { result, applied }
+}
+
+/**
+ * Find the actual string in fileContent matching searchString.
+ * Tries in order: exact → quote-normalized.
+ * Returns the *actual* substring from fileContent (preserving original formatting),
+ * or null if nothing matched.
+ */
+function findActualString(fileContent: string, searchString: string): string | null {
+  // 1. Exact match
+  if (fileContent.includes(searchString)) return searchString
+
+  // 2. Quote normalization
+  const normSearch = normalizeQuotes(searchString)
+  const normFile = normalizeQuotes(fileContent)
+  const idx = normFile.indexOf(normSearch)
+  if (idx !== -1) return fileContent.substring(idx, idx + searchString.length)
+
+  return null
+}
+
+/**
+ * Normalize input similar to Claude Code's edit preprocessing:
+ * - Trim trailing whitespace from new_text for non-markdown files
+ * - If old_text is sanitized and exact match fails, de-sanitize old_text and apply
+ *   the same replacements to new_text.
+ */
+function normalizeEditInput(
+  path: string,
+  fileContent: string,
+  oldText: string,
+  newText: string
+): { oldText: string; newText: string } {
+  // Markdown uses trailing spaces for hard line breaks.
+  const isMarkdown = /\.(md|mdx)$/i.test(path)
+  const normalizedNewText = isMarkdown ? newText : stripTrailingWhitespace(newText)
+
+  // Keep exact match input unchanged.
+  if (fileContent.includes(oldText)) {
+    return { oldText, newText: normalizedNewText }
+  }
+
+  // If model sent sanitized tokens, de-sanitize old_text and mirror replacements in new_text.
+  const { result: desanitizedOldText, applied } = desanitize(oldText)
+  if (desanitizedOldText === oldText || !fileContent.includes(desanitizedOldText)) {
+    return { oldText, newText: normalizedNewText }
+  }
+
+  let desanitizedNewText = normalizedNewText
+  for (const { from, to } of applied) {
+    desanitizedNewText = desanitizedNewText.replaceAll(from, to)
+  }
+
+  return { oldText: desanitizedOldText, newText: desanitizedNewText }
+}
+
+/** Preserve curly quote style from the file into new_text */
+function preserveQuoteStyle(oldString: string, actualOldString: string, newString: string): string {
+  if (oldString === actualOldString) return newString
+
+  const hasDouble =
+    actualOldString.includes(CURLY_QUOTES.leftDouble) ||
+    actualOldString.includes(CURLY_QUOTES.rightDouble)
+  const hasSingle =
+    actualOldString.includes(CURLY_QUOTES.leftSingle) ||
+    actualOldString.includes(CURLY_QUOTES.rightSingle)
+  if (!hasDouble && !hasSingle) return newString
+
+  let result = newString
+  if (hasDouble) result = applyCurlyQuotes(result, '"', CURLY_QUOTES.leftDouble, CURLY_QUOTES.rightDouble)
+  if (hasSingle) result = applyCurlyQuotes(result, "'", CURLY_QUOTES.leftSingle, CURLY_QUOTES.rightSingle)
+  return result
+}
+
+function isOpeningContext(chars: string[], i: number): boolean {
+  if (i === 0) return true
+  const prev = chars[i - 1]
+  return prev === ' ' || prev === '\t' || prev === '\n' || prev === '\r' ||
+    prev === '(' || prev === '[' || prev === '{'
+}
+
+function applyCurlyQuotes(str: string, straight: string, open: string, close: string): string {
+  const chars = [...str]
+  return chars.map((ch, i) => {
+    if (ch !== straight) return ch
+    // For single quotes, don't convert apostrophes in contractions
+    if (straight === "'") {
+      const prev = i > 0 ? chars[i - 1] : undefined
+      const next = i < chars.length - 1 ? chars[i + 1] : undefined
+      if (prev && /\p{L}/u.test(prev) && next && /\p{L}/u.test(next)) {
+        return close // apostrophe
+      }
+    }
+    return isOpeningContext(chars, i) ? open : close
+  }).join('')
+}
+
 export const editDefinition: ToolDefinition = {
   type: 'function',
   function: {
@@ -138,8 +292,11 @@ async function executeSingleEdit(
       )
     }
 
-    const matches = fileContent.split(oldText).length - 1
-    if (matches === 0) {
+    const normalizedEdit = normalizeEditInput(path, fileContent, oldText, newText)
+
+    // Use fuzzy matching (quote normalization)
+    const actualOldText = findActualString(fileContent, normalizedEdit.oldText)
+    if (!actualOldText) {
       return toolErrorJson(
         'edit',
         'old_text_not_found',
@@ -150,6 +307,14 @@ async function executeSingleEdit(
       )
     }
 
+    // Preserve curly quote style from the file into new_text
+    const actualNewText = preserveQuoteStyle(
+      normalizedEdit.oldText,
+      actualOldText,
+      normalizedEdit.newText
+    )
+
+    const matches = fileContent.split(actualOldText).length - 1
     if (matches > 1 && !replaceAll && !isNoopEdit) {
       return toolErrorJson(
         'edit',
@@ -161,8 +326,8 @@ async function executeSingleEdit(
     const updatedFile = isNoopEdit
       ? fileContent
       : replaceAll
-        ? fileContent.split(oldText).join(newText)
-        : fileContent.replace(oldText, newText)
+        ? fileContent.split(actualOldText).join(actualNewText)
+        : fileContent.replace(actualOldText, actualNewText)
 
     if (target.kind === 'workspace') {
       await writeFile(target.path, updatedFile, context.directoryHandle, context.workspaceId)
