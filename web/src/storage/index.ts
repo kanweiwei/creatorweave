@@ -13,6 +13,7 @@ export {
   getStorageStatus,
   clearAllStorage,
   clearSQLiteAndProjectsDirectory,
+  RESET_REQUIRES_TAB_CLOSURE,
   exportStorage,
   importStorage,
   getStorageMode,

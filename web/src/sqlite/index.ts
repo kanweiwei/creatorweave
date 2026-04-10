@@ -20,6 +20,7 @@ export {
   initSQLiteDB,
   resetSQLiteDB,
   clearAllSQLiteTables,
+  clearLegacySahPoolFromOPFSRoot,
 } from './sqlite-database'
 export type {
   ConversationRow,

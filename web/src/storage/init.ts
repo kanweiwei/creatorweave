@@ -12,7 +12,12 @@
  * ```
  */
 
-import { initSQLiteDB, getSQLiteDB, clearAllSQLiteTables } from '@/sqlite'
+import {
+  initSQLiteDB,
+  getSQLiteDB,
+  clearAllSQLiteTables,
+  clearLegacySahPoolFromOPFSRoot,
+} from '@/sqlite'
 import { clearStorageResetMarker, getStorageResetMarker, setStorageResetMarker } from './reset-marker'
 import { beginReset, endReset } from './reset-coordinator'
 
@@ -40,6 +45,8 @@ export interface InitStorageResult {
   mode: StorageMode
   error?: string
 }
+
+export const RESET_REQUIRES_TAB_CLOSURE = 'RESET_REQUIRES_TAB_CLOSURE'
 
 //=============================================================================
 // OPFS Detection
@@ -80,6 +87,10 @@ function isDatabaseInaccessibleError(errorMsg: string): boolean {
 
 function buildPostResetInaccessibleMessage(rawError: string): string {
   return `DATABASE_INACCESSIBLE_AFTER_RESET: ${rawError}. 请关闭同源的其他标签页/窗口后重试。`
+}
+
+function buildResetRequiresTabClosureMessage(rawError: string): string {
+  return `${RESET_REQUIRES_TAB_CLOSURE}: ${rawError}. Please close other tabs/windows for this app and retry.`
 }
 
 /**
@@ -221,6 +232,110 @@ function isNotFoundError(error: unknown): boolean {
   return message.includes('not found') || message.includes('could not be found')
 }
 
+function isOpfsLockError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'NoModificationAllowedError'
+  }
+  const message = toErrorMessage(error).toLowerCase()
+  return (
+    message.includes('modifications are not allowed') ||
+    message.includes('nomodificationallowederror') ||
+    message.includes('locked')
+  )
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+}
+
+function isSQLiteResetRetryableError(error: unknown): boolean {
+  const message = toErrorMessage(error).toLowerCase()
+  return (
+    isDatabaseInaccessibleError(message) ||
+    message.includes('locked') ||
+    message.includes('busy') ||
+    message.includes('cantopen') ||
+    message.includes('no modification allowed') ||
+    message.includes('modifications are not allowed') ||
+    message.includes('nomodificationallowederror')
+  )
+}
+
+async function clearSQLiteTablesWithRetry(): Promise<void> {
+  const maxAttempts = 3
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // Remove legacy SAH pool before table clear. Otherwise an empty DB can be
+      // immediately rehydrated by legacy migration during worker re-init.
+      await clearLegacySahPoolFromOPFSRoot()
+      await clearAllSQLiteTables()
+      return
+    } catch (error) {
+      if (!isSQLiteResetRetryableError(error)) {
+        throw error
+      }
+      lastError = error
+
+      if (attempt === maxAttempts) {
+        break
+      }
+
+      const delayMs = attempt * 120
+      console.warn(
+        `[Storage] SQLite clear failed with retryable error (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms:`,
+        error
+      )
+      try {
+        await getSQLiteDB().close()
+      } catch {
+        // best-effort reset before retry
+      }
+      await sleep(delayMs)
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError
+  }
+  throw new Error('Failed to clear SQLite tables after retries')
+}
+
+async function removeProjectsDirectoryWithRetry(opfsRoot: FileSystemDirectoryHandle): Promise<void> {
+  const maxAttempts = 3
+  let lastLockError: unknown = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await opfsRoot.removeEntry('projects', { recursive: true })
+      return
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return
+      }
+      if (!isOpfsLockError(error)) {
+        throw error
+      }
+
+      lastLockError = error
+      if (attempt === maxAttempts) {
+        break
+      }
+
+      const delayMs = attempt * 100
+      console.warn(
+        `[Storage] OPFS projects/ directory appears locked (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms`
+      )
+      await sleep(delayMs)
+    }
+  }
+
+  throw new Error(
+    `OPFS projects/ directory is locked by another context: ${toErrorMessage(lastLockError)}`
+  )
+}
+
 /**
  * Clear SQLite data and remove OPFS projects/ directory without page reload.
  * Recreates an empty projects/ directory after cleanup.
@@ -233,9 +348,14 @@ export async function clearSQLiteAndProjectsDirectory(): Promise<void> {
     const errors: string[] = []
 
     try {
-      await clearAllSQLiteTables()
+      await clearSQLiteTablesWithRetry()
     } catch (error) {
-      errors.push(`Failed to clear SQLite tables: ${toErrorMessage(error)}`)
+      const baseMessage = `Failed to clear SQLite tables: ${toErrorMessage(error)}`
+      if (isDatabaseInaccessibleError(baseMessage)) {
+        errors.push(buildResetRequiresTabClosureMessage(baseMessage))
+      } else {
+        errors.push(baseMessage)
+      }
     }
 
     const { resetWorkspaceManager } = await import('@/opfs')
@@ -243,9 +363,17 @@ export async function clearSQLiteAndProjectsDirectory(): Promise<void> {
 
     const opfsRoot = await navigator.storage.getDirectory()
     try {
-      await opfsRoot.removeEntry('projects', { recursive: true })
+      await removeProjectsDirectoryWithRetry(opfsRoot)
     } catch (error) {
-      if (!isNotFoundError(error)) {
+      if (isNotFoundError(error)) {
+        // no-op
+      } else if (isOpfsLockError(error)) {
+        errors.push(
+          buildResetRequiresTabClosureMessage(
+            `Failed to clear OPFS projects/ directory: ${toErrorMessage(error)}`
+          )
+        )
+      } else {
         errors.push(`Failed to clear OPFS projects/ directory: ${toErrorMessage(error)}`)
       }
     }

@@ -12,7 +12,12 @@ import { useConversationContextStore } from '@/store/conversation-context.store'
 import { useProjectStore } from '@/store/project.store'
 import { useConversationStore } from '@/store/conversation.store'
 import { useOPFSStore } from '@/store/opfs.store'
-import { initStorage, setupAutoSave, clearSQLiteAndProjectsDirectory } from '@/storage'
+import {
+  initStorage,
+  setupAutoSave,
+  clearSQLiteAndProjectsDirectory,
+  RESET_REQUIRES_TAB_CLOSURE,
+} from '@/storage'
 import { useT } from '@/i18n'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { ProjectHome } from '@/components/project/ProjectHome'
@@ -254,7 +259,12 @@ function App() {
       toast.success('已清空本地数据，可以重新开始了')
     } catch (error) {
       console.error('[App] Failed to clear local data:', error)
-      toast.error('清空本地数据失败')
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes(RESET_REQUIRES_TAB_CLOSURE)) {
+        toast.error('清空失败：请先关闭该应用的其他标签页/窗口后重试')
+      } else {
+        toast.error('清空本地数据失败')
+      }
     } finally {
       setIsClearingLocalData(false)
     }

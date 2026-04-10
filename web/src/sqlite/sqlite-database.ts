@@ -762,6 +762,30 @@ function isPoolLockError(error: unknown): boolean {
   )
 }
 
+/**
+ * Remove legacy SAH pool storage so it cannot rehydrate cleared databases.
+ * Returns true when the entry is removed or already absent.
+ */
+export async function clearLegacySahPoolFromOPFSRoot(): Promise<boolean> {
+  const opfsRoot = await navigator.storage.getDirectory()
+  try {
+    await opfsRoot.removeEntry('.bfosa-pool', { recursive: true })
+    console.log('[SQLite] Removed legacy SAH pool entry: .bfosa-pool')
+    return true
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      console.log('[SQLite] Legacy SAH pool entry already missing: .bfosa-pool')
+      return true
+    }
+    if (isPoolLockError(error)) {
+      throw new Error(
+        `Legacy SAH pool entry ".bfosa-pool" is locked by another context: ${toErrorMessage(error)}`
+      )
+    }
+    throw new Error(`Failed to remove legacy SAH pool entry ".bfosa-pool": ${toErrorMessage(error)}`)
+  }
+}
+
 async function forceDeleteSQLiteFilesFromOPFSRoot(): Promise<void> {
   const opfsRoot = await navigator.storage.getDirectory()
 

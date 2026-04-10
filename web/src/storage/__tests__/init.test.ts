@@ -15,12 +15,16 @@ const mocks = vi.hoisted(() => {
     db,
     initSQLiteDB: vi.fn(async () => {}),
     getSQLiteDB: vi.fn(() => db),
+    clearLegacySahPoolFromOPFSRoot: vi.fn(async () => true),
+    clearAllSQLiteTables: vi.fn(async () => {}),
   }
 })
 
 vi.mock('@/sqlite', () => ({
   initSQLiteDB: mocks.initSQLiteDB,
   getSQLiteDB: mocks.getSQLiteDB,
+  clearLegacySahPoolFromOPFSRoot: mocks.clearLegacySahPoolFromOPFSRoot,
+  clearAllSQLiteTables: mocks.clearAllSQLiteTables,
 }))
 
 describe('storage init reset marker guard', () => {
