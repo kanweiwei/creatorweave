@@ -13,6 +13,7 @@ import {
   type SnapshotFileMetaRecord,
   type SnapshotRecord,
 } from '@/sqlite/repositories/fs-overlay.repository'
+import { SidebarPanelHeader } from '@/components/layout/SidebarPanelHeader'
 import { useWorkspaceStore } from '@/store/workspace.store'
 import { useProjectStore } from '@/store/project.store'
 import { getWorkspaceManager } from '@/opfs'
@@ -275,33 +276,34 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
 
   return (
     <div className={`${fullHeight ? 'h-full' : ''} flex flex-col`}>
-      {/* Header */}
-      <div className="border-subtle flex items-center justify-between border-b bg-elevated px-2 py-1.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">快照列表</span>
+      <SidebarPanelHeader
+        title="快照列表"
+        leftExtra={
           <span className="px-2 py-0.5 bg-muted text-secondary text-xs font-semibold rounded-full">
             {snapshots.length}
           </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <BrandButton
-            variant="ghost"
-            className="h-6 px-2 text-[11px]"
-            disabled={clearingSnapshots || snapshots.length === 0}
-            onClick={handleClearSnapshots}
-          >
-            {clearingSnapshots ? '清空中...' : '清空'}
-          </BrandButton>
-          <BrandButton
-            variant="ghost"
-            className="h-6 px-2 text-[11px]"
-            disabled={!latestRollbackableId || rollingBack === '__latest__' || clearingSnapshots}
-            onClick={handleRollbackLatest}
-          >
-            {rollingBack === '__latest__' ? '处理中...' : '最新'}
-          </BrandButton>
-        </div>
-      </div>
+        }
+        right={
+          <div className="flex items-center gap-1">
+            <BrandButton
+              variant="ghost"
+              className="h-6 px-2 text-[11px]"
+              disabled={clearingSnapshots || snapshots.length === 0}
+              onClick={handleClearSnapshots}
+            >
+              {clearingSnapshots ? '清空中...' : '清空'}
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-6 px-2 text-[11px]"
+              disabled={!latestRollbackableId || rollingBack === '__latest__' || clearingSnapshots}
+              onClick={handleRollbackLatest}
+            >
+              {rollingBack === '__latest__' ? '处理中...' : '最新'}
+            </BrandButton>
+          </div>
+        }
+      />
 
       {loading && <p className="px-2 py-2 text-xs text-secondary">正在加载快照...</p>}
       {error && <p className="px-2 py-2 text-xs text-destructive">{error}</p>}

@@ -32,6 +32,7 @@ import { useConversationContextStore } from '@/store/conversation-context.store'
 import { FileTreePanel } from '@/components/file-viewer/FileTreePanel'
 import { PendingSyncPanel } from '@/components/sync/PendingSyncPanel'
 import { SnapshotList } from '@/components/sync/SnapshotList'
+import { SidebarPanelHeader } from '@/components/layout/SidebarPanelHeader'
 
 type ResourceTab = 'files' | 'plugins' | 'pending' | 'snapshots'
 
@@ -426,9 +427,7 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
 
               {resourceTab === 'plugins' && (
                 <div className="flex h-full flex-col">
-                  <div className="border-subtle flex items-center border-b bg-elevated px-2 py-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-primary">插件</span>
-                  </div>
+                  <SidebarPanelHeader title="插件" />
                   <div className="flex flex-1 items-center justify-center p-4">
                     <p className="text-xs text-secondary">
                       插件管理功能将在此显示

@@ -26,6 +26,7 @@ import { BrandButton, BrandBadge } from '@creatorweave/ui'
 import { formatBytes } from '@/lib/utils'
 import { useOPFSStore } from '@/store/opfs.store'
 import { useWorkspaceStore } from '@/store/workspace.store'
+import { SidebarPanelHeader } from '@/components/layout/SidebarPanelHeader'
 import { useT } from '@/i18n'
 import type { PendingChange } from '@/opfs/types/opfs-types'
 
@@ -856,22 +857,22 @@ export function FileTreePanel({
   }
 
   return (
-    <div className="flex h-full flex-col">
+      <div className="flex h-full flex-col">
       {showHeader && (
-        <div className="border-subtle flex items-center justify-between border-b px-2 py-1.5">
-          <span className="truncate text-xs font-semibold uppercase tracking-wider text-primary">
-            {rootName || directoryHandle?.name || '草稿文件'}
-          </span>
-          <BrandButton
-            iconButton
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={handleRefresh}
-            title="刷新"
-          >
-            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-          </BrandButton>
-        </div>
+        <SidebarPanelHeader
+          title={rootName || directoryHandle?.name || '草稿文件'}
+          right={
+            <BrandButton
+              iconButton
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={handleRefresh}
+              title="刷新"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+            </BrandButton>
+          }
+        />
       )}
 
       {/* Tree */}

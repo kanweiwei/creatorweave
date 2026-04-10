@@ -31,6 +31,7 @@ import { getChangeTypeInfo, formatFileSize, FileIcon } from '@/utils/change-help
 import { buildSnapshotSummaryPrompt } from './snapshot-summary-prompt'
 import { SnapshotApprovalDialog } from './SnapshotApprovalDialog'
 import { sendChangeReviewToConversation } from './review-request'
+import { SidebarPanelHeader } from '@/components/layout/SidebarPanelHeader'
 import { toast } from 'sonner'
 import type { ConflictInfo, FileChange } from '@/opfs/types/opfs-types'
 
@@ -474,10 +475,7 @@ export function PendingSyncPanel() {
   if (isEmpty) {
     return (
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="border-subtle flex items-center gap-2 border-b bg-elevated px-2 py-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
-        </div>
+        <SidebarPanelHeader title="变更文件" />
 
         {/* Empty State */}
         <div className="flex-1 flex items-center justify-center p-4">
@@ -510,9 +508,9 @@ export function PendingSyncPanel() {
       )}
 
       {/* Header with count */}
-      <div className="border-subtle flex items-center justify-between border-b bg-elevated px-2 py-1.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-primary">变更文件</span>
+      <SidebarPanelHeader
+        title="变更文件"
+        leftExtra={
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded-full animate-pulse-on-change">
               {pendingChanges.changes.length}
@@ -534,11 +532,9 @@ export function PendingSyncPanel() {
               <ChevronRight className="w-3 h-3" />
             </button>
           </div>
-        </div>
-        {selectedCount > 0 && (
-          <span className="text-xs text-secondary">{selectedCount} 已选</span>
-        )}
-      </div>
+        }
+        right={selectedCount > 0 ? <span className="text-xs text-secondary">{selectedCount} 已选</span> : null}
+      />
 
       {/* File List */}
       <div
