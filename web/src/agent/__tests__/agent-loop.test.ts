@@ -9,6 +9,7 @@ import type { ToolContext } from '../tools/tool-types'
 import type { ChatMessage } from '../llm/llm-provider'
 import { PiAIProvider } from '../llm/pi-ai-provider'
 import { agentLoopContinue } from '@mariozechner/pi-agent-core'
+import { truncateLargeToolResult } from '../loop/tool-execution'
 
 vi.mock('@/skills/skill-manager', () => ({
   getSkillManager: vi.fn(() => ({
@@ -165,20 +166,6 @@ describe('AgentLoop', () => {
 
   describe('truncateLargeToolResult()', () => {
     it('returns summary when even one search hit cannot fit token budget', () => {
-      mockProvider.estimateTokens = vi.fn((messages: ChatMessage[]) => {
-        return messages.reduce((sum, msg) => {
-          const content = typeof msg.content === 'string' ? msg.content.length : 0
-          return sum + content
-        }, 0)
-      }) as any
-
-      const loop = new AgentLoop({
-        provider: mockProvider,
-        toolRegistry: mockTools,
-        contextManager: mockContextManager,
-        toolContext: createMockToolContext(),
-      })
-
       const rawResult = JSON.stringify({
         results: [
           {
@@ -193,14 +180,14 @@ describe('AgentLoop', () => {
         scannedFiles: 1,
       })
 
-      const truncated = (loop as any).truncateLargeToolResult(
+      const truncated = truncateLargeToolResult({
         rawResult,
-        'search',
-        [],
-        1800,
-        2200,
-        200
-      )
+        toolName: 'search',
+        existingTokens: 1800,
+        maxContextTokens: 2200,
+        reserveTokens: 200,
+        estimateTextTokens: (text) => text.length,
+      })
       const parsed = JSON.parse(truncated)
 
       expect(parsed.truncated).toBe(true)
