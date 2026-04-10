@@ -20,7 +20,6 @@ import { MessageBubble } from './MessageBubble'
 import { AssistantTurnBubble } from './AssistantTurnBubble'
 import { AgentRichInput } from './AgentRichInput'
 import { WorkflowQuickActions } from './WorkflowQuickActions'
-import { WorkflowTemplateCard } from './WorkflowTemplateCard'
 import { WorkflowExecutionProgress } from './WorkflowExecutionProgress'
 import { WorkflowEditorDialog } from './workflow-editor/WorkflowEditorDialog'
 import { AgentModeSwitchCompact } from './AgentModeSwitch'
@@ -648,25 +647,6 @@ export function ConversationView({
                     {t('conversation.empty.description')}
                   </p>
                 </div>
-
-                {workflowTemplates.length > 0 && (
-                  <div>
-                    <p className="mb-3 text-center text-xs font-medium tracking-wide text-neutral-400 uppercase dark:text-neutral-500">
-                      或选择一个工作流模板
-                    </p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {workflowTemplates.map((template) => (
-                        <WorkflowTemplateCard
-                          key={template.id}
-                          template={template}
-                          disabled={isProcessing || !hasApiKey}
-                          onRun={(id) => void handleRunWorkflow(id)}
-                          onRealRun={(id) => void handleRealRunWorkflow(id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           ) : (
