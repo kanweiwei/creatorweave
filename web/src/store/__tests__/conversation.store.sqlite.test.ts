@@ -107,6 +107,11 @@ vi.mock('@/agent/agent-loop', () => {
     cancel() {}
 
     async run(messages: any[], callbacks: any) {
+      const customRun = (globalThis as any).__conversationStoreCustomRun
+      if (typeof customRun === 'function') {
+        return customRun(messages, callbacks)
+      }
+
       ;(globalThis as any).__conversationStoreBeforeCompressionStart?.()
       callbacks.onContextCompressionStart?.({
         droppedGroups: 1,
@@ -174,6 +179,7 @@ describe('conversation.store.sqlite tool-call routing', () => {
     delete (globalThis as any).__conversationStoreTestHook
     delete (globalThis as any).__conversationStoreBeforeCompressionStart
     delete (globalThis as any).__lastAgentLoopConfig
+    delete (globalThis as any).__conversationStoreCustomRun
   })
 
   it('should finalize non-current tool steps by toolCallId in interleaved calls', async () => {
@@ -731,5 +737,67 @@ describe('conversation.store.sqlite tool-call routing', () => {
     expect(toolMessages).toHaveLength(1)
     expect(toolMessages[0].toolCallId).toBe(completedToolCall.id)
     expect(toolMessages[0].content).toBe('README content')
+  })
+
+  it('should stream think-tag reasoning before content completes', async () => {
+    const store = useConversationStore.getState()
+    const conv = store.createNew('stream-think-tags')
+    useConversationStore.getState().updateMessages(conv.id, [createUserMessage('hello')])
+
+    const snapshots: Array<{
+      label: string
+      reasoning: string
+      content: string
+      reasoningStep?: { content: string; streaming: boolean } | null
+    }> = []
+
+    const capture = async (label: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      const c = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
+      const reasoningStep = c?.draftAssistant?.steps.find(
+        (s) => s.type === 'reasoning'
+      ) as { content: string; streaming: boolean } | undefined
+
+      snapshots.push({
+        label,
+        reasoning: c?.draftAssistant?.reasoning || '',
+        content: c?.draftAssistant?.content || '',
+        reasoningStep: reasoningStep
+          ? { content: reasoningStep.content, streaming: reasoningStep.streaming }
+          : null,
+      })
+    }
+
+    ;(globalThis as any).__conversationStoreCustomRun = async (messages: any[], callbacks: any) => {
+      callbacks.onMessageStart?.()
+      callbacks.onContentStart?.()
+      callbacks.onContentDelta?.('<think>分析中')
+      await capture('after_open_think')
+      callbacks.onContentDelta?.('</think>最终答案')
+      await capture('after_close_think')
+      callbacks.onContentComplete?.('<think>分析中</think>最终答案')
+      return [
+        ...messages,
+        {
+          id: 'assistant-think-stream',
+          role: 'assistant',
+          content: '<think>分析中</think>最终答案',
+          timestamp: Date.now(),
+        },
+      ]
+    }
+
+    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+
+    const openThink = snapshots.find((s) => s.label === 'after_open_think')
+    expect(openThink?.reasoning).toBe('分析中')
+    expect(openThink?.reasoningStep?.content).toBe('分析中')
+    expect(openThink?.reasoningStep?.streaming).toBe(true)
+    expect(openThink?.content).toBe('')
+
+    const closeThink = snapshots.find((s) => s.label === 'after_close_think')
+    expect(closeThink?.reasoning).toBe('分析中')
+    expect(closeThink?.reasoningStep?.content).toBe('分析中')
+    expect(closeThink?.content).toBe('最终答案')
   })
 })

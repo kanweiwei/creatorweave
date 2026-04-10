@@ -3,6 +3,8 @@
  * Compatible with OpenAI chat completion format.
  */
 
+import { parseThinkTags } from './think-tags'
+
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export interface ToolCall {
@@ -238,14 +240,24 @@ export function createAssistantMessage(
   workflowDryRun?: WorkflowDryRunPayload,
   workflowRealRun?: WorkflowRealRunPayload
 ): Message {
+  const rawContent = content || ''
+  const parsedThink = parseThinkTags(rawContent)
+  const normalizedContent = parsedThink.hasThinkTag ? parsedThink.content : rawContent
+  const normalizedReasoning =
+    reasoning && reasoning.trim().length > 0
+      ? reasoning
+      : parsedThink.reasoning
+        ? parsedThink.reasoning
+        : null
+
   return {
     id: generateId(),
     role: 'assistant',
-    content,
+    content: normalizedContent || null,
     kind,
     workflowDryRun,
     workflowRealRun,
-    reasoning: reasoning || null,
+    reasoning: normalizedReasoning || null,
     toolCalls,
     usage,
     timestamp: Date.now(),

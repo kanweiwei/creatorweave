@@ -21,6 +21,7 @@ import type {
   DraftAssistantStep,
 } from '@/agent/message-types'
 import { createAssistantMessage, createConversation, createToolMessage } from '@/agent/message-types'
+import { parseThinkTags } from '@/agent/think-tags'
 import {
   emitThinkingStart,
   emitThinkingDelta,
@@ -142,6 +143,39 @@ function ensureDraftTextStep(
   return stepId
 }
 
+/**
+ * For providers that inline reasoning in `<think>...</think>` inside content stream,
+ * ensure we still have a dedicated reasoning step so streaming UI can render it.
+ * The step is inserted before active content step to preserve logical order.
+ */
+function ensureImplicitReasoningStepForContentStream(draft: DraftAssistantState): string {
+  if (draft.activeReasoningStepId) {
+    const existing = findDraftStep(draft, draft.activeReasoningStepId)
+    if (existing && existing.type === 'reasoning') {
+      existing.streaming = true
+      return existing.id
+    }
+  }
+
+  const stepId = createDraftStepId('reasoning')
+  const step: DraftAssistantStep = {
+    id: stepId,
+    type: 'reasoning',
+    content: '',
+    streaming: true,
+  }
+  const activeContentIndex = draft.activeContentStepId
+    ? draft.steps.findIndex((s) => s.id === draft.activeContentStepId)
+    : -1
+  if (activeContentIndex >= 0) {
+    draft.steps.splice(activeContentIndex, 0, step)
+  } else {
+    draft.steps.push(step)
+  }
+  draft.activeReasoningStepId = stepId
+  return stepId
+}
+
 function syncDraftTextStepContent(
   draft: DraftAssistantState,
   stepId: string | null | undefined,
@@ -154,6 +188,10 @@ function syncDraftTextStepContent(
   if (step.type !== 'reasoning' && step.type !== 'content') return
   step.content = content
   step.streaming = streaming
+}
+
+function hasExplicitReasoningStep(draft: DraftAssistantState): boolean {
+  return draft.steps.some((step) => step.type === 'reasoning')
 }
 
 function ensureDraftAssistantForMessageStart(conv: Conversation): DraftAssistantState {
@@ -206,13 +244,32 @@ function applyDraftAssistantEvent(conv: Conversation, event: DraftAssistantEvent
       return
     }
     case 'content_stream_sync': {
-      draft.content = event.content
-      syncDraftTextStepContent(draft, draft.activeContentStepId, event.content, true)
+      const parsedThink = parseThinkTags(event.content)
+      draft.content = parsedThink.hasThinkTag ? parsedThink.content : event.content
+      if (
+        parsedThink.reasoning &&
+        (!hasExplicitReasoningStep(draft) || !!draft.activeReasoningStepId)
+      ) {
+        draft.reasoning = parsedThink.reasoning
+        const reasoningStepId = ensureImplicitReasoningStepForContentStream(draft)
+        syncDraftTextStepContent(draft, reasoningStepId, parsedThink.reasoning, true)
+      }
+      syncDraftTextStepContent(draft, draft.activeContentStepId, draft.content, true)
       return
     }
     case 'content_complete': {
-      draft.content = event.content
-      syncDraftTextStepContent(draft, draft.activeContentStepId, event.content, false)
+      const parsedThink = parseThinkTags(event.content)
+      draft.content = parsedThink.hasThinkTag ? parsedThink.content : event.content
+      if (
+        parsedThink.reasoning &&
+        (!hasExplicitReasoningStep(draft) || !!draft.activeReasoningStepId)
+      ) {
+        draft.reasoning = parsedThink.reasoning
+        const reasoningStepId = ensureImplicitReasoningStepForContentStream(draft)
+        syncDraftTextStepContent(draft, reasoningStepId, parsedThink.reasoning, false)
+        draft.activeReasoningStepId = null
+      }
+      syncDraftTextStepContent(draft, draft.activeContentStepId, draft.content, false)
       draft.activeContentStepId = null
       return
     }
