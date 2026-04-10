@@ -823,7 +823,16 @@ async function forceDeleteSQLiteFilesFromOPFSRoot(): Promise<void> {
  *
  * Call from browser console: window.__clearAllSQLiteTables()
  */
-export async function clearAllSQLiteTables(): Promise<void> {
+export interface ClearAllSQLiteTablesOptions {
+  preserveTables?: string[]
+  allowOpfsFileResetFallback?: boolean
+}
+
+export async function clearAllSQLiteTables(options: ClearAllSQLiteTablesOptions = {}): Promise<void> {
+  const preserveTableSet = new Set(
+    (options.preserveTables || []).map((name) => name.trim().toLowerCase()).filter(Boolean)
+  )
+  const allowOpfsFileResetFallback = options.allowOpfsFileResetFallback ?? true
   const manager = getSQLiteDB()
   try {
     await manager.initialize()
@@ -842,6 +851,7 @@ export async function clearAllSQLiteTables(): Promise<void> {
     }
     for (const table of tables) {
       if (!table?.name) continue
+      if (preserveTableSet.has(table.name.toLowerCase())) continue
       statements.push(`DROP TABLE IF EXISTS ${quoteSQLiteIdentifier(table.name)}`)
     }
     statements.push('PRAGMA foreign_keys = ON')
@@ -852,6 +862,11 @@ export async function clearAllSQLiteTables(): Promise<void> {
     console.log('[SQLite] Cleared all user tables and rebuilt schema without page reload')
     return
   } catch (error) {
+    if (!allowOpfsFileResetFallback) {
+      throw new Error(
+        `clearAllSQLiteTables failed and OPFS file-reset fallback is disabled: ${toErrorMessage(error)}`
+      )
+    }
     console.warn(
       '[SQLite] clearAllSQLiteTables failed, falling back to direct OPFS file cleanup:',
       error

@@ -262,6 +262,7 @@ function isSQLiteResetRetryableError(error: unknown): boolean {
 }
 
 async function clearSQLiteTablesWithRetry(): Promise<void> {
+  const preservedTables = ['api_keys', 'encryption_metadata']
   const maxAttempts = 3
   let lastError: unknown = null
 
@@ -270,7 +271,10 @@ async function clearSQLiteTablesWithRetry(): Promise<void> {
       // Remove legacy SAH pool before table clear. Otherwise an empty DB can be
       // immediately rehydrated by legacy migration during worker re-init.
       await clearLegacySahPoolFromOPFSRoot()
-      await clearAllSQLiteTables()
+      await clearAllSQLiteTables({
+        preserveTables: preservedTables,
+        allowOpfsFileResetFallback: false,
+      })
       return
     } catch (error) {
       if (!isSQLiteResetRetryableError(error)) {
@@ -338,6 +342,7 @@ async function removeProjectsDirectoryWithRetry(opfsRoot: FileSystemDirectoryHan
 
 /**
  * Clear SQLite data and remove OPFS projects/ directory without page reload.
+ * Keeps encrypted API keys and encryption metadata.
  * Recreates an empty projects/ directory after cleanup.
  */
 export async function clearSQLiteAndProjectsDirectory(): Promise<void> {

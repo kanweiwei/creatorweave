@@ -138,4 +138,27 @@ describe('clearSQLiteAndProjectsDirectory', () => {
     const { clearSQLiteAndProjectsDirectory } = await import('../init')
     await expect(clearSQLiteAndProjectsDirectory()).rejects.toThrow('RESET_REQUIRES_TAB_CLOSURE')
   })
+
+  it('preserves API key tables when clearing local data', async () => {
+    mocks.clearAllSQLiteTables.mockResolvedValueOnce(undefined)
+    const removeEntry = vi.fn(async () => undefined)
+    const getDirectoryHandle = vi.fn(async () => ({ kind: 'directory' }))
+
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: {
+        getDirectory: vi.fn(async () => ({
+          removeEntry,
+          getDirectoryHandle,
+        })),
+      },
+    })
+
+    const { clearSQLiteAndProjectsDirectory } = await import('../init')
+    await expect(clearSQLiteAndProjectsDirectory()).resolves.toBeUndefined()
+    expect(mocks.clearAllSQLiteTables).toHaveBeenCalledWith({
+      preserveTables: ['api_keys', 'encryption_metadata'],
+      allowOpfsFileResetFallback: false,
+    })
+  })
 })
