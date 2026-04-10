@@ -33,4 +33,35 @@ describe('buildChatCompletionsPayload', () => {
     expect(payload.max_tokens).toBe(1024)
     expect(Array.isArray(payload.messages)).toBe(true)
   })
+
+  it('should clamp minimax temperature to provider-supported range', () => {
+    const model = {
+      id: 'MiniMax-M2.7',
+      api: CW_OPENAI_FETCH_API,
+      provider: 'minimax',
+      baseUrl: 'https://api.minimax.io/v1',
+      name: 'MiniMax M2.7',
+      reasoning: true,
+      input: ['text'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 8192,
+    } as never
+
+    const context = {
+      systemPrompt: 'You are helpful',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+    } as never
+
+    const low = buildChatCompletionsPayload(model, context, {
+      temperature: 0,
+    } as never) as Record<string, unknown>
+    expect(low.temperature).toBe(0.01)
+
+    const high = buildChatCompletionsPayload(model, context, {
+      temperature: 1.5,
+    } as never) as Record<string, unknown>
+    expect(high.temperature).toBe(1)
+  })
 })

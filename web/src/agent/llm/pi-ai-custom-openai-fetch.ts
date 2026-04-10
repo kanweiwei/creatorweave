@@ -298,8 +298,9 @@ export function buildChatCompletionsPayload(
     stream_options: { include_usage: true },
   }
 
-  if (options?.temperature !== undefined) {
-    payload.temperature = options.temperature
+  const normalizedTemperature = normalizeTemperatureForProvider(model.provider, options?.temperature)
+  if (normalizedTemperature !== undefined) {
+    payload.temperature = normalizedTemperature
   }
 
   if (options?.maxTokens !== undefined) {
@@ -318,6 +319,17 @@ export function buildChatCompletionsPayload(
   }
 
   return payload
+}
+
+function normalizeTemperatureForProvider(
+  provider: string | undefined,
+  temperature: number | undefined
+): number | undefined {
+  if (temperature === undefined || Number.isNaN(temperature)) return undefined
+  if (provider !== 'minimax' && provider !== 'minimax-cn') return temperature
+
+  // MiniMax OpenAI-compatible API requires temperature in (0.0, 1.0].
+  return Math.min(1, Math.max(0.01, temperature))
 }
 
 function convertContextMessages(context: Context, model: Model<typeof CW_OPENAI_FETCH_API>): unknown[] {
