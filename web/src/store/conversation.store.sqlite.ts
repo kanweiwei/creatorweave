@@ -22,6 +22,7 @@ import type {
 } from '@/agent/message-types'
 import { createAssistantMessage, createConversation, createToolMessage } from '@/agent/message-types'
 import { parseThinkTags } from '@/agent/think-tags'
+import { extractFirstMentionedAgentId } from '@/agent/agent-mention'
 import {
   emitThinkingStart,
   emitThinkingDelta,
@@ -475,15 +476,6 @@ function updateAutoTitleAfterMessageDelete(conv: Conversation): void {
     return
   }
   conv.title = DEFAULT_CONVERSATION_NAME
-}
-
-function extractFirstMentionedAgentId(content: string | null | undefined): string | null {
-  if (!content) return null
-  const match = /(?:^|\s)@([a-zA-Z0-9_-]+)/.exec(content)
-  if (!match) return null
-  const id = (match[1] || '').trim()
-  if (!id || id.toLowerCase() === 'default') return null
-  return id
 }
 
 interface WorkflowDryRunRequest {

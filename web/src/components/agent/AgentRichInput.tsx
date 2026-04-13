@@ -6,6 +6,10 @@ import Text from '@tiptap/extension-text'
 import HardBreak from '@tiptap/extension-hard-break'
 import { Plus, Trash2, Check } from 'lucide-react'
 import { useT } from '@/i18n'
+import {
+  extractMentionContextFromTextTail,
+  extractMentionedAgentIds as extractMentionedAgentIdsFromText,
+} from '@/agent/agent-mention'
 
 export interface AgentMentionCandidate {
   id: string
@@ -48,41 +52,21 @@ function extractMentionContext(editor: Editor): MentionContext | null {
   const { state } = editor
   const caret = state.selection.from
   const lookbehind = state.doc.textBetween(Math.max(0, caret - 80), caret, '\n', '\0')
-  const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(lookbehind)
-  if (!match) return null
-
-  const matched = match[0]
-  const atIndex = matched.lastIndexOf('@')
-  if (atIndex < 0) return null
-
-  const mentionText = matched.slice(atIndex)
+  const mention = extractMentionContextFromTextTail(lookbehind)
+  if (!mention) return null
   return {
-    from: caret - mentionText.length,
+    from: caret - mention.mentionText.length,
     to: caret,
-    query: match[1] ?? '',
+    query: mention.query,
   }
 }
 
 function extractMentionedAgentIds(text: string, agents: AgentMentionCandidate[]): string[] {
-  const canonicalByLower = new Map<string, string>()
-  for (const agent of agents) {
-    canonicalByLower.set(agent.id.toLowerCase(), agent.id)
-  }
-
-  const result: string[] = []
-  const seen = new Set<string>()
-  const regex = /(?:^|\s)@([a-zA-Z0-9_-]+)/g
-  let match: RegExpExecArray | null = null
-
-  while ((match = regex.exec(text)) !== null) {
-    const raw = match[1]
-    const canonical = canonicalByLower.get(raw.toLowerCase())
-    if (!canonical || canonical === 'default' || seen.has(canonical)) continue
-    seen.add(canonical)
-    result.push(canonical)
-  }
-
-  return result
+  return extractMentionedAgentIdsFromText(
+    text,
+    agents.map((agent) => agent.id),
+    { excludeDefault: true }
+  )
 }
 
 export function AgentRichInput({

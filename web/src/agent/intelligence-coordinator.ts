@@ -27,6 +27,7 @@ import {
 } from './context-memory'
 import { ProjectManager, type AgentInfo } from '@/opfs'
 import { buildAgentPrompt, type PromptOptions } from './prompt-builder'
+import { extractFirstMentionedAgentId } from './agent-mention'
 
 // Re-export AgentInfo for use in this module
 export type { AgentInfo } from '@/opfs'
@@ -65,15 +66,6 @@ export interface CoordinatorOptions {
   activeFile?: string
   /** Current routed agent id for this run (from @mention routing) */
   currentAgentId?: string | null
-}
-
-function extractFirstMentionedAgentId(content?: string): string | null {
-  if (!content) return null
-  const match = /(?:^|\s)@([a-zA-Z0-9_-]+)/.exec(content)
-  if (!match) return null
-  const id = (match[1] || '').trim()
-  if (!id || id.toLowerCase() === 'default') return null
-  return id
 }
 
 //=============================================================================

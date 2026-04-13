@@ -140,6 +140,27 @@ describe('IntelligenceCoordinator', () => {
     expect(result.systemPrompt).toContain('AGENT_PROMPT\n\n---\n\nBASE_PROMPT')
   })
 
+  it('routes by @mention in userMessage with Chinese agent id', async () => {
+    const routedAgent = createAgentInfo('墨染')
+    const defaultAgent = createAgentInfo('default')
+    const getAgentMock = vi.fn(async (id: string) => (id === '墨染' ? routedAgent : defaultAgent))
+    getProjectMock.mockResolvedValue({
+      agentManager: {
+        getAgent: getAgentMock,
+        readTodayLog: vi.fn(async () => null),
+      },
+    })
+
+    const coordinator = new IntelligenceCoordinator()
+    const result = await coordinator.enhanceSystemPrompt('BASE_PROMPT', {
+      projectId: 'proj-store',
+      userMessage: '请 @墨染 帮我改这段',
+    })
+
+    expect(getAgentMock).toHaveBeenCalledWith('墨染')
+    expect(result.agentInfo?.id).toBe('墨染')
+  })
+
   it('does not inject agent prompt when no projectId is provided', async () => {
     const coordinator = new IntelligenceCoordinator()
     const result = await coordinator.enhanceSystemPrompt('BASE_PROMPT')
