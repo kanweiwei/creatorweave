@@ -685,6 +685,10 @@ export const koKR = {
       helpDocsDescription: '사용자/개발자 문서를 확인해 사용 가이드와 기술 정보를 빠르게 찾으세요.',
       openDocs: '문서 센터 열기',
       appearance: '외관',
+      cache: '캐시',
+      cacheDescription: '브라우저 캐시를 삭제하여 응답 헤더와 정적 리소스를 새로고침합니다.',
+      clearCache: '캐시 삭제',
+      clearing: '삭제 중...',
     },
     theme: {
       modeTitle: '테마 모드',

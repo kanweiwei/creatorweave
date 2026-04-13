@@ -710,6 +710,10 @@ export const zhCN = {
       helpDocsDescription: '查看用户与开发者文档，快速找到使用说明和技术资料。',
       openDocs: '打开文档中心',
       appearance: '外观',
+      cache: '缓存',
+      cacheDescription: '清除浏览器缓存以刷新响应头和静态资源。',
+      clearCache: '清除缓存',
+      clearing: '清除中...',
     },
     // 主题设置
     theme: {

@@ -38,6 +38,7 @@ import {
   Moon,
   Globe,
   FileText,
+  RefreshCw,
 } from 'lucide-react'
 import { useTheme, ACCENT_COLORS, type AccentColor } from '@/store/theme.store'
 import { useT, useLocale, LOCALE_LABELS, type Locale } from '@/i18n'
@@ -435,6 +436,7 @@ export function ProjectHome({
   } | null>(null)
   const [showClearDataDialog, setShowClearDataDialog] = useState(false)
   const [clearDataConfirmText, setClearDataConfirmText] = useState('')
+  const [isClearingCache, setIsClearingCache] = useState(false)
 
   const createInputRef = useRef<HTMLInputElement>(null)
 
@@ -452,6 +454,16 @@ export function ProjectHome({
     } finally {
       setIsActionSubmitting(false)
     }
+  }
+
+  // Clear Service Worker cache and reload
+  const handleClearCache = async () => {
+    if (!navigator.serviceWorker.controller) return
+    setIsClearingCache(true)
+    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' })
+    // Wait a bit for SW to process, then reload
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    window.location.reload()
   }
 
   const openCreateDialog = useCallback(() => {
@@ -963,6 +975,27 @@ export function ProjectHome({
                   })}
                 </div>
               </div>
+</div>
+
+            {/* 清除缓存 */}
+            <div className="home-reveal home-delay-6 rounded-xl border border-border/60 bg-card/50 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <RefreshCw className="w-4 h-4 text-tertiary" />
+                <span className="home-mono text-xs uppercase tracking-wider text-tertiary">
+                  {t('projectHome.sidebar.cache')}
+                </span>
+              </div>
+              <p className="home-body text-sm text-secondary dark:text-secondary-foreground mb-4">
+                {t('projectHome.sidebar.cacheDescription')}
+              </p>
+              <BrandButton
+                variant="ghost"
+                className="w-full text-tertiary hover:text-primary hover:border-primary/50"
+                onClick={() => void handleClearCache()}
+                disabled={isClearingCache}
+              >
+                {isClearingCache ? t('projectHome.sidebar.clearing') : t('projectHome.sidebar.clearCache')}
+              </BrandButton>
             </div>
           </aside>
 

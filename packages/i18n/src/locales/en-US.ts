@@ -701,6 +701,10 @@ export const enUS = {
       helpDocsDescription: 'Browse user and developer documentation for guides and technical references.',
       openDocs: 'Open Docs Hub',
       appearance: 'Appearance',
+      cache: 'Cache',
+      cacheDescription: 'Clear browser cache to refresh response headers and static resources.',
+      clearCache: 'Clear Cache',
+      clearing: 'Clearing...',
     },
     // Theme settings
     theme: {

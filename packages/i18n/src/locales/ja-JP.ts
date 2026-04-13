@@ -685,6 +685,10 @@ export const jaJP = {
       helpDocsDescription: 'ユーザー向け・開発者向けドキュメントを参照して、使い方と技術情報を確認できます。',
       openDocs: 'ドキュメントセンターを開く',
       appearance: '外観',
+      cache: 'キャッシュ',
+      cacheDescription: 'ブラウザキャッシュをクリアして、レスポンスヘッダーと静的リソースを更新します。',
+      clearCache: 'キャッシュをクリア',
+      clearing: 'クリア中...',
     },
     theme: {
       modeTitle: 'テーマモード',
