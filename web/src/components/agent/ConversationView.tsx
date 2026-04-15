@@ -584,7 +584,7 @@ export function ConversationView({
     const modelMaxTokens = contextWindowUsage.modelMaxTokens ?? effectiveBudget + reserveTokens
 
     return (
-      <div className="mt-2 flex items-center gap-2.5">
+      <div className="flex items-center gap-2.5 sm:mt-0">
         {/* Subtle progress bar */}
         <div className="relative h-1 w-12 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
           <div
@@ -829,14 +829,14 @@ export function ConversationView({
           </div>
 
           {/* Compact toolbar row - left: selectors, right: context usage */}
-          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-2">
+          <div className="mx-auto mt-2 flex max-w-3xl flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: agent selector + thinking toggle + workflow selector */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 pt-0.5 sm:flex-nowrap sm:pt-0">
             <div className="agent-dropdown-container relative">
               <button
                 type="button"
                 onClick={() => setIsAgentDropdownOpen((v) => !v)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:bg-neutral-700"
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:bg-neutral-700"
               >
                 <span className={`h-1.5 w-1.5 rounded-full ${activeAgentId ? 'bg-emerald-500' : 'bg-neutral-400'}`} />
                 <span className="max-w-[120px] truncate">@{activeAgentId || 'default'}</span>
@@ -933,7 +933,7 @@ export function ConversationView({
               <button
                 type="button"
                 onClick={() => setIsThinkingDropdownOpen((v) => !v)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                   enableThinking
                     ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300'
                     : 'border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-500'
@@ -1012,7 +1012,9 @@ export function ConversationView({
 
             </div>
 
-            {renderContextUsage()}
+            <div className="self-start sm:self-auto">
+              {renderContextUsage()}
+            </div>
           </div>
         </div>
       </div>

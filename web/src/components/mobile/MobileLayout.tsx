@@ -11,6 +11,7 @@
 import React, { useState } from 'react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { MessageSquare, FolderOpen, Wrench, Settings } from 'lucide-react'
 import { useMobile } from './useMobile'
 import { BottomTabBar, Tab } from './BottomTabBar'
 
@@ -41,38 +42,22 @@ export const DEFAULT_MOBILE_TABS: Tab[] = [
   {
     id: 'chat',
     label: 'Chat',
-    icon: (
-      <span className="text-lg" aria-hidden="true">
-        💬
-      </span>
-    ),
+    icon: <MessageSquare aria-hidden="true" />,
   },
   {
     id: 'files',
     label: 'Files',
-    icon: (
-      <span className="text-lg" aria-hidden="true">
-        📁
-      </span>
-    ),
+    icon: <FolderOpen aria-hidden="true" />,
   },
   {
     id: 'tools',
     label: 'Tools',
-    icon: (
-      <span className="text-lg" aria-hidden="true">
-        🛠️
-      </span>
-    ),
+    icon: <Wrench aria-hidden="true" />,
   },
   {
     id: 'settings',
     label: 'Settings',
-    icon: (
-      <span className="text-lg" aria-hidden="true">
-        ⚙️
-      </span>
-    ),
+    icon: <Settings aria-hidden="true" />,
   },
 ]
 

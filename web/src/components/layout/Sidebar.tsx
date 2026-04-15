@@ -74,9 +74,19 @@ interface SidebarProps {
   onInspect?: (path: string, handle: FileSystemFileHandle | null) => void
   /** Currently selected file path (for highlight in tree) */
   selectedFilePath?: string | null
+  /** Whether sidebar is rendered in mobile mode */
+  isMobile?: boolean
+  /** Request parent to close mobile sidebar */
+  onRequestClose?: () => void
 }
 
-export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarProps) {
+export function Sidebar({
+  onFileSelect,
+  onInspect,
+  selectedFilePath,
+  isMobile = false,
+  onRequestClose,
+}: SidebarProps) {
   const {
     conversations,
     activeConversationId,
@@ -119,6 +129,12 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
   const [clearConversationsDialogOpen, setClearConversationsDialogOpen] = useState(false)
   const [clearingConversations, setClearingConversations] = useState(false)
 
+  const closeMobileSidebar = useCallback(() => {
+    if (isMobile) {
+      onRequestClose?.()
+    }
+  }, [isMobile, onRequestClose])
+
   // Drag sidebar width (horizontal)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
@@ -135,6 +151,12 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
     saveConversationRatio(conversationRatio)
   }, [conversationRatio])
 
+  useEffect(() => {
+    if (isMobile && collapsed) {
+      setCollapsed(false)
+    }
+  }, [isMobile, collapsed])
+
   // Refresh pending changes when switching to pending tab
   const refreshPending = useCallback(async () => {
     const { refreshPendingChanges } = useConversationContextStore.getState()
@@ -144,8 +166,9 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
   const handleFileSelect = useCallback(
     (path: string, handle: FileSystemFileHandle | null) => {
       onFileSelect?.(path, handle)
+      closeMobileSidebar()
     },
-    [onFileSelect]
+    [onFileSelect, closeMobileSidebar]
   )
 
   // Horizontal drag (sidebar width)
@@ -229,8 +252,10 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
     <>
       <div
         ref={sidebarRef}
-        className="border-subtle bg-elevated flex shrink-0 flex-col border-r"
-        style={{ width }}
+        className={`border-subtle bg-background flex shrink-0 flex-col border-r dark:bg-card ${
+          isMobile ? 'h-full w-full max-w-full' : ''
+        }`}
+        style={isMobile ? undefined : { width }}
       >
         {/* Collapse button */}
         <div className="border-subtle flex items-center justify-between border-b bg-white px-2 py-1 dark:bg-card">
@@ -249,8 +274,14 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
               iconButton
               variant="ghost"
               className="h-6 w-6"
-              onClick={() => setCollapsed(true)}
-              title="折叠侧栏"
+              onClick={() => {
+                if (isMobile) {
+                  onRequestClose?.()
+                  return
+                }
+                setCollapsed(true)
+              }}
+              title={isMobile ? '关闭侧栏' : '折叠侧栏'}
             >
               <PanelLeftClose className="h-3 w-3" />
             </BrandButton>
@@ -269,6 +300,7 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
               onClick={() => {
                 const conv = createNew()
                 void setActive(conv.id)
+                closeMobileSidebar()
               }}
             >
               <Plus className="h-3 w-3" />
@@ -293,11 +325,15 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
                       ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                       : 'hover:bg-hover text-secondary'
                   }`}
-                  onClick={() => setActive(conv.id)}
+                  onClick={() => {
+                    setActive(conv.id)
+                    closeMobileSidebar()
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       setActive(conv.id)
+                      closeMobileSidebar()
                     }
                   }}
                 >
@@ -339,14 +375,16 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
         </div>
 
         {/* Vertical drag divider */}
-        <div
-          className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
-          onMouseDown={handleVerticalDragStart}
-          title="拖动调整高度"
-        >
-          {/* 中心圆点 */}
-          <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
-        </div>
+        {!isMobile && (
+          <div
+            className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
+            onMouseDown={handleVerticalDragStart}
+            title="拖动调整高度"
+          >
+            {/* 中心圆点 */}
+            <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
+          </div>
+        )}
 
         {/* Resource tabs */}
         <div
@@ -497,14 +535,16 @@ export function Sidebar({ onFileSelect, onInspect, selectedFilePath }: SidebarPr
       </BrandDialog>
 
       {/* Horizontal drag divider (sidebar width) */}
-      <div
-        className="group relative flex w-2 shrink-0 cursor-col-resize flex-col items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
-        onMouseDown={handleDragStart}
-        title="拖动调整宽度"
-      >
-        {/* 中心圆点 */}
-        <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
-      </div>
+      {!isMobile && (
+        <div
+          className="group relative flex w-2 shrink-0 cursor-col-resize flex-col items-center justify-center bg-neutral-50/50 transition-colors hover:bg-neutral-100/80 dark:bg-muted dark:hover:bg-muted"
+          onMouseDown={handleDragStart}
+          title="拖动调整宽度"
+        >
+          {/* 中心圆点 */}
+          <div className="group-hover:bg-primary-400 h-1 w-1 rounded-full bg-neutral-300 transition-colors" />
+        </div>
+      )}
     </>
   )
 }

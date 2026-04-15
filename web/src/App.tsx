@@ -2,8 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import { Toaster, toast } from 'sonner'
 import { UnsupportedBrowser } from '@/components/UnsupportedBrowser'
 import { WorkspaceLayout } from '@/components/layout/WorkspaceLayout'
-import { MobileLayout } from '@/components/mobile'
-import { useMobile } from '@/components/mobile/useMobile'
 import { StorageLoading } from '@/components/StorageLoading'
 import { DatabaseRefreshDialog } from '@/components/DatabaseRefreshDialog'
 import { attemptReconnect } from '@/store/remote.store'
@@ -592,8 +590,6 @@ function App() {
     }
   }, [])
 
-  // Responsive layout detection - must be called before any conditional returns
-  const isMobile = useMobile()
   const activeProject = projects.find((project) => project.id === activeProjectId)
 
   const activeConversation = activeConversationId
@@ -897,8 +893,6 @@ function App() {
       page={currentRoute.page}
       onBack={() => navigateToRoute({ kind: 'projectsHome' })}
     />
-  ) : isMobile ? (
-    <MobileLayout>{workspaceView}</MobileLayout>
   ) : (
     workspaceView
   )

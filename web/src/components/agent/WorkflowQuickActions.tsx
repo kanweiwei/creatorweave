@@ -228,7 +228,7 @@ export function WorkflowQuickActions({
           disabled={disabled}
           aria-label="工作流"
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
+            'inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium transition-colors',
             'border-neutral-200 bg-neutral-50 text-neutral-600',
             'hover:border-neutral-300 hover:bg-neutral-100',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20',

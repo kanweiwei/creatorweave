@@ -12,7 +12,7 @@
  * - Replaced inline folder button with FolderSelector component
  */
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Settings,
   SlidersHorizontal,
@@ -20,6 +20,7 @@ import {
   KeyRound,
   Server,
   List,
+  MoreHorizontal,
   Keyboard,
   Menu,
   ArrowLeft,
@@ -92,6 +93,8 @@ export function TopBar({
 }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mcpSettingsOpen, setMcpSettingsOpen] = useState(false)
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const mobileMorePanelRef = useRef<HTMLDivElement | null>(null)
   const hasApiKey = useHasApiKey() // Use the reactive hook that syncs with database
   const t = useT()
   const conversationName = activeConversationName ?? activeWorkspaceName
@@ -109,12 +112,38 @@ export function TopBar({
     </Tooltip>
   )
 
+  useEffect(() => {
+    if (!mobileMoreOpen) return
+
+    const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node
+      if (!mobileMorePanelRef.current?.contains(target)) {
+        setMobileMoreOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('touchstart', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('touchstart', handleOutsideClick)
+    }
+  }, [mobileMoreOpen])
+
+  const closeMobileMorePanel = () => {
+    setMobileMoreOpen(false)
+  }
+
   return (
     <>
       <TooltipProvider delayDuration={200}>
-        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-neutral-200 bg-background px-4 dark:border-border">
+        <header
+          className={`relative flex shrink-0 items-center justify-between border-b border-neutral-200 bg-background dark:border-border ${
+            isMobile ? 'h-12 px-2' : 'h-[52px] px-4'
+          }`}
+        >
         {/* Left: Menu button (mobile) + Logo + Name */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {onBackToProjects && (
             <ActionTooltip label={t('topbar.tooltips.backToProjects')}>
               <BrandButton iconButton onClick={onBackToProjects}>
@@ -130,7 +159,7 @@ export function TopBar({
             </ActionTooltip>
           )}
           {activeProjectName && (
-            <div className="flex items-center gap-1">
+            <div className={`flex min-w-0 items-center gap-1 ${isMobile ? 'max-w-[58vw]' : ''}`}>
               <ProjectSwitcher
                 activeProjectName={activeProjectName}
                 onSwitchProject={onSwitchProject ?? (async () => {})}
@@ -141,12 +170,16 @@ export function TopBar({
               />
               {conversationName && (
                 <>
-                  <span className="text-xs text-tertiary dark:text-muted">/</span>
-                  <ActionTooltip label={t('topbar.workspaceLabel', { name: conversationName })}>
-                    <span className="rounded-md bg-muted px-2 py-1 text-xs text-secondary dark:bg-muted dark:text-muted">
-                      {conversationName}
-                    </span>
-                  </ActionTooltip>
+                  {!isMobile && (
+                    <>
+                      <span className="text-xs text-tertiary dark:text-muted">/</span>
+                      <ActionTooltip label={t('topbar.workspaceLabel', { name: conversationName })}>
+                        <span className="max-w-[200px] truncate rounded-md bg-muted px-2 py-1 text-xs text-secondary dark:bg-muted dark:text-muted">
+                          {conversationName}
+                        </span>
+                      </ActionTooltip>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -154,99 +187,247 @@ export function TopBar({
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2">
-          {/* Folder Selector */}
-          <FolderSelector />
+        {isMobile ? (
+          <div className="ml-2 flex shrink-0 items-center gap-1">
+            {!hasApiKey && (
+              <ActionTooltip label={t('topbar.tooltips.openApiKeySettings')}>
+                <BrandButton iconButton onClick={() => setSettingsOpen(true)}>
+                  <KeyRound className="h-[14px] w-[14px]" />
+                </BrandButton>
+              </ActionTooltip>
+            )}
 
-          {/* API Key status - consistent button style */}
-          {!hasApiKey && (
-            <ActionTooltip label={t('topbar.tooltips.openApiKeySettings')}>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className="hover:bg-warning-100 focus:ring-warning-500 inline-flex h-8 items-center gap-1.5 rounded-md border border-warning-200 bg-warning-50 px-2.5 text-xs font-medium text-warning focus:outline-none focus:ring-2"
-              >
-                <KeyRound className="h-4 w-4" />
-                <span>{t('topbar.noApiKey')}</span>
-              </button>
+            <ActionTooltip label={t('topbar.tooltips.toolsPanel')}>
+              <BrandButton iconButton onClick={onToolsPanelOpen} data-tour="tools">
+                <List className="h-[14px] w-[14px]" />
+              </BrandButton>
             </ActionTooltip>
-          )}
 
-          {/* Remote */}
-          <RemoteBadgeErrorBoundary>
-            <RemoteBadge />
-          </RemoteBadgeErrorBoundary>
+            <ActionTooltip label={t('topbar.tooltips.appSettings')}>
+              <BrandButton iconButton onClick={() => setSettingsOpen(true)}>
+                <Settings className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          {/* Conversation Storage - OPFS conversation status with storage dropdown */}
-          <ConversationStorageBadge compact />
+            <ActionTooltip label="More">
+              <BrandButton iconButton onClick={() => setMobileMoreOpen((prev) => !prev)}>
+                <MoreHorizontal className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {/* Folder Selector */}
+            <div className="shrink-0">
+              <FolderSelector />
+            </div>
 
-          {/* Language Switcher */}
-          <LanguageSwitcher />
+            {/* API Key status - consistent button style */}
+            {!hasApiKey && (
+              <ActionTooltip label={t('topbar.tooltips.openApiKeySettings')}>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="hover:bg-warning-100 focus:ring-warning-500 inline-flex h-8 items-center gap-1.5 rounded-md border border-warning-200 bg-warning-50 px-2.5 text-xs font-medium text-warning focus:outline-none focus:ring-2"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  <span>{t('topbar.noApiKey')}</span>
+                </button>
+              </ActionTooltip>
+            )}
 
-          {/* Theme Toggle */}
-          <ThemeToggle />
+            {/* Remote */}
+            <div className="shrink-0">
+              <RemoteBadgeErrorBoundary>
+                <RemoteBadge />
+              </RemoteBadgeErrorBoundary>
+            </div>
 
-          <div className="h-5 w-px bg-muted" />
+            {/* Conversation Storage - OPFS conversation status with storage dropdown */}
+            <div className="shrink-0">
+              <ConversationStorageBadge compact />
+            </div>
 
-          {/* Workspace Settings (Phase 4) */}
-          <ActionTooltip label={t('topbar.tooltips.workspaceSettings')}>
-            <BrandButton iconButton onClick={onWorkspaceSettingsOpen}>
-              <SlidersHorizontal className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* Language Switcher */}
+            <div className="shrink-0">
+              <LanguageSwitcher />
+            </div>
 
-          {/* Tools Panel */}
-          <ActionTooltip label={t('topbar.tooltips.toolsPanel')}>
-            <BrandButton iconButton onClick={onToolsPanelOpen} data-tour="tools">
-              <List className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* Theme Toggle */}
+            <div className="shrink-0">
+              <ThemeToggle />
+            </div>
 
-          {/* WebContainer */}
-          <ActionTooltip label="WebContainer">
-            <BrandButton iconButton onClick={onWebContainerOpen}>
-              <Terminal className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            <div className="h-5 w-px bg-muted" />
 
-          {/* Quick Actions / Command Palette (Phase 4) */}
-          <ActionTooltip label={t('topbar.tooltips.commandPalette')}>
-            <BrandButton iconButton onClick={onCommandPaletteOpen}>
-              <Keyboard className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* Workspace Settings (Phase 4) */}
+            <ActionTooltip label={t('topbar.tooltips.workspaceSettings')}>
+              <BrandButton iconButton className="shrink-0" onClick={onWorkspaceSettingsOpen}>
+                <SlidersHorizontal className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          {/* Skills */}
-          <ActionTooltip label={t('topbar.tooltips.skillsManager')}>
-            <BrandButton iconButton onClick={onSkillsManagerOpen} data-tour="skills">
-              <Wrench className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* Tools Panel */}
+            <ActionTooltip label={t('topbar.tooltips.toolsPanel')}>
+              <BrandButton iconButton className="shrink-0" onClick={onToolsPanelOpen} data-tour="tools">
+                <List className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          {/* MCP Settings */}
-          <ActionTooltip label={t('topbar.tooltips.mcpSettings')}>
-            <BrandButton iconButton onClick={() => setMcpSettingsOpen(true)}>
-              <Server className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* WebContainer */}
+            <ActionTooltip label="WebContainer">
+              <BrandButton iconButton onClick={onWebContainerOpen}>
+                <Terminal className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          {/* Documentation */}
-          <ActionTooltip label={t('topbar.tooltips.docs')}>
-            <BrandButton iconButton onClick={() => window.open('/docs', '_blank')}>
-              <BookOpen className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
+            {/* Quick Actions / Command Palette (Phase 4) */}
+            <ActionTooltip label={t('topbar.tooltips.commandPalette')}>
+              <BrandButton iconButton onClick={onCommandPaletteOpen}>
+                <Keyboard className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          <div className="h-5 w-px bg-muted" />
+            {/* Skills */}
+            <ActionTooltip label={t('topbar.tooltips.skillsManager')}>
+              <BrandButton iconButton className="shrink-0" onClick={onSkillsManagerOpen} data-tour="skills">
+                <Wrench className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
 
-          {/* Settings */}
-          <ActionTooltip label={t('topbar.tooltips.appSettings')}>
-            <BrandButton iconButton onClick={() => setSettingsOpen(true)}>
-              <Settings className="h-[14px] w-[14px]" />
-            </BrandButton>
-          </ActionTooltip>
-        </div>
+            {/* MCP Settings */}
+            <ActionTooltip label={t('topbar.tooltips.mcpSettings')}>
+              <BrandButton iconButton onClick={() => setMcpSettingsOpen(true)}>
+                <Server className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
+
+            {/* Documentation */}
+            <ActionTooltip label={t('topbar.tooltips.docs')}>
+              <BrandButton iconButton onClick={() => window.open('/docs', '_blank')}>
+                <BookOpen className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
+
+            <div className="h-5 w-px bg-muted" />
+
+            {/* Settings */}
+            <ActionTooltip label={t('topbar.tooltips.appSettings')}>
+              <BrandButton iconButton className="shrink-0" onClick={() => setSettingsOpen(true)}>
+                <Settings className="h-[14px] w-[14px]" />
+              </BrandButton>
+            </ActionTooltip>
+          </div>
+        )}
       </header>
+
+      {isMobile && mobileMoreOpen && (
+        <div className="fixed inset-0 z-40 bg-black/20" onClick={closeMobileMorePanel} />
+      )}
+
+      {isMobile && mobileMoreOpen && (
+        <div
+          ref={mobileMorePanelRef}
+          className="fixed right-2 top-14 z-50 w-[min(92vw,340px)] rounded-xl border border-neutral-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+        >
+          <div className="mb-2 rounded-lg border border-neutral-200 bg-neutral-50/60 p-2 dark:border-neutral-700 dark:bg-neutral-800/60">
+            <div className="mb-1 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+              工作目录
+            </div>
+            <FolderSelector />
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                onWorkspaceSettingsOpen?.()
+                closeMobileMorePanel()
+              }}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              工作区设置
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                onSkillsManagerOpen?.()
+                closeMobileMorePanel()
+              }}
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              技能
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                onCommandPaletteOpen?.()
+                closeMobileMorePanel()
+              }}
+            >
+              <Keyboard className="h-3.5 w-3.5" />
+              命令面板
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                onWebContainerOpen?.()
+                closeMobileMorePanel()
+              }}
+            >
+              <Terminal className="h-3.5 w-3.5" />
+              WebContainer
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                setMcpSettingsOpen(true)
+                closeMobileMorePanel()
+              }}
+            >
+              <Server className="h-3.5 w-3.5" />
+              MCP 设置
+            </BrandButton>
+            <BrandButton
+              variant="ghost"
+              className="h-9 justify-start gap-2 text-xs"
+              onClick={() => {
+                window.open('/docs', '_blank')
+                closeMobileMorePanel()
+              }}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              文档
+            </BrandButton>
+          </div>
+
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <div className="rounded-lg border border-neutral-200 px-2 py-1.5 dark:border-neutral-700">
+              <div className="mb-1 text-[10px] text-neutral-500 dark:text-neutral-400">连接</div>
+              <RemoteBadgeErrorBoundary>
+                <RemoteBadge />
+              </RemoteBadgeErrorBoundary>
+            </div>
+            <div className="rounded-lg border border-neutral-200 px-2 py-1.5 dark:border-neutral-700">
+              <div className="mb-1 text-[10px] text-neutral-500 dark:text-neutral-400">存储</div>
+              <ConversationStorageBadge compact />
+            </div>
+            <div className="rounded-lg border border-neutral-200 px-2 py-1.5 dark:border-neutral-700">
+              <div className="mb-1 text-[10px] text-neutral-500 dark:text-neutral-400">语言</div>
+              <LanguageSwitcher />
+            </div>
+            <div className="rounded-lg border border-neutral-200 px-2 py-1.5 dark:border-neutral-700">
+              <div className="mb-1 text-[10px] text-neutral-500 dark:text-neutral-400">主题</div>
+              <ThemeToggle />
+            </div>
+          </div>
+        </div>
+      )}
       </TooltipProvider>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />

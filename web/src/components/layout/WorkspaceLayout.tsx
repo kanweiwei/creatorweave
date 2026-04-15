@@ -476,7 +476,10 @@ export function WorkspaceLayout({
   const handleSidebarFileSelect = useCallback((path: string, handle: FileSystemFileHandle | null) => {
     setSelectedFilePath(path)
     setSelectedFileHandle(handle)
-  }, [])
+    if (isMobile) {
+      setIsSidebarOpen(false)
+    }
+  }, [isMobile])
 
   // Handle element inspector from sidebar - open in new tab
   const handleElementInspect = useCallback(async (path: string, handle: FileSystemFileHandle | null) => {
@@ -515,7 +518,7 @@ export function WorkspaceLayout({
   }, [])
 
   return (
-    <div className="flex h-screen flex-col bg-white dark:bg-neutral-950">
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-950">
       {/* Header */}
       <TopBar
         onSkillsManagerOpen={handleSkillsManagerOpen}
@@ -526,7 +529,7 @@ export function WorkspaceLayout({
         onBackToProjects={onBackToProjects}
         activeProjectName={projectName}
         activeConversationName={activeConversationName}
-        onMenuOpen={() => setIsSidebarOpen(true)}
+        onMenuOpen={() => setIsSidebarOpen((prev) => !prev)}
         isMobile={isMobile}
         onSwitchProject={onSwitchProject}
         onCreateProject={onCreateProject}
@@ -534,21 +537,39 @@ export function WorkspaceLayout({
         projectSwitcherOpen={projectSwitcherOpen}
         onProjectSwitcherOpenChange={setProjectSwitcherOpen}
       />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Mobile sidebar overlay */}
         {isMobile && isSidebarOpen && (
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setIsSidebarOpen(false)} />
+          <div
+            className="absolute inset-0 z-40 bg-black/45"
+            onClick={() => setIsSidebarOpen(false)}
+          />
         )}
 
-        {/* Sidebar - hidden on mobile when closed */}
-        {(!isMobile || isSidebarOpen) && (
-          <Sidebar onFileSelect={handleSidebarFileSelect} onInspect={handleElementInspect} selectedFilePath={selectedFilePath} />
+        {/* Sidebar - desktop inline, mobile drawer */}
+        {!isMobile && (
+          <Sidebar
+            onFileSelect={handleSidebarFileSelect}
+            onInspect={handleElementInspect}
+            selectedFilePath={selectedFilePath}
+          />
+        )}
+        {isMobile && isSidebarOpen && (
+          <div className="absolute inset-y-0 left-0 z-50 w-[min(88vw,360px)] border-r border-border bg-background shadow-2xl dark:bg-card">
+            <Sidebar
+              isMobile
+              onRequestClose={() => setIsSidebarOpen(false)}
+              onFileSelect={handleSidebarFileSelect}
+              onInspect={handleElementInspect}
+              selectedFilePath={selectedFilePath}
+            />
+          </div>
         )}
 
         {/* Main area: conversation + optional sync preview panel */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 overflow-hidden">
           {/* Conversation / Welcome */}
-          <main className="flex-1 overflow-hidden">
+          <main className="min-w-0 flex-1 overflow-hidden">
             {hasActiveConversation ? (
               <ConversationView
                 initialMessage={pendingMessage}
@@ -557,7 +578,13 @@ export function WorkspaceLayout({
             ) : (
               <div className="relative h-full min-h-0 w-full overflow-hidden">
                 {workspaceCount === 0 && (
-                  <div className="absolute left-4 top-4 z-10 max-w-md rounded-lg border border-primary-200/70 bg-primary-50/85 p-3 text-sm text-primary-800 shadow-sm backdrop-blur-sm dark:border-primary-900/40 dark:bg-primary-950/25 dark:text-primary-200">
+                  <div
+                    className={`absolute z-10 rounded-lg border border-primary-200/70 bg-primary-50/85 text-primary-800 shadow-sm backdrop-blur-sm dark:border-primary-900/40 dark:bg-primary-950/25 dark:text-primary-200 ${
+                      isMobile
+                        ? 'left-3 right-3 top-3 max-w-none p-2.5 text-xs'
+                        : 'left-4 top-4 max-w-md p-3 text-sm'
+                    }`}
+                  >
                     <p className="mb-2 text-primary-800 dark:text-primary-200">
                       当前项目还没有工作区，创建首个会话后会自动生成对应工作区。
                     </p>
@@ -575,7 +602,7 @@ export function WorkspaceLayout({
           <Drawer
             open={!!selectedFilePath}
             onClose={handleCloseFilePreview}
-            width="50vw"
+            width={isMobile ? '100vw' : '50vw'}
           >
             <FilePreview
               filePath={selectedFilePath}
@@ -585,7 +612,12 @@ export function WorkspaceLayout({
           </Drawer>
 
           {/* Sync preview as Drawer (overlay, no squeeze) */}
-          <Drawer open={showPreview} onClose={handleClosePreview} title="变更待审阅" width="85vw">
+          <Drawer
+            open={showPreview}
+            onClose={handleClosePreview}
+            title="变更待审阅"
+            width={isMobile ? '100vw' : '85vw'}
+          >
             <SyncPreviewPanel onCancel={handleClosePreview} />
           </Drawer>
         </div>
