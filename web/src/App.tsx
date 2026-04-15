@@ -33,8 +33,22 @@ type AppRoute =
   | { kind: 'docs'; category?: 'user' | 'developer'; page?: string }
   | { kind: 'unknown' }
 
-function resolveRoute(pathname: string): AppRoute {
-  const normalized = pathname.replace(/\/+$/, '') || '/'
+function getCurrentRoutePath(): string {
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash
+
+  if (hash) {
+    return hash.startsWith('/') ? hash : `/${hash}`
+  }
+
+  const fallbackPath = `${window.location.pathname}${window.location.search || ''}`
+  return fallbackPath || '/projects'
+}
+
+function resolveRoute(routePath: string): AppRoute {
+  const url = new URL(routePath.startsWith('/') ? routePath : `/${routePath}`, window.location.origin)
+  const normalized = url.pathname.replace(/\/+$/, '') || '/'
 
   if (normalized === '/' || normalized === '/projects') {
     return { kind: 'projectsHome' }
@@ -50,8 +64,7 @@ function resolveRoute(pathname: string): AppRoute {
 
   // Preview route: /preview?path=xxx
   if (normalized === '/preview') {
-    const params = new URLSearchParams(window.location.search)
-    const path = params.get('path')
+    const path = url.searchParams.get('path')
     if (path) {
       return { kind: 'filePreview', path: decodeURIComponent(path) }
     }
@@ -138,7 +151,7 @@ function App() {
   const [canResetDatabase, setCanResetDatabase] = useState(false)
   const [isDatabaseInaccessible, setIsDatabaseInaccessible] = useState(false)
   const [isClearingLocalData, setIsClearingLocalData] = useState(false)
-  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute(window.location.pathname))
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute(getCurrentRoutePath()))
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const createProject = useProjectStore((s) => s.createProject)
   const renameProject = useProjectStore((s) => s.renameProject)
@@ -563,29 +576,35 @@ function App() {
 
   // Force entry to project cards on each app mount (helps with dev Fast Refresh state retention).
   useEffect(() => {
-    setCurrentRoute(resolveRoute(window.location.pathname))
+    setCurrentRoute(resolveRoute(getCurrentRoutePath()))
   }, [])
 
   // Ensure app entry always starts from project cards after bootstrap completes.
   useEffect(() => {
     if (isStorageReady) {
-      setCurrentRoute(resolveRoute(window.location.pathname))
+      setCurrentRoute(resolveRoute(getCurrentRoutePath()))
     }
   }, [isStorageReady])
 
   useEffect(() => {
     const handlePopstate = () => {
-      setCurrentRoute(resolveRoute(window.location.pathname))
+      setCurrentRoute(resolveRoute(getCurrentRoutePath()))
+    }
+
+    const handleHashchange = () => {
+      setCurrentRoute(resolveRoute(getCurrentRoutePath()))
     }
 
     const handleRouteChange = () => {
-      setCurrentRoute(resolveRoute(window.location.pathname))
+      setCurrentRoute(resolveRoute(getCurrentRoutePath()))
     }
 
     window.addEventListener('popstate', handlePopstate)
+    window.addEventListener('hashchange', handleHashchange)
     window.addEventListener('routechange', handleRouteChange)
     return () => {
       window.removeEventListener('popstate', handlePopstate)
+      window.removeEventListener('hashchange', handleHashchange)
       window.removeEventListener('routechange', handleRouteChange)
     }
   }, [])
@@ -598,10 +617,11 @@ function App() {
 
   const navigateToRoute = (route: AppRoute, replace = false) => {
     const path = toPath(route)
+    const hashPath = `#${path}`
     if (replace) {
-      window.history.replaceState(null, '', path)
+      window.history.replaceState(null, '', hashPath)
     } else {
-      window.history.pushState(null, '', path)
+      window.history.pushState(null, '', hashPath)
     }
     setCurrentRoute(route)
   }
@@ -760,7 +780,7 @@ function App() {
       projectId: activeProjectId,
       workspaceId: activeConversationId,
     })
-    if (window.location.pathname === routePath) return
+    if (getCurrentRoutePath() === routePath) return
 
     navigateToRoute(
       {

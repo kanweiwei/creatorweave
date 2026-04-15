@@ -304,7 +304,7 @@ export function TopBar({
 
             {/* Documentation */}
             <ActionTooltip label={t('topbar.tooltips.docs')}>
-              <BrandButton iconButton onClick={() => window.open('/docs', '_blank')}>
+              <BrandButton iconButton onClick={() => window.open('/#/docs', '_blank')}>
                 <BookOpen className="h-[14px] w-[14px]" />
               </BrandButton>
             </ActionTooltip>
@@ -397,7 +397,7 @@ export function TopBar({
               variant="ghost"
               className="h-9 justify-start gap-2 text-xs"
               onClick={() => {
-                window.open('/docs', '_blank')
+                window.open('/#/docs', '_blank')
                 closeMobileMorePanel()
               }}
             >

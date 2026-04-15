@@ -103,13 +103,11 @@ export function DocsPage({ category, page, onBack }: DocsPageProps) {
   const navigateTo = useCallback((cat: 'user' | 'developer', slug?: string) => {
     const parts = ['docs', cat, slug].filter(Boolean)
     const path = '/' + parts.join('/')
-    window.history.pushState(null, '', path)
-    window.dispatchEvent(new CustomEvent('routechange'))
+    window.location.hash = path
   }, [])
 
   const navigateToHome = useCallback(() => {
-    window.history.pushState(null, '', '/docs')
-    window.dispatchEvent(new CustomEvent('routechange'))
+    window.location.hash = '/docs'
   }, [])
 
   const pages = index?.pages ?? []
