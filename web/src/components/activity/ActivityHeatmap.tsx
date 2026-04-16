@@ -176,8 +176,14 @@ export function ActivityHeatmap() {
 
   const { weeks, totalActive, currentStreak } = useMemo(() => buildGrid(data), [data])
 
-  const monthNames = t('activityHeatmap.months') as unknown as string[]
-  const dayLabels = t('activityHeatmap.days') as unknown as string[]
+  const monthNamesRaw = t('activityHeatmap.months') as unknown
+  const dayLabelsRaw = t('activityHeatmap.days') as unknown
+  const monthNames = Array.isArray(monthNamesRaw)
+    ? monthNamesRaw
+    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const dayLabels = Array.isArray(dayLabelsRaw)
+    ? dayLabelsRaw
+    : ['', 'Mon', '', 'Wed', '', 'Fri', '']
 
   // Theme-aware cell colors using oklch derived from accent hue
   const getCellColor = useCallback(

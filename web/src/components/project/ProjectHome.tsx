@@ -809,12 +809,41 @@ export function ProjectHome({
 
       {/* Main content area */}
       <main className="relative z-10 max-w-5xl mx-auto px-6 pb-10">
+        {/* Mobile-first quick entry: continue work */}
+        {recentProject && (
+          <div className="mb-4 lg:hidden">
+            <div className="home-reveal home-delay-3 home-action-card rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-primary-600 dark:text-primary-600" />
+                <span className="home-mono text-xs uppercase tracking-wider text-tertiary dark:text-muted">
+                  {t('projectHome.sidebar.continueWork')}
+                </span>
+              </div>
+              <h3 className="home-title-sans text-base text-primary dark:text-primary-foreground mb-1 truncate">
+                {recentProject.name}
+              </h3>
+              <p className="home-body text-xs text-tertiary dark:text-muted mb-4">
+                {formatRelativeTime(getProjectActivityAt(recentProject))}
+              </p>
+              <BrandButton
+                onClick={() => void onOpenProject(recentProject.id)}
+                variant="primary"
+                className="w-full"
+                disabled={isLoading}
+              >
+                {t('projectHome.sidebar.continueWork')}
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </BrandButton>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
           {/* Left sidebar: Quick actions */}
-          <aside className="lg:col-span-4 space-y-4">
+          <aside className="order-2 lg:order-1 lg:col-span-4 space-y-4">
             {/* Continue working */}
             {recentProject && (
-              <div className="home-reveal home-delay-3 home-action-card rounded-xl border border-border bg-card p-5">
+              <div className="hidden lg:block home-reveal home-delay-3 home-action-card rounded-xl border border-border bg-card p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles className="w-4 h-4 text-primary-600 dark:text-primary-600" />
                   <span className="home-mono text-xs uppercase tracking-wider text-tertiary dark:text-muted">
@@ -1009,7 +1038,7 @@ export function ProjectHome({
           </aside>
 
           {/* Right: Activity heatmap + Project list */}
-          <section className="lg:col-span-8 space-y-6">
+          <section className="order-1 lg:order-2 lg:col-span-8 space-y-6">
             {/* Activity Heatmap */}
             <ActivityHeatmap />
             {/* Search and filter */}
