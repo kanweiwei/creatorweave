@@ -324,7 +324,27 @@ export function getToolDiscoveryMessage(userMessage: string): string | null {
 }
 
 /**
- * Build enhanced system prompt based on user message
+ * Build the stable portion of system prompt (base + agent mode).
+ * These change infrequently and should be placed early for prompt cache hits.
+ */
+export function buildStableSystemPrompt(
+  basePrompt: string,
+  agentMode?: 'plan' | 'act'
+): string {
+  let enhanced = basePrompt
+
+  // Add agent mode-specific enhancement (changes infrequently, per session)
+  if (agentMode) {
+    enhanced += getAgentModeEnhancement(agentMode)
+  }
+
+  return enhanced
+}
+
+/**
+ * Build enhanced system prompt based on user message.
+ * NOTE: Prefer using buildStableSystemPrompt + appending dynamic parts at the end
+ * for better prompt cache behavior.
  */
 export function buildEnhancedSystemPrompt(
   basePrompt: string,

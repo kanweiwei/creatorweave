@@ -5,7 +5,8 @@ import { getIntelligenceCoordinator } from '../intelligence-coordinator'
 import type { Message } from '../message-types'
 import { triggerPrefetch } from '../prefetch'
 import {
-  buildEnhancedSystemPrompt,
+  buildStableSystemPrompt,
+  getScenarioEnhancement,
   getToolDiscoveryMessage,
   shouldShowToolDiscovery,
 } from '../prompts/universal-system-prompt'
@@ -23,15 +24,34 @@ export interface InjectEnhancementsInput {
   sessionId?: string
 }
 
+/**
+ * Build the full system prompt with cache-friendly ordering:
+ *
+ * ┌──────────────────────────────────────────┐
+ * │  STABLE SECTION (cache-friendly prefix)  │
+ * │  ① Base prompt                           │  ← static
+ * │  ② Agent mode                            │  ← changes per session
+ * │  ③ Intelligence (fingerprint/memory)     │  ← cached per project
+ * │  ④ Workflow catalog                      │  ← static
+ * │  ⑤ MCP services                          │  ← changes per session
+ * ├──────────────────────────────────────────┤
+ * │  DYNAMIC SECTION (varies per turn)        │
+ * │  ⑥ Scenario detection                    │  ← changes per user message
+ * │  ⑦ Skills block                          │  ← changes per user message
+ * │  ⑧ Tool discovery                        │  ← changes per user message
+ * │  ⑨ Date & time                           │  ← changes every minute
+ * └──────────────────────────────────────────┘
+ */
 export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput): Promise<string> {
   // Extract user message for scenario detection (use the last user message)
   const lastUserMsg = [...input.messages].reverse().find((m) => m.role === 'user')
   const userMessage = lastUserMsg?.content || ''
 
-  // Start with base system prompt, enhanced with scenario detection and agent mode
-  let enhancedPrompt = buildEnhancedSystemPrompt(input.baseSystemPrompt, userMessage, input.mode)
+  // ── STABLE SECTION ──────────────────────────────────────────────────
+  // ① + ②: Base prompt + agent mode (changes infrequently)
+  let enhancedPrompt = buildStableSystemPrompt(input.baseSystemPrompt, input.mode)
 
-  // Phase 2: Inject intelligent enhancements (tool recs, project fingerprint, memory)
+  // ③: Intelligence enhancements (tool recs, project fingerprint, memory)
   try {
     const coordinator = getIntelligenceCoordinator()
     const intelligenceResult = await coordinator.enhanceSystemPrompt(enhancedPrompt, {
@@ -48,7 +68,7 @@ export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput)
     // Continue without intelligence enhancements
   }
 
-  // Inject available workflow catalog block
+  // ④: Workflow catalog (static)
   try {
     const workflowBlock = buildAvailableWorkflowsBlock()
     if (workflowBlock) {
@@ -58,7 +78,7 @@ export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput)
     console.warn('[AgentLoop] Failed to inject workflow catalog:', error)
   }
 
-  // Inject MCP services block AND register MCP tools
+  // ⑤: MCP services (changes per session)
   try {
     const mcpManager = getMCPManager()
     await mcpManager.initialize()
@@ -66,7 +86,6 @@ export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput)
     // Register MCP tools to ToolRegistry (must happen before getToolDefinitions)
     await input.toolRegistry.registerMCPTools()
 
-    // Use MCPManager's built-in method
     const mcpBlock = mcpManager.getAvailableMCPServicesBlock()
     if (mcpBlock) {
       enhancedPrompt += '\n\n' + mcpBlock
@@ -75,7 +94,17 @@ export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput)
     console.warn('[AgentLoop] Failed to inject MCP services:', error)
   }
 
-  // Extract user message for skill matching
+  // ── DYNAMIC SECTION ─────────────────────────────────────────────────
+  // Everything below varies per user message or per minute.
+  // Appended at the end to preserve prompt cache for the stable prefix above.
+
+  // ⑥: Scenario-specific enhancement (depends on user message keywords)
+  const scenarioEnhancement = getScenarioEnhancement(userMessage)
+  if (scenarioEnhancement) {
+    enhancedPrompt += scenarioEnhancement
+  }
+
+  // ⑦: Skills block (depends on user message)
   if (lastUserMsg) {
     const context: SkillMatchContext = {
       userMessage: userMessage,
@@ -88,13 +117,21 @@ export async function buildRuntimeEnhancedPrompt(input: InjectEnhancementsInput)
     }
   }
 
-  // Tool discovery: if user asks about capabilities, inject discovery message
+  // ⑧: Tool discovery (depends on user message)
   if (shouldShowToolDiscovery(userMessage)) {
     const discoveryMsg = getToolDiscoveryMessage(userMessage)
     if (discoveryMsg) {
       enhancedPrompt += '\n\n' + discoveryMsg
     }
   }
+
+  // ⑨: Current date and time (changes every minute)
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' })
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const tzOffset = `UTC${now.getTimezoneOffset() <= 0 ? '+' : '-'}${String(Math.floor(Math.abs(now.getTimezoneOffset()) / 60)).padStart(2, '0')}:${String(Math.abs(now.getTimezoneOffset()) % 60).padStart(2, '0')}`
+  enhancedPrompt += `\n\n## Current Date & Time\nCurrent date: ${dateStr} (${weekday})\nCurrent time: ${timeStr}\nTimezone: ${tzOffset}\nUse this information when the user asks about dates, scheduling, or time-sensitive tasks.`
 
   return enhancedPrompt
 }
