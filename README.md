@@ -19,6 +19,15 @@ Try the live demo: [creatorweave.eo2suite.cn](https://creatorweave.eo2suite.cn/)
 
 CreatorWeave is a **local-first AI-native creation platform**. It combines file workflows, AI copilots, knowledge-base workflows, and multi-agent orchestration in one browser-native product.
 
+## Why CreatorWeave?
+
+- Built first for plain-text creation workflows: reduce context switching between editors, browsers, and terminals.
+- Browser-first by design: quick onboarding without requiring users to install an IDE or a heavy local setup.
+- Balances usability and safety: local files are accessed through explicit folder authorization, with scope constrained by browser permission boundaries.
+- Lowers branching complexity for non-Git users: workspaces can run in parallel, conceptually similar to `git worktree`, without requiring Git knowledge.
+
+The project is also exploring multi-agent collaboration workflows for content creation, with configurable agent roles and coordination modes.
+
 ### Key Product Description
 
 - **AI-Powered Conversations**: Chat naturally with your codebase using advanced AI agents with multi-agent collaboration
