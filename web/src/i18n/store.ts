@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Locale } from '@creatorweave/i18n'
+import { detectBrowserLocale, type Locale } from '@creatorweave/i18n'
 
 interface I18nState {
   locale: Locale
@@ -10,7 +10,7 @@ interface I18nState {
 export const useI18nStore = create<I18nState>()(
   persist(
     (set) => ({
-      locale: 'zh-CN' as Locale,
+      locale: detectBrowserLocale(),
       setLocale: (locale) => set({ locale }),
     }),
     {
