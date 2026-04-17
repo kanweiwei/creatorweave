@@ -561,6 +561,13 @@ export function ConversationView({
   // If last turn is already assistant, attach runtime/waiting state to that turn.
   const shouldRenderDraftAssistant = isProcessing && (!lastTurn || lastTurn.type !== 'assistant')
   const shouldAttachRuntimeToDraft = shouldRenderDraftAssistant
+  const draftSteps = shouldAttachRuntimeToDraft ? activeDraftAssistant?.steps || [] : []
+  const draftHasCompressionOnly =
+    draftSteps.length > 0 &&
+    draftSteps.every((step) => step.type === 'compression') &&
+    !activeStreamingState?.currentToolCall &&
+    !streamingContentMessage?.reasoning &&
+    !streamingContentMessage?.content
   const isWaitingForModel =
     status === 'pending' ||
     (status === 'tool_calling' &&
@@ -752,7 +759,7 @@ export function ConversationView({
                         totalUsage: null,
                       }}
                       toolResults={toolResults}
-                      showAvatar={false}
+                      showAvatar={!draftHasCompressionOnly}
                       isProcessing={true}
                       isWaiting={isWaitingForModel}
                       streamingState={shouldAttachRuntimeToDraft ? streamingState : undefined}
