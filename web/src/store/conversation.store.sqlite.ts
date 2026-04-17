@@ -2336,9 +2336,20 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           onMessagesUpdated: (msgs: Message[]) => {
             if (!isCurrentRun()) return
             latestMessages = msgs
+            set((state) => {
+              const c = state.conversations.find((x) => x.id === conversationId)
+              if (!c || c.activeRunId !== runId) return
+              c.messages = msgs
+              c.updatedAt = Date.now()
+            })
           },
           onComplete: async (msgs: Message[]) => {
             if (!isCurrentRun()) return
+            console.info('[#LoopStop] store_onComplete', {
+              conversationId,
+              runId,
+              messagesCount: msgs.length,
+            })
             latestMessages = msgs
             reasoningQueue.flushNow()
             contentQueue.flushNow()
@@ -2347,6 +2358,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           },
           onError: (err: Error) => {
             if (!isCurrentRun()) return
+            console.error('[#LoopStop] store_onError', {
+              conversationId,
+              runId,
+              error: err.message,
+            })
             reasoningQueue.flushNow()
             contentQueue.flushNow()
             cleanupQueues()

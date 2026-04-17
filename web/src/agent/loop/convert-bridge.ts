@@ -75,6 +75,17 @@ export async function convertAgentMessagesToLlm(
   const chatMessages = messagesToChatMessages(internalMessages)
   const preTrimTokens = input.provider.estimateTokens(chatMessages)
   const summaryTokenBudget = Math.min(2400, Math.max(500, Math.floor(maxContextTokens * 0.02)))
+  let compressionTriggered = false
+  let compressionCompletePayload:
+    | {
+        mode: CompressionSummaryMode
+        summary: string | null
+        droppedGroups: number
+        droppedContentChars: number
+        summaryChars: number
+        latencyMs: number
+      }
+    | null = null
   const trimmedResult = input.contextManager.trimMessages(chatMessages, {
     createSummary: true,
     maxSummaryTokens: summaryTokenBudget,
@@ -83,6 +94,7 @@ export async function convertAgentMessagesToLlm(
   let trimmed = trimmedResult.messages
 
   if (trimmedResult.droppedContent) {
+    compressionTriggered = true
     const droppedContent = trimmedResult.droppedContent
     const droppedGroups = trimmedResult.droppedGroups
     const droppedContentChars = droppedContent.length
@@ -152,14 +164,14 @@ export async function convertAgentMessagesToLlm(
         postCompressionUsagePercent: Number(postCompressionUsagePercent.toFixed(2)),
         targetPercent: input.compressionTargetRatio * 100,
       })
-      input.callbacks?.onContextCompressionComplete?.({
+      compressionCompletePayload = {
         mode,
         summary,
         droppedGroups,
         droppedContentChars,
         summaryChars: summary?.length || 0,
         latencyMs,
-      })
+      }
 
       if (summary) {
         input.onSummaryInjected?.(summary)
@@ -186,22 +198,46 @@ export async function convertAgentMessagesToLlm(
         postCompressionUsagePercent: Number(postCompressionUsagePercent.toFixed(2)),
         targetPercent: input.compressionTargetRatio * 100,
       })
+      compressionCompletePayload = {
+        mode: 'skip',
+        summary: null,
+        droppedGroups,
+        droppedContentChars,
+        summaryChars: 0,
+        latencyMs: 0,
+      }
     }
   }
 
   // If the latest tool result can't survive compression, fail explicitly
   // instead of silently hiding it from the model.
-  trimmed = ensureLatestToolResultFitsContext({
-    internalMessages,
-    trimmedMessages: trimmed,
-    maxContextTokens,
-    reserveTokens,
-    contextManager: input.contextManager,
-    estimateTokens: (messages) => input.provider.estimateTokens(messages),
-  })
+  try {
+    trimmed = ensureLatestToolResultFitsContext({
+      internalMessages,
+      trimmedMessages: trimmed,
+      maxContextTokens,
+      reserveTokens,
+      contextManager: input.contextManager,
+      estimateTokens: (messages) => input.provider.estimateTokens(messages),
+    })
+  } catch (error) {
+    // Best-effort fallback: continue loop with aggressively trimmed context.
+    // This avoids hard-stopping the run right after compression UI has completed.
+    console.warn('[AgentLoop] latest tool result does not fit after compression; applying emergency trim', error)
+    trimmed = input.contextManager.trimMessagesToTarget(trimmed, inputBudget)
+  }
 
   const usedTokens = input.provider.estimateTokens(trimmed)
   if (usedTokens > inputBudget) {
+    console.error('[#LoopStop] context_overflow_after_compression_check', {
+      convertCallCount,
+      usedTokens,
+      inputBudget,
+      reserveTokens,
+      maxContextTokens,
+      compressionTriggered,
+      compressionMode: compressionCompletePayload?.mode ?? null,
+    })
     throw buildContextOverflowError({
       maxContextLimit: maxContextTokens,
       reserveTokens,
@@ -210,6 +246,9 @@ export async function convertAgentMessagesToLlm(
       toolResultTokens: 0,
       totalInputTokens: usedTokens,
     })
+  }
+  if (compressionCompletePayload) {
+    input.callbacks?.onContextCompressionComplete?.(compressionCompletePayload)
   }
   // Use the same denominator as ContextManager (input budget, not raw max)
   // so the reported percentage aligns with compression trigger thresholds.

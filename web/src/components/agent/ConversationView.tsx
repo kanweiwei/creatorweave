@@ -652,8 +652,11 @@ export function ConversationView({
           ) : (
             <div className="min-h-0 px-4 py-4">
               <div className="mx-auto w-full max-w-3xl space-y-4">
-              {turns.map((turn, idx) =>
-                turn.type === 'user' ? (
+              {turns.map((turn, idx) => {
+                const shouldAttachRuntimeToTurn =
+                  isProcessing && idx === turns.length - 1 && !shouldRenderDraftAssistant
+
+                return turn.type === 'user' ? (
                   <MessageBubble
                     key={turn.message.id}
                     message={turn.message}
@@ -674,41 +677,30 @@ export function ConversationView({
                       isProcessing={isProcessing}
                       isWaiting={false}
                       streamingState={
-                        // Only pass streaming state to the last assistant turn when processing
-                        isProcessing && idx === turns.length - 1 ? streamingState : undefined
+                        // Only pass runtime streaming state to the single active bubble.
+                        shouldAttachRuntimeToTurn ? streamingState : undefined
                       }
                       streamingContent={
-                        // Pass streaming content to the last assistant turn when processing
-                        isProcessing && idx === turns.length - 1
-                          ? streamingContentMessage
-                          : undefined
+                        shouldAttachRuntimeToTurn ? streamingContentMessage : undefined
                       }
                       currentToolCall={
-                        // Pass current tool call to the last assistant turn when in tool_calling phase
-                        isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                        shouldAttachRuntimeToTurn && status === 'tool_calling'
                           ? activeStreamingState?.currentToolCall
                           : undefined
                       }
                       streamingToolArgs={
-                        // Pass streaming tool args to the last assistant turn when in tool_calling phase
-                        isProcessing && idx === turns.length - 1 && status === 'tool_calling'
+                        shouldAttachRuntimeToTurn && status === 'tool_calling'
                           ? activeStreamingState?.streamingToolArgs
                           : undefined
                       }
                       streamingToolArgsByCallId={
-                        isProcessing && idx === turns.length - 1
-                          ? activeStreamingState?.streamingToolArgsByCallId
-                          : undefined
+                        shouldAttachRuntimeToTurn ? activeStreamingState?.streamingToolArgsByCallId : undefined
                       }
                       runtimeToolCalls={
-                        isProcessing && idx === turns.length - 1
-                          ? activeDraftAssistant?.toolCalls
-                          : undefined
+                        shouldAttachRuntimeToTurn ? activeDraftAssistant?.toolCalls : undefined
                       }
                       runtimeSteps={
-                        isProcessing && idx === turns.length - 1
-                          ? activeDraftAssistant?.steps
-                          : undefined
+                        shouldAttachRuntimeToTurn ? activeDraftAssistant?.steps : undefined
                       }
                       workflowProgress={
                         activeWorkflowExecution && idx === workflowProgressAnchorTurnIndex ? (
@@ -721,7 +713,7 @@ export function ConversationView({
                     />
                   </Fragment>
                 )
-              )}
+              })}
 
               {/* Draft assistant turn while waiting for current run's first committed assistant message */}
               {shouldRenderDraftAssistant && (

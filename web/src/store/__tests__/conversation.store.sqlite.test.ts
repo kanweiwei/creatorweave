@@ -271,6 +271,31 @@ describe('conversation.store.sqlite tool-call routing', () => {
     expect(secondRunConfig?.initialLastSummaryConvertCall).toBe(9)
   })
 
+  it('should reflect onMessagesUpdated into store messages during an active run', async () => {
+    const store = useConversationStore.getState()
+    const conv = store.createNew('live-messages-during-run')
+    const user = createUserMessage('hello')
+    useConversationStore.getState().updateMessages(conv.id, [user])
+
+    let messagesLengthSeenInsideRun = -1
+    ;(globalThis as any).__conversationStoreCustomRun = async (messages: any[], callbacks: any) => {
+      const liveAssistantMessage = {
+        id: 'assistant-live-1',
+        role: 'assistant',
+        content: 'streamed chunk complete',
+        timestamp: Date.now(),
+      }
+      callbacks.onMessagesUpdated?.([...messages, liveAssistantMessage])
+      const current = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
+      messagesLengthSeenInsideRun = current?.messages.length ?? -1
+      return [...messages, liveAssistantMessage]
+    }
+
+    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+
+    expect(messagesLengthSeenInsideRun).toBe(2)
+  })
+
   it('should delete only the specified user message', () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('delete-user')

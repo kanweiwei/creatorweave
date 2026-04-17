@@ -173,6 +173,11 @@ export function buildAgentTools(input: BuildAgentToolsInput): AgentTool[] {
         }
 
         if (elicitationData && input.callbacks?.onElicitation) {
+          console.warn('[#LoopStop] elicitation_detected', {
+            toolCallId,
+            toolName: elicitationData.toolName,
+            serverId: elicitationData.serverId,
+          })
           input.callbacks.onElicitation({
             ...elicitationData,
             toolCallId,

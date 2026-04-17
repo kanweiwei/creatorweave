@@ -162,18 +162,31 @@ export class AgentLoop {
       })
     } catch (error) {
       if (signal.aborted) {
+        console.warn('[#LoopStop] aborted_during_pi_core_run', {
+          reason: 'signal_aborted',
+          messagesCount: allMessages.length,
+        })
         callbacks?.onComplete?.(allMessages)
         return allMessages
       }
+      console.error('[#LoopStop] pi_core_run_error', {
+        error: error instanceof Error ? error.message : String(error),
+      })
       throw error
     }
 
     if (shouldStopForElicitation) {
+      console.warn('[#LoopStop] stop_for_elicitation', {
+        messagesCount: allMessages.length,
+      })
       callbacks?.onComplete?.(allMessages)
       return allMessages
     }
 
     if (reachedMaxIterations) {
+      console.warn('[#LoopStop] stop_for_max_iterations', {
+        maxIterations: this.maxIterations,
+      })
       callbacks?.onIterationLimitReached?.(this.maxIterations)
     }
 
@@ -186,6 +199,9 @@ export class AgentLoop {
     }
 
     callbacks?.onComplete?.(allMessages)
+    console.info('[#LoopStop] completed_normally', {
+      messagesCount: allMessages.length,
+    })
     return allMessages
   }
 
@@ -215,10 +231,17 @@ export class AgentLoop {
       return await this.runWithPiAgentCore(messages, callbacks)
     } catch (error) {
       if (signal.aborted) {
+        console.warn('[#LoopStop] run_aborted', {
+          reason: 'signal_aborted_outer',
+          messagesCount: messages.length,
+        })
         callbacks?.onComplete?.(messages)
         return messages
       }
       const err = error instanceof Error ? error : new Error(String(error))
+      console.error('[#LoopStop] run_error', {
+        error: err.message,
+      })
       callbacks?.onError?.(err)
       throw err
     } finally {
