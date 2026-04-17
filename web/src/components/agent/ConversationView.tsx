@@ -545,6 +545,9 @@ export function ConversationView({
     status === 'pending' ||
     status === 'tool_calling'
   )
+  const shouldAttachRuntimeToDraft = shouldRenderDraftAssistant && (
+    !lastTurn || lastTurn.type !== 'assistant'
+  )
   const isWaitingForModel =
     status === 'pending' ||
     (status === 'tool_calling' &&
@@ -654,7 +657,10 @@ export function ConversationView({
               <div className="mx-auto w-full max-w-3xl space-y-4">
               {turns.map((turn, idx) => {
                 const shouldAttachRuntimeToTurn =
-                  isProcessing && idx === turns.length - 1 && !shouldRenderDraftAssistant
+                  isProcessing && idx === turns.length - 1
+                const hasCompressionRuntime =
+                  shouldAttachRuntimeToTurn &&
+                  !!activeDraftAssistant?.steps?.some((step) => step.type === 'compression')
 
                 return turn.type === 'user' ? (
                   <MessageBubble
@@ -674,6 +680,7 @@ export function ConversationView({
                     <AssistantTurnBubble
                       turn={turn}
                       toolResults={toolResults}
+                      showAvatar={!hasCompressionRuntime}
                       isProcessing={isProcessing}
                       isWaiting={false}
                       streamingState={
@@ -727,15 +734,28 @@ export function ConversationView({
                       totalUsage: null,
                     }}
                     toolResults={toolResults}
+                    showAvatar={false}
                     isProcessing={true}
                     isWaiting={isWaitingForModel}
-                    streamingState={streamingState}
-                    streamingContent={streamingContentMessage}
-                    currentToolCall={status === 'tool_calling' ? activeStreamingState?.currentToolCall : undefined}
-                    streamingToolArgs={status === 'tool_calling' ? activeStreamingState?.streamingToolArgs : undefined}
-                    streamingToolArgsByCallId={activeStreamingState?.streamingToolArgsByCallId}
-                    runtimeToolCalls={activeDraftAssistant?.toolCalls}
-                    runtimeSteps={activeDraftAssistant?.steps}
+                    streamingState={shouldAttachRuntimeToDraft ? streamingState : undefined}
+                    streamingContent={shouldAttachRuntimeToDraft ? streamingContentMessage : undefined}
+                    currentToolCall={
+                      shouldAttachRuntimeToDraft && status === 'tool_calling'
+                        ? activeStreamingState?.currentToolCall
+                        : undefined
+                    }
+                    streamingToolArgs={
+                      shouldAttachRuntimeToDraft && status === 'tool_calling'
+                        ? activeStreamingState?.streamingToolArgs
+                        : undefined
+                    }
+                    streamingToolArgsByCallId={
+                      shouldAttachRuntimeToDraft
+                        ? activeStreamingState?.streamingToolArgsByCallId
+                        : undefined
+                    }
+                    runtimeToolCalls={shouldAttachRuntimeToDraft ? activeDraftAssistant?.toolCalls : undefined}
+                    runtimeSteps={shouldAttachRuntimeToDraft ? activeDraftAssistant?.steps : undefined}
                     workflowProgress={
                       activeWorkflowExecution && workflowProgressAnchorTurnIndex === -1 ? (
                         <WorkflowExecutionProgress

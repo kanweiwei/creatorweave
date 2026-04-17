@@ -111,18 +111,21 @@ export interface Message {
 export type DraftAssistantStep =
   | {
       id: string
+      timestamp?: number
       type: 'reasoning'
       content: string
       streaming: boolean
     }
   | {
       id: string
+      timestamp?: number
       type: 'content'
       content: string
       streaming: boolean
     }
   | {
       id: string
+      timestamp?: number
       type: 'tool_call'
       toolCall: ToolCall
       args: string
@@ -131,6 +134,7 @@ export type DraftAssistantStep =
     }
   | {
       id: string
+      timestamp?: number
       type: 'compression'
       content: string
       streaming: boolean

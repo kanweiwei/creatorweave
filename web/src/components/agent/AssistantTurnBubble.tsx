@@ -8,7 +8,12 @@
 import { memo, type ReactNode } from 'react'
 import { Bot } from 'lucide-react'
 import type { Turn } from './group-messages'
-import type { DraftAssistantStep, Message, ToolCall, WorkflowRealRunPayload } from '@/agent/message-types'
+import type {
+  DraftAssistantStep,
+  Message,
+  ToolCall,
+  WorkflowRealRunPayload,
+} from '@/agent/message-types'
 import { ReasoningSection } from './ReasoningSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MarkdownContent } from './MarkdownContent'
@@ -34,6 +39,8 @@ interface StreamingContent {
 interface AssistantTurnBubbleProps {
   turn: Extract<Turn, { type: 'assistant' }>
   toolResults: Map<string, string>
+  /** Whether to render the bot avatar column for this bubble */
+  showAvatar?: boolean
   /** Whether agent is still processing this turn */
   isProcessing?: boolean
   /** Whether agent is waiting (pending - request sent, waiting for response) */
@@ -59,6 +66,7 @@ interface AssistantTurnBubbleProps {
 export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   turn,
   toolResults,
+  showAvatar = true,
   isProcessing,
   isWaiting,
   streamingState,
@@ -98,30 +106,146 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   const hasCurrentToolCallInDraft = !!(
     currentToolCall && draftToolCalls.some((tc) => tc.id === currentToolCall.id)
   )
+  const mergedTimelineItems = isProcessing
+    ? [
+        ...turn.messages.map((message, index) => ({
+          kind: 'message' as const,
+          key: `msg-${message.id}`,
+          order: index,
+          timestamp: message.timestamp,
+          message,
+        })),
+        ...orderedRuntimeSteps.map((step, index) => ({
+          kind: 'runtime' as const,
+          key: `step-${step.id}`,
+          order: turn.messages.length + index,
+          timestamp:
+            typeof step.timestamp === 'number'
+              ? step.timestamp
+              : turn.timestamp + turn.messages.length + index + 1,
+          step,
+        })),
+      ].sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+        return a.order - b.order
+      })
+    : []
+  const shouldRenderMergedTimeline = isProcessing && mergedTimelineItems.length > 0
 
   // Find the last message with content for copy button
   const lastMessageWithContent = [...turn.messages].reverse().find((msg) => msg.content)
 
   return (
-    <div className="flex gap-3">
-      {/* Single avatar for the entire turn */}
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
-        <Bot className="h-4 w-4" />
-      </div>
+    <div className={showAvatar ? 'flex gap-3' : ''}>
+      {showAvatar && (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
+          <Bot className="h-4 w-4" />
+        </div>
+      )}
 
       {/* Steps column */}
-      <div className="min-w-0 w-[90%] space-y-2">
-        {turn.messages.map((msg, idx) => (
-          <AssistantStep
-            key={msg.id}
-            message={msg}
-            toolResults={toolResults}
-            showDivider={idx > 0}
-          />
-        ))}
+      <div className={showAvatar ? 'w-[90%] min-w-0 space-y-2' : 'w-full min-w-0 space-y-2'}>
+        {shouldRenderMergedTimeline &&
+          mergedTimelineItems.map((item, index) => {
+            const showDivider = index > 0
+            if (item.kind === 'message') {
+              return (
+                <div key={item.key}>
+                  {showDivider && (
+                    <div className="mb-2 border-t border-neutral-100 dark:border-neutral-700" />
+                  )}
+                  <AssistantStep
+                    message={item.message}
+                    toolResults={toolResults}
+                    showDivider={false}
+                  />
+                </div>
+              )
+            }
 
-        {/* Ordered runtime timeline: strictly follows stream event order */}
-        {isProcessing &&
+            const step = item.step
+            if (step.type === 'reasoning') {
+              if (!step.content) return null
+              return (
+                <div key={item.key}>
+                  {showDivider && (
+                    <div className="mb-2 border-t border-neutral-100 dark:border-neutral-700" />
+                  )}
+                  <StreamingContentSection
+                    reasoning={step.content}
+                    isStreamingReasoning={step.streaming}
+                    isStreamingContent={false}
+                    lightweight={true}
+                    showDivider={false}
+                  />
+                </div>
+              )
+            }
+            if (step.type === 'content') {
+              if (!step.content) return null
+              return (
+                <div key={item.key}>
+                  {showDivider && (
+                    <div className="mb-2 border-t border-neutral-100 dark:border-neutral-700" />
+                  )}
+                  <StreamingContentSection
+                    content={step.content}
+                    isStreamingReasoning={false}
+                    isStreamingContent={step.streaming}
+                    lightweight={true}
+                    showDivider={false}
+                  />
+                </div>
+              )
+            }
+            if (step.type === 'compression') {
+              return (
+                <div key={item.key}>
+                  {showDivider && (
+                    <div className="mb-2 border-t border-neutral-100 dark:border-neutral-700" />
+                  )}
+                  <CompressionStatusCard text={step.content} streaming={step.streaming} />
+                </div>
+              )
+            }
+            return (
+              <div key={item.key}>
+                {showDivider && (
+                  <div className="mb-2 border-t border-neutral-100 dark:border-neutral-700" />
+                )}
+                <ToolCallDisplay
+                  toolCall={step.toolCall}
+                  result={step.result ?? toolResults.get(step.toolCall.id)}
+                  isExecuting={
+                    step.streaming && !(step.result ?? toolResults.get(step.toolCall.id))
+                  }
+                  streamingArgs={
+                    step.streaming
+                      ? step.args ||
+                        streamingToolArgsByCallId?.[step.toolCall.id] ||
+                        streamingToolArgs ||
+                        undefined
+                      : undefined
+                  }
+                />
+              </div>
+            )
+          })}
+
+        {/* Legacy path: non-processing render */}
+        {!shouldRenderMergedTimeline &&
+          turn.messages.map((msg, idx) => (
+            <AssistantStep
+              key={msg.id}
+              message={msg}
+              toolResults={toolResults}
+              showDivider={idx > 0}
+            />
+          ))}
+
+        {/* Legacy path: explicit runtime render when merge is disabled */}
+        {!shouldRenderMergedTimeline &&
+          isProcessing &&
           orderedRuntimeSteps.length > 0 &&
           orderedRuntimeSteps.map((step) => {
             if (step.type === 'reasoning') {
@@ -165,7 +289,10 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                 isExecuting={step.streaming && !(step.result ?? toolResults.get(step.toolCall.id))}
                 streamingArgs={
                   step.streaming
-                    ? step.args || streamingToolArgsByCallId?.[step.toolCall.id] || streamingToolArgs || undefined
+                    ? step.args ||
+                      streamingToolArgsByCallId?.[step.toolCall.id] ||
+                      streamingToolArgs ||
+                      undefined
                     : undefined
                 }
               />
@@ -173,7 +300,8 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
           })}
 
         {/* Fallback for older runtime path without ordered steps */}
-        {isProcessing &&
+        {!shouldRenderMergedTimeline &&
+          isProcessing &&
           orderedRuntimeSteps.length === 0 &&
           draftToolCalls.map((tc) => (
             <ToolCallDisplay
@@ -181,7 +309,10 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
               toolCall={tc}
               result={toolResults.get(tc.id)}
               isExecuting={true}
-              streamingArgs={streamingToolArgsByCallId?.[tc.id] || (currentToolCall?.id === tc.id ? (streamingToolArgs || undefined) : undefined)}
+              streamingArgs={
+                streamingToolArgsByCallId?.[tc.id] ||
+                (currentToolCall?.id === tc.id ? streamingToolArgs || undefined : undefined)
+              }
             />
           ))}
 
@@ -198,13 +329,18 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
           )}
 
         {/* Active tool call streaming */}
-        {isProcessing && currentToolCall && !hasCurrentToolCallInDraft && !committedToolCallIds.has(currentToolCall.id) && (
-          <ToolCallDisplay
-            toolCall={currentToolCall}
-            isExecuting={true}
-            streamingArgs={streamingToolArgsByCallId?.[currentToolCall.id] || streamingToolArgs || undefined}
-          />
-        )}
+        {isProcessing &&
+          currentToolCall &&
+          !hasCurrentToolCallInDraft &&
+          !committedToolCallIds.has(currentToolCall.id) && (
+            <ToolCallDisplay
+              toolCall={currentToolCall}
+              isExecuting={true}
+              streamingArgs={
+                streamingToolArgsByCallId?.[currentToolCall.id] || streamingToolArgs || undefined
+              }
+            />
+          )}
 
         {/* Waiting indicator - three pulsing dots while waiting for next model response */}
         {isWaiting && !currentToolCall && !isStreamingReasoning && !isStreamingContent && (
@@ -262,17 +398,19 @@ function StreamingContentSection({
   isStreamingReasoning,
   isStreamingContent,
   lightweight = false,
+  showDivider = true,
 }: {
   reasoning?: string
   content?: string
   isStreamingReasoning: boolean
   isStreamingContent: boolean
   lightweight?: boolean
+  showDivider?: boolean
 }) {
   return (
     <>
       {/* Show divider if there's content above */}
-      <div className="border-t border-neutral-100 dark:border-neutral-700" />
+      {showDivider && <div className="border-t border-neutral-100 dark:border-neutral-700" />}
 
       {/* Reasoning */}
       {reasoning && <ReasoningSection reasoning={reasoning} streaming={isStreamingReasoning} />}
@@ -350,16 +488,20 @@ const AssistantStep = memo(function AssistantStep({
                   </div>
                   {message.workflowDryRun && (
                     <div className="text-xs text-sky-800/90 dark:text-sky-200/90">
-                      <span className="mr-2">{t('workflow.status')}: {message.workflowDryRun.status}</span>
-                      <span className="mr-2">{t('workflow.template')}: {message.workflowDryRun.templateId}</span>
-                      <span>{t('workflow.repairRounds')}: {message.workflowDryRun.repairRound}</span>
+                      <span className="mr-2">
+                        {t('workflow.status')}: {message.workflowDryRun.status}
+                      </span>
+                      <span className="mr-2">
+                        {t('workflow.template')}: {message.workflowDryRun.templateId}
+                      </span>
+                      <span>
+                        {t('workflow.repairRounds')}: {message.workflowDryRun.repairRound}
+                      </span>
                     </div>
                   )}
                 </div>
               )}
-              {isWorkflowRealRun && (
-                <WorkflowRealRunHeader payload={message.workflowRealRun} />
-              )}
+              {isWorkflowRealRun && <WorkflowRealRunHeader payload={message.workflowRealRun} />}
               <div className="prose-sm max-w-prose overflow-x-auto break-words">
                 <MarkdownContent content={message.content!} />
               </div>
@@ -382,7 +524,7 @@ const AssistantStep = memo(function AssistantStep({
 
 function CompressionStatusCard({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-300">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
       <span>{text}</span>
       {streaming && (
         <span className="ml-2 inline-block h-3 w-[2px] animate-pulse bg-neutral-400 align-middle" />
@@ -401,17 +543,24 @@ function WorkflowRealRunHeader({ payload }: { payload?: WorkflowRealRunPayload }
       {payload && (
         <div className="space-y-1 text-xs text-emerald-800/90 dark:text-emerald-200/90">
           <div>
-            <span className="mr-2">{t('workflow.status')}: {payload.status}</span>
-            <span className="mr-2">{t('workflow.template')}: {payload.templateId}</span>
-            <span className="mr-2">{t('workflow.repairRounds')}: {payload.repairRound}</span>
-            {payload.totalTokens != null && (
-              <span>Tokens: {payload.totalTokens}</span>
-            )}
+            <span className="mr-2">
+              {t('workflow.status')}: {payload.status}
+            </span>
+            <span className="mr-2">
+              {t('workflow.template')}: {payload.templateId}
+            </span>
+            <span className="mr-2">
+              {t('workflow.repairRounds')}: {payload.repairRound}
+            </span>
+            {payload.totalTokens != null && <span>Tokens: {payload.totalTokens}</span>}
           </div>
           {Object.keys(payload.nodeOutputs).length > 0 && (
             <div className="mt-1 space-y-0.5">
               {Object.entries(payload.nodeOutputs).map(([key, content]) => (
-                <details key={key} className="rounded border border-emerald-200 dark:border-emerald-800">
+                <details
+                  key={key}
+                  className="rounded border border-emerald-200 dark:border-emerald-800"
+                >
                   <summary className="cursor-pointer px-2 py-0.5 font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
                     {key}
                   </summary>

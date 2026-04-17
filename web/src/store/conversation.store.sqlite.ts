@@ -20,7 +20,11 @@ import type {
   ConversationStatus,
   DraftAssistantStep,
 } from '@/agent/message-types'
-import { createAssistantMessage, createConversation, createToolMessage } from '@/agent/message-types'
+import {
+  createAssistantMessage,
+  createConversation,
+  createToolMessage,
+} from '@/agent/message-types'
 import { parseThinkTags } from '@/agent/think-tags'
 import { extractFirstMentionedAgentId } from '@/agent/agent-mention'
 import {
@@ -38,34 +42,29 @@ import { getElicitationHandler } from '@/mcp/elicitation-handler.tsx'
  * Commit completed draft assistant content + tool calls into conversation messages.
  * Used both when starting a new assistant message (onMessageStart) and when cancelling.
  */
-function commitDraftToMessages(
-  conv: {
-    messages: Message[]
-    draftAssistant?: {
-      reasoning: string
-      content: string
-      toolCalls: ToolCall[]
-      toolResults: Record<string, string>
-      toolCall: ToolCall | null
-      toolArgs: string
-      steps: import('@/agent/message-types').DraftAssistantStep[]
-      activeReasoningStepId?: string | null
-      activeContentStepId?: string | null
-      activeToolStepId?: string | null
-      activeCompressionStepId?: string | null
-    } | null
-  },
-): boolean {
+function commitDraftToMessages(conv: {
+  messages: Message[]
+  draftAssistant?: {
+    reasoning: string
+    content: string
+    toolCalls: ToolCall[]
+    toolResults: Record<string, string>
+    toolCall: ToolCall | null
+    toolArgs: string
+    steps: import('@/agent/message-types').DraftAssistantStep[]
+    activeReasoningStepId?: string | null
+    activeContentStepId?: string | null
+    activeToolStepId?: string | null
+    activeCompressionStepId?: string | null
+  } | null
+}): boolean {
   const draft = conv.draftAssistant
   if (!draft) return false
 
   const completedToolCalls = draft.toolCalls.filter((tc) =>
     Object.prototype.hasOwnProperty.call(draft.toolResults, tc.id)
   )
-  const hasContent =
-    draft.reasoning.trim() ||
-    draft.content.trim() ||
-    completedToolCalls.length > 0
+  const hasContent = draft.reasoning.trim() || draft.content.trim() || completedToolCalls.length > 0
 
   if (!hasContent) return false
 
@@ -132,11 +131,16 @@ function ensureDraftTextStep(
   const last = draft.steps[draft.steps.length - 1]
   if (last && last.type === stepType) {
     last.streaming = true
+    if (!last.timestamp) {
+      last.timestamp = Date.now()
+    }
     return last.id
   }
+  const now = Date.now()
   const stepId = createDraftStepId(stepType)
   draft.steps.push({
     id: stepId,
+    timestamp: now,
     type: stepType,
     content: '',
     streaming: true,
@@ -158,9 +162,11 @@ function ensureImplicitReasoningStepForContentStream(draft: DraftAssistantState)
     }
   }
 
+  const now = Date.now()
   const stepId = createDraftStepId('reasoning')
   const step: DraftAssistantStep = {
     id: stepId,
+    timestamp: now,
     type: 'reasoning',
     content: '',
     streaming: true,
@@ -276,6 +282,7 @@ function applyDraftAssistantEvent(conv: Conversation, event: DraftAssistantEvent
     }
     case 'tool_start': {
       const stepId = `tool-${event.toolCall.id}`
+      const now = Date.now()
       draft.toolCall = event.toolCall
       if (!draft.toolCalls.some((x) => x.id === event.toolCall.id)) {
         draft.toolCalls.push(event.toolCall)
@@ -284,9 +291,13 @@ function applyDraftAssistantEvent(conv: Conversation, event: DraftAssistantEvent
       if (existing && existing.type === 'tool_call') {
         existing.streaming = true
         existing.toolCall = event.toolCall
+        if (!existing.timestamp) {
+          existing.timestamp = now
+        }
       } else {
         draft.steps.push({
           id: stepId,
+          timestamp: now,
           type: 'tool_call',
           toolCall: event.toolCall,
           args: '',
@@ -343,9 +354,11 @@ function applyDraftAssistantEvent(conv: Conversation, event: DraftAssistantEvent
       return
     }
     case 'compression_start': {
+      const now = Date.now()
       const stepId = createDraftStepId('compression')
       draft.steps.push({
         id: stepId,
+        timestamp: now,
         type: 'compression',
         content: '正在压缩历史上下文...',
         streaming: true,
@@ -494,8 +507,7 @@ function extractRunWorkflowToolArgs(argumentsJson: string | undefined): RunWorkf
   if (!argumentsJson) return null
   try {
     const parsed = JSON.parse(argumentsJson) as Record<string, unknown>
-    const workflowId =
-      typeof parsed.workflow_id === 'string' ? parsed.workflow_id.trim() : ''
+    const workflowId = typeof parsed.workflow_id === 'string' ? parsed.workflow_id.trim() : ''
     if (!workflowId) return null
     const mode = parsed.mode === 'real_run' ? 'real_run' : 'dry_run'
     return { workflowId, mode }
@@ -598,7 +610,11 @@ interface ConversationState {
   deleteUserMessage: (conversationId: string, userMessageId: string) => boolean
   deleteAgentLoop: (conversationId: string, userMessageId: string) => boolean
   regenerateUserMessage: (conversationId: string, userMessageId: string) => void
-  editAndResendUserMessage: (conversationId: string, userMessageId: string, newContent: string) => void
+  editAndResendUserMessage: (
+    conversationId: string,
+    userMessageId: string,
+    newContent: string
+  ) => void
   deleteConversation: (id: string) => Promise<void>
   deleteConversations: (ids: string[]) => Promise<{
     successIds: string[]
@@ -1142,7 +1158,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       ])
       const errors: string[] = []
       if (convDeleteResult.status === 'rejected') {
-        console.error('[conversation.store] Failed to delete conversation from DB:', convDeleteResult.reason)
+        console.error(
+          '[conversation.store] Failed to delete conversation from DB:',
+          convDeleteResult.reason
+        )
         errors.push(
           convDeleteResult.reason instanceof Error
             ? convDeleteResult.reason.message
@@ -1319,7 +1338,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           lastUserMessage?.content
         )
         const workflowTemplateId =
-          pendingTemplateId || workflowTemplateIdFromModel || workflowSlashRequest?.templateId || null
+          pendingTemplateId ||
+          workflowTemplateIdFromModel ||
+          workflowSlashRequest?.templateId ||
+          null
 
         if (workflowTemplateId) {
           const dryRunResult = await runWorkflowTemplateDryRun({
@@ -1411,7 +1433,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         let knownAgentIds: Set<string> | null = null
 
         try {
-          const { getWorkspaceRepository } = await import('@/sqlite/repositories/workspace.repository')
+          const { getWorkspaceRepository } =
+            await import('@/sqlite/repositories/workspace.repository')
           const workspace = await getWorkspaceRepository().findWorkspaceById(conversationId)
           activeProjectId = workspace?.projectId || null
         } catch {
@@ -1466,7 +1489,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             }
 
             const { runRealWorkflow } = await import('@/agent/workflow/real-run')
-            const { buildEnhancedWorkflowNodePrompt } = await import('@/agent/workflow/node-enhancements')
+            const { buildEnhancedWorkflowNodePrompt } =
+              await import('@/agent/workflow/node-enhancements')
             const result = await runRealWorkflow({
               templateId: pendingRealRunRequest.templateId,
               rubricDsl: pendingRealRunRequest.rubricDsl,
@@ -1801,13 +1825,15 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             if (context.isError) return undefined
             const changeTools = new Set(['write', 'edit', 'delete'])
             if (!changeTools.has(context.toolName)) return undefined
-            const { useConversationContextStore } = await import('@/store/conversation-context.store')
+            const { useConversationContextStore } =
+              await import('@/store/conversation-context.store')
             await useConversationContextStore.getState().refreshPendingChanges(true)
             return undefined
           },
           onLoopComplete: async () => {
             // Refresh pending changes after each agent loop completes
-            const { useConversationContextStore } = await import('@/store/conversation-context.store')
+            const { useConversationContextStore } =
+              await import('@/store/conversation-context.store')
             await useConversationContextStore.getState().refreshPendingChanges()
           },
         })
@@ -1831,7 +1857,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           // cancelAgent's set() has cleared activeRunId. In that case, we still need to save
           // the messages we have.
           const current = get().conversations.find((c) => c.id === conversationId)
-          const isRunCurrent = !!current && current.activeRunId === runId && (current.runEpoch || 0) === runEpoch
+          const isRunCurrent =
+            !!current && current.activeRunId === runId && (current.runEpoch || 0) === runEpoch
           if (!isRunCurrent && !finalMessages) return
 
           committed = true
@@ -1874,10 +1901,14 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               })
 
             try {
-              const { useConversationContextStore } = await import('@/store/conversation-context.store')
+              const { useConversationContextStore } =
+                await import('@/store/conversation-context.store')
               await useConversationContextStore.getState().refreshPendingChanges(true)
             } catch (err) {
-              console.warn('[conversation.store] Failed to refresh pending changes on complete:', err)
+              console.warn(
+                '[conversation.store] Failed to refresh pending changes on complete:',
+                err
+              )
             }
 
             try {
@@ -2041,10 +2072,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               const c = state.conversations.find((c) => c.id === conversationId)
               if (c && c.activeRunId === runId) {
                 c.status = 'tool_calling'
-                if (
-                  runWorkflowArgs?.mode === 'real_run' &&
-                  !c.workflowExecution
-                ) {
+                if (runWorkflowArgs?.mode === 'real_run' && !c.workflowExecution) {
                   const bundle = getWorkflowTemplateBundle(runWorkflowArgs.workflowId)
                   c.workflowExecution = {
                     templateId: bundle?.id || runWorkflowArgs.workflowId,
@@ -2135,7 +2163,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
                 if (hasMoreTools) {
                   // Continue with next tool
                   c.currentToolCall = c.activeToolCalls[c.activeToolCalls.length - 1]
-                  c.streamingToolArgs = (c.streamingToolArgsByCallId || {})[c.currentToolCall.id] || ''
+                  c.streamingToolArgs =
+                    (c.streamingToolArgsByCallId || {})[c.currentToolCall.id] || ''
                   // Keep status as 'tool_calling' since we're still executing tools
                   c.status = 'tool_calling'
                 } else {
@@ -2508,16 +2537,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       const settingsState = useSettingsStore.getState()
       const effectiveConfig = settingsState.getEffectiveProviderConfig()
       const providerType = settingsState.providerType
-      const modelName =
-        effectiveConfig?.modelName || settingsState.modelName
+      const modelName = effectiveConfig?.modelName || settingsState.modelName
 
-      await get().runAgent(
-        conversationId,
-        providerType,
-        modelName,
-        4096,
-        null
-      )
+      await get().runAgent(conversationId, providerType, modelName, 4096, null)
     },
 
     cancelAgent: (conversationId: string) => {
