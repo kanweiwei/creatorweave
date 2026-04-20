@@ -14,9 +14,6 @@ export interface ConversationBadgeProps {
   compact?: boolean
 }
 
-/** @deprecated Use ConversationBadgeProps */
-export type SessionBadgeProps = ConversationBadgeProps
-
 export const ConversationBadge: React.FC<ConversationBadgeProps> = ({ onClick, compact = false }) => {
   const { activeWorkspaceId: activeConversationId, workspaces: conversations, currentPendingCount, initialized } =
     useConversationContextStore()
@@ -111,6 +108,3 @@ export const ConversationBadge: React.FC<ConversationBadgeProps> = ({ onClick, c
     </button>
   )
 }
-
-/** @deprecated Use ConversationBadge */
-export const SessionBadge = ConversationBadge

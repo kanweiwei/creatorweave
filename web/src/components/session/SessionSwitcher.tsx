@@ -16,9 +16,6 @@ export interface ConversationSwitcherProps {
   showDelete?: boolean
 }
 
-/** @deprecated Use ConversationSwitcherProps */
-export type SessionSwitcherProps = ConversationSwitcherProps
-
 export const ConversationSwitcher: React.FC<ConversationSwitcherProps> = ({
   onConversationSwitch,
   showCreate = false,
@@ -207,6 +204,3 @@ export const ConversationSwitcher: React.FC<ConversationSwitcherProps> = ({
     </div>
   )
 }
-
-/** @deprecated Use ConversationSwitcher */
-export const SessionSwitcher = ConversationSwitcher

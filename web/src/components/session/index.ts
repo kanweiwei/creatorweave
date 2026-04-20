@@ -4,10 +4,10 @@
  * New call sites should import from `@/components/conversation`.
  */
 
-export { ConversationBadge, SessionBadge } from './SessionBadge'
+export { ConversationBadge } from './SessionBadge'
 export { ConversationStorageBadge } from './SessionBadgeWithStorage'
-export { ConversationSwitcher, SessionSwitcher } from './SessionSwitcher'
+export { ConversationSwitcher } from './SessionSwitcher'
 
-export type { ConversationBadgeProps, SessionBadgeProps } from './SessionBadge'
+export type { ConversationBadgeProps } from './SessionBadge'
 export type { ConversationStorageBadgeProps } from './SessionBadgeWithStorage'
-export type { ConversationSwitcherProps, SessionSwitcherProps } from './SessionSwitcher'
+export type { ConversationSwitcherProps } from './SessionSwitcher'
