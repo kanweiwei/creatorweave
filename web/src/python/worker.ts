@@ -58,8 +58,8 @@ let pyodideReadyPromise = null
 /** @type {any} NativeFS handle for syncing changes back */
 let nativefs = null
 
-/** @type {FileSystemDirectoryHandle | null} Current mounted directory handle */
-let currentDirHandle = null
+/** @type {Promise<void>} Serialize mount/unmount operations to avoid /mnt races */
+let fsOpQueue = Promise.resolve()
 
 // Stdout/stderr capture
 /** @type {string[]} */
@@ -143,16 +143,24 @@ function sendError(id, errorMessage) {
 }
 
 /**
- * Check if directory handle is the same as current mounted directory
- * @param {FileSystemDirectoryHandle | null} handle1
- * @param {FileSystemDirectoryHandle | null} handle2
- * @returns {boolean}
+ * Run filesystem mount-point mutations sequentially to avoid race conditions.
+ * @template T
+ * @param {() => Promise<T>} operation
+ * @returns {Promise<T>}
  */
-function isSameHandle(handle1, handle2) {
-  if (!handle1 || !handle2) return false
-  if (handle1 === handle2) return true
-  // Same directory requested multiple times may return different references
-  return handle1.name === handle2.name && handle1.kind === handle2.kind
+async function runExclusiveFSOperation(operation) {
+  let release
+  const next = new Promise((resolve) => {
+    release = resolve
+  })
+  const previous = fsOpQueue
+  fsOpQueue = next
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+  }
 }
 
 /**
@@ -162,7 +170,6 @@ async function cleanupNativeFS() {
   if (!nativefs) return
 
   nativefs = null
-  currentDirHandle = null
 }
 
 /**
@@ -174,23 +181,20 @@ async function unmountAndRemoveMnt() {
   // Cleanup nativefs first
   await cleanupNativeFS()
 
-  // Unmount if /mnt is a mount point
+  // Unmount /mnt first (idempotent: ignore "not mounted" failures)
   try {
-    const mntPath = pyodide.FS.analyzePath('/mnt')
-    if (mntPath.mountPoint) {
-      pyodide.FS.unmount('/mnt')
-      console.log('[Pyodide Worker] Unmounted /mnt')
-    }
+    pyodide.FS.unmount('/mnt')
+    console.log('[Pyodide Worker] Unmounted /mnt')
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    console.warn('[Pyodide Worker] Unmount failed:', msg)
+    console.warn('[Pyodide Worker] Unmount skipped/failed:', msg)
   }
 
-  // Remove /mnt directory if it exists
+  // Remove /mnt and all child entries if it exists
   try {
     const mntPath = pyodide.FS.analyzePath('/mnt')
     if (mntPath.exists) {
-      pyodide.FS.rmdir('/mnt')
+      rmrf('/mnt')
       console.log('[Pyodide Worker] Removed /mnt directory')
     }
   } catch (error) {
@@ -200,44 +204,72 @@ async function unmountAndRemoveMnt() {
 }
 
 /**
- * Mount directory handle to /mnt using mountNativeFS
- *
- * Logic:
- * 1. If /mnt already mounted with same directory → reuse (no-op)
- * 2. If different directory selected → cleanup old, mount new
- * 3. On unmount request → remove /mnt directory
- *
- * @param {FileSystemDirectoryHandle} dirHandle - Directory to mount
+ * Recursively remove all entries under a path, then remove the directory itself.
+ * @param {string} path
  */
-async function ensureMounted(dirHandle) {
-  // Validate pyodide is initialized
-  if (!pyodide) {
-    throw new Error('Pyodide not initialized. Call initPyodide() first.')
-  }
-
-  // Case 1: Same directory already mounted → reuse (no-op)
-  if (isSameHandle(currentDirHandle, dirHandle) && nativefs) {
-    console.log('[Pyodide Worker] /mnt already mounted with same directory, reusing')
+function rmrf(path) {
+  try {
+    const stat = pyodide.FS.stat(path)
+    if (!pyodide.FS.isDir(stat.mode)) {
+      try { pyodide.FS.unlink(path) } catch {}
+      return
+    }
+  } catch {
     return
   }
 
-  console.log('[Pyodide Worker] Mounting new directory:', dirHandle.name)
-
-  // Case 2: Different directory → cleanup old, mount new
-  await unmountAndRemoveMnt()
-
-  // Create /mnt directory for mount point
-  pyodide.FS.mkdir('/mnt')
-
-  // Mount using mountNativeFS
   try {
-    nativefs = await pyodide.mountNativeFS('/mnt', dirHandle)
-    currentDirHandle = dirHandle
-    console.log(`[Pyodide Worker] Directory "${dirHandle.name}" mounted at /mnt`)
-  } catch (mountError) {
-    console.error('[Pyodide Worker] Mount failed:', mountError)
-    throw mountError
-  }
+    const entries = pyodide.FS.readdir(path).filter((e) => e !== '.' && e !== '..')
+    for (const entry of entries) {
+      rmrf(`${path}/${entry}`)
+    }
+  } catch {}
+
+  try { pyodide.FS.rmdir(path) } catch {}
+}
+
+/**
+ * Mount directory handle to /mnt using mountNativeFS.
+ * Always remounts to refresh PROSFS cache and reflect OPFS external changes.
+ * @param {FileSystemDirectoryHandle} dirHandle - Directory to mount
+ */
+async function ensureMounted(dirHandle) {
+  return runExclusiveFSOperation(async () => {
+    // Validate pyodide is initialized
+    if (!pyodide) {
+      throw new Error('Pyodide not initialized. Call initPyodide() first.')
+    }
+
+    console.log('[Pyodide Worker] Remounting directory:', dirHandle.name)
+
+    // Always clean old mount first so external OPFS changes become visible
+    await unmountAndRemoveMnt()
+
+    // Create /mnt directory for mount point
+    if (!pyodide.FS.analyzePath('/mnt').exists) {
+      pyodide.FS.mkdir('/mnt')
+    }
+
+    // Mount using mountNativeFS
+    try {
+      nativefs = await pyodide.mountNativeFS('/mnt', dirHandle)
+      console.log(`[Pyodide Worker] Directory "${dirHandle.name}" mounted at /mnt`)
+    } catch (mountError) {
+      const mountMsg = mountError instanceof Error ? mountError.message : String(mountError)
+      if (mountMsg.includes('already a file system mount point')) {
+        console.warn('[Pyodide Worker] Detected stale mount point, retrying mount once')
+        await unmountAndRemoveMnt()
+        if (!pyodide.FS.analyzePath('/mnt').exists) {
+          pyodide.FS.mkdir('/mnt')
+        }
+        nativefs = await pyodide.mountNativeFS('/mnt', dirHandle)
+        console.log(`[Pyodide Worker] Directory "${dirHandle.name}" mounted at /mnt (retry)`)
+        return
+      }
+      console.error('[Pyodide Worker] Mount failed:', mountError)
+      throw mountError
+    }
+  })
 }
 
 /**
@@ -245,8 +277,10 @@ async function ensureMounted(dirHandle) {
  * Called when user releases the folder
  */
 async function unmountDir() {
-  console.log('[Pyodide Worker] Unmounting directory and removing /mnt')
-  await unmountAndRemoveMnt()
+  return runExclusiveFSOperation(async () => {
+    console.log('[Pyodide Worker] Unmounting directory and removing /mnt')
+    await unmountAndRemoveMnt()
+  })
 }
 
 /**
