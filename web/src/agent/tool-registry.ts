@@ -37,12 +37,11 @@ import {
 
 // Import skill tools
 import {
-  generateReadSkillTool,
+  readSkillDefinition,
   readSkillExecutor,
   readSkillResourceDefinition,
   readSkillResourceExecutor,
 } from '@/skills/skill-tools'
-import { getAllEnabledSkillNames } from '@/skills/skill-storage'
 
 // Switch mode tool
 import { switchAgentModeDefinition, createSwitchModeExecutor } from './tools/switch-mode.tool'
@@ -240,20 +239,10 @@ export class ToolRegistry {
   //=============================================================================
 
   /**
-   * Register or update skill tools
-   * The read_skill tool has a dynamic enum of enabled skill names
+   * Register skill tools
    */
-  async registerSkillTools(): Promise<void> {
-    // Get current enabled skill names for the enum
-    const enabledSkillNames = await getAllEnabledSkillNames()
-
-    // Generate read_skill tool with dynamic enum
-    const readSkillDefinition = generateReadSkillTool(enabledSkillNames)
-
-    // Register read_skill (will update if already exists)
+  registerSkillTools(): void {
     this.register(readSkillDefinition, readSkillExecutor)
-
-    // Register read_skill_resource (static definition)
     this.register(readSkillResourceDefinition, readSkillResourceExecutor)
   }
 
@@ -284,26 +273,12 @@ export class ToolRegistry {
 
 /** Singleton instance */
 let instance: ToolRegistry | null = null
-let skillToolsInitPromise: Promise<void> | null = null
 
 export function getToolRegistry(): ToolRegistry {
   if (!instance) {
     instance = new ToolRegistry()
     instance.registerBuiltins()
-    // Skill tools will be registered asynchronously
-    skillToolsInitPromise = instance.registerSkillTools().catch((err) => {
-      console.error('[ToolRegistry] Failed to register skill tools:', err)
-    })
+    instance.registerSkillTools()
   }
   return instance
-}
-
-/**
- * Wait for skill tools to be registered
- * Call this if you need to ensure skill tools are available
- */
-export async function awaitSkillTools(): Promise<void> {
-  if (skillToolsInitPromise) {
-    await skillToolsInitPromise
-  }
 }

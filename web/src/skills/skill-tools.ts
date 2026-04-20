@@ -14,29 +14,25 @@ import { formatResourceList } from './skill-resources'
 //=============================================================================
 
 /**
- * Dynamic tool definition generator for read_skill
- * The enum parameter is populated with enabled skill names
+ * Static tool definition for read_skill
  */
-export function generateReadSkillTool(enabledSkillNames: string[]): ToolDefinition {
-  return {
-    type: 'function',
-    function: {
-      name: 'read_skill',
-      description:
-        "Load the full content of a skill by its name. Use this when you need detailed instructions for a task that matches a skill's description.",
-      parameters: {
-        type: 'object',
-        properties: {
-          skill_name: {
-            type: 'string',
-            description: 'The name of the skill to load (e.g., "code-review", "debugging")',
-            enum: enabledSkillNames,
-          },
+export const readSkillDefinition: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'read_skill',
+    description:
+      "Load the full content of a skill by its name. Use this when you need detailed instructions for a task that matches a skill's description. Only load skills listed in <available_skills>.",
+    parameters: {
+      type: 'object',
+      properties: {
+        skill_name: {
+          type: 'string',
+          description: 'The name of the skill to load (e.g., "code-review", "debugging")',
         },
-        required: ['skill_name'],
       },
+      required: ['skill_name'],
     },
-  }
+  },
 }
 
 /**
