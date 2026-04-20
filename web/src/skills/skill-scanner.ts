@@ -242,3 +242,55 @@ async function resolveDirectory(
   }
   return current
 }
+
+/**
+ * Sync skill resource files to OPFS so Pyodide can access them at /mnt/.skills/.
+ * Writes directly to OPFS files/ directory without triggering pending sync.
+ */
+export async function syncResourcesToOPFS(
+  result: SkillScanResult
+): Promise<void> {
+  if (result.resources.length === 0) return
+
+  const { getActiveWorkspace } = await import('@/store/workspace.store')
+  const active = await getActiveWorkspace()
+  if (!active) {
+    console.warn('[SkillScanner] No active workspace, skipping OPFS sync')
+    return
+  }
+
+  const filesDir = await active.workspace.getFilesDir()
+
+  for (const resource of result.resources) {
+    // skillId format: "project:.skills/word-processor" → extract ".skills/word-processor"
+    const skillDir = resource.skillId.replace(/^project:/, '')
+    const opfsPath = `${skillDir}/${resource.resourcePath}`
+
+    try {
+      // Create parent directories
+      const parts = opfsPath.split('/')
+      let currentDir = filesDir
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true })
+      }
+
+      // Write file
+      const fileName = parts[parts.length - 1]
+      const fileHandle = await currentDir.getFileHandle(fileName, { create: true })
+      const writable = await fileHandle.createWritable()
+      await writable.write(resource.content)
+      await writable.close()
+
+      console.log(`[SkillScanner] Synced to OPFS: ${opfsPath} (${resource.size} bytes)`)
+    } catch (err) {
+      console.warn(
+        `[SkillScanner] Failed to sync ${opfsPath}:`,
+        err instanceof Error ? err.message : String(err)
+      )
+    }
+  }
+
+  console.log(
+    `[SkillScanner] OPFS sync complete: ${result.resources.length} resources`
+  )
+}

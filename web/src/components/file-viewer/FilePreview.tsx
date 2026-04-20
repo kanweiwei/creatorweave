@@ -162,9 +162,15 @@ export function FilePreview({ filePath, fileHandle, onClose }: FilePreviewProps)
             text = result.content
             fileSize = new Blob([result.content]).size
           } else {
-            const decoder = new TextDecoder()
-            text = decoder.decode(result.content as ArrayBuffer)
-            fileSize = (result.content as ArrayBuffer).byteLength
+            // ArrayBuffer - for docx, keep as Blob; for text, decode it
+            const buffer = result.content as ArrayBuffer
+            fileSize = buffer.byteLength
+            if (fileType === 'docx') {
+              blob = new Blob([buffer])
+            } else {
+              const decoder = new TextDecoder()
+              text = decoder.decode(buffer)
+            }
           }
           opfsMtime = result.metadata.mtime || null
         } catch {

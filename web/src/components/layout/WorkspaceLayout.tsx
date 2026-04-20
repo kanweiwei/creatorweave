@@ -35,7 +35,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { SkillsManager } from '@/components/skills/SkillsManager'
 import { ProjectSkillsDialog } from '@/components/skills/ProjectSkillsDialog'
 import { ToolsPanel, QuickActionsPanel } from '@/components/tools'
-import { scanProjectSkills } from '@/skills/skill-scanner'
+import { scanProjectSkills, syncResourcesToOPFS } from '@/skills/skill-scanner'
 import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
 import { createUserMessage } from '@/agent/message-types'
@@ -302,6 +302,9 @@ export function WorkspaceLayout({
             '[WorkspaceLayout] No project skills found (checked .claude/skills/ and .skills/)'
           )
         }
+
+        // Sync skill resources to OPFS so Pyodide can access them at /mnt/.skills/
+        await syncResourcesToOPFS(result)
       } catch (error) {
         console.error('Failed to scan project skills:', error)
       }
