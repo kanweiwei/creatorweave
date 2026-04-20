@@ -634,19 +634,24 @@ export class WorkspaceRuntime {
     if (directoryHandle && !isPendingPath) {
       // For non-pending files, always prefer native disk view so external
       // filesystem changes are visible to tools immediately.
-      const native = await this.readFromNativeFS(normalizedPath, directoryHandle)
+      try {
+        const native = await this.readFromNativeFS(normalizedPath, directoryHandle)
 
-      // Best-effort cache eviction: once disk is the source of truth for a
-      // non-pending path, clear stale OPFS body to reduce storage usage.
-      if (this.hasFileInIndex(normalizedPath)) {
-        try {
-          await this.deleteFromFilesDirIfExists(normalizedPath)
-        } catch {
-          // Ignore cleanup failures; read should still succeed.
+        // Best-effort cache eviction: once disk is the source of truth for a
+        // non-pending path, clear stale OPFS body to reduce storage usage.
+        if (this.hasFileInIndex(normalizedPath)) {
+          try {
+            await this.deleteFromFilesDirIfExists(normalizedPath)
+          } catch {
+            // Ignore cleanup failures; read should still succeed.
+          }
         }
-      }
 
-      return native
+        return native
+      } catch {
+        // Disk read failed (e.g. file only exists in OPFS, not yet synced).
+        // Fall through to OPFS read below.
+      }
     }
 
     // Read from files/ only (no native FS available or has pending changes without conflict)
