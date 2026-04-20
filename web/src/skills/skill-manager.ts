@@ -107,32 +107,35 @@ export class SkillManager {
       }
     }
 
-    // Then, save resources and update their skillId references
+    // Replace existing resources for scanned skills to keep DB in sync with disk.
+    for (const skill of skills) {
+      await storage.deleteSkillResources(skill.id)
+    }
+
+    // Then, save resources
     for (const resource of resources) {
-      // Update resource ID with actual skill ID
-      if (resource.skillId === 'pending') {
-        // Find the matching skill by extracting skill ID from resource path
-        // Resources are in {skillDir}/{resourceType}/{filename}
-        // So we need to match based on the skill directory
-
-        // Try to find a skill that matches this resource
-        // For project skills, the ID format is project:{path}
-        // We need to find which skill owns this resource
-        for (const skill of skills) {
-          // Check if this resource could belong to this skill
-          // Project skill IDs are like "project:.claude/skills/my-skill"
-          // We'll match by checking if any skill was found in the same scan
-          const skillId = skill.id
-          resource.skillId = skillId
-          resource.id = generateResourceId(skillId, resource.resourcePath)
-
-          // Save the resource
-          await storage.saveSkillResource(resource)
-          resourcesAdded++
-          console.log(`[SkillManager] Imported resource: ${resource.resourcePath}`)
-          break // Only assign to first matching skill
+      let skillId = resource.skillId
+      if (!skillId || skillId === 'pending') {
+        if (skills.length !== 1) {
+          errors.push(
+            `Unable to resolve owning skill for resource '${resource.resourcePath}' (skillId missing)`
+          )
+          continue
         }
+        skillId = skills[0].id
       }
+
+      const normalizedResource = {
+        ...resource,
+        skillId,
+        id: resource.id && !resource.id.startsWith('pending:')
+          ? resource.id
+          : generateResourceId(skillId, resource.resourcePath),
+      }
+
+      await storage.saveSkillResource(normalizedResource)
+      resourcesAdded++
+      console.log(`[SkillManager] Imported resource: ${normalizedResource.resourcePath}`)
     }
 
     if (added > 0 || resourcesAdded > 0) {

@@ -31,17 +31,20 @@ import { useSkillsStore } from '@/store/skills.store'
 import type { SkillMetadata } from '@/skills/skill-types'
 import { cn } from '@/lib/utils'
 import { useT } from '@/i18n'
+import { getSkillManager } from '@/skills/skill-manager'
 
 interface SkillsManagerProps {
   /** Whether the dialog is open */
   open: boolean
   /** Callback when dialog is closed */
   onClose: () => void
+  /** Optional project directory handle for re-scan/re-register */
+  directoryHandle?: FileSystemDirectoryHandle | null
 }
 
 type FilterType = 'all' | 'enabled' | 'disabled'
 
-export function SkillsManager({ open, onClose }: SkillsManagerProps) {
+export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsManagerProps) {
   const skillsStore = useSkillsStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
@@ -91,9 +94,19 @@ export function SkillsManager({ open, onClose }: SkillsManagerProps) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
-    await skillsStore.loadSkills()
-    setRefreshing(false)
-  }, [skillsStore])
+    try {
+      if (directoryHandle) {
+        const manager = getSkillManager()
+        const { errors } = await manager.scanProject(directoryHandle)
+        if (errors.length > 0) {
+          console.warn('[SkillsManager] Project skill re-scan completed with errors:', errors)
+        }
+      }
+      await skillsStore.loadSkills()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [directoryHandle, skillsStore])
 
   const handleToggle = useCallback(
     async (id: string, enabled: boolean) => {

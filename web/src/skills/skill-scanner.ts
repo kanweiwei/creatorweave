@@ -89,17 +89,11 @@ async function scanDirectoryForSkillMd(
   for await (const [name, entry] of dirHandle.entries()) {
     const entryPath = `${currentPath}/${name}`
     const isSkillMd = name.toUpperCase() === 'SKILL.MD'
-    const isResourceDir = ['references', 'scripts', 'assets'].includes(name)
 
     if (entry.kind === 'directory') {
       const subDirHandle = await dirHandle.getDirectoryHandle(name)
-      // Check if this is a resource directory
-      if (isResourceDir) {
-        await scanResourceDirectory(subDirHandle, name, currentPath, resources, errors)
-      } else {
-        // Recursively scan subdirectories
-        await scanDirectoryForSkillMd(subDirHandle, entryPath, skills, resources, errors)
-      }
+      // Recursively scan subdirectories
+      await scanDirectoryForSkillMd(subDirHandle, entryPath, skills, resources, errors)
     } else if (entry.kind === 'file' && isSkillMd) {
       console.log(`[SkillScanner] Found SKILL.md: ${entryPath}`)
 
@@ -114,6 +108,13 @@ async function scanDirectoryForSkillMd(
           result.skill.id = `project:${dirPath}`
           skills.push(result.skill)
           console.log(`[SkillScanner] Parsed skill: ${result.skill.name} (${result.skill.id})`)
+          await scanSkillDirectoryResources(
+            dirHandle,
+            dirPath,
+            result.skill.id,
+            resources,
+            errors
+          )
         } else if (result.error) {
           errors.push(`${entryPath}: ${result.error}`)
         }
@@ -125,31 +126,54 @@ async function scanDirectoryForSkillMd(
 }
 
 /**
- * Scan a resource directory (references/, scripts/, assets/) for files.
- * Resources are stored relative to their parent skill directory.
+ * Scan all files under a skill directory recursively.
+ * Stores resources relative to the skill root (excluding SKILL.md).
  */
-async function scanResourceDirectory(
-  entry: FileSystemDirectoryHandle,
-  dirName: string,
+async function scanSkillDirectoryResources(
+  skillDirHandle: FileSystemDirectoryHandle,
   skillDirPath: string,
+  skillId: string,
   resources: SkillResource[],
   errors: string[]
 ): Promise<void> {
-  const dirHandle = entry // Already a directory handle
-  const resourceType = getResourceType(dirName)
   let totalSize = 0
   let fileCount = 0
 
-  console.log(`[SkillScanner] Scanning resource directory: ${skillDirPath}/${dirName}`)
+  console.log(`[SkillScanner] Scanning skill resources: ${skillDirPath}`)
 
-  for await (const [name, entry] of dirHandle.entries()) {
-    if (entry.kind === 'file') {
-      const resourcePath = `${dirName}/${name}`
+  const ignoredDirs = new Set([
+    '.git',
+    '.svn',
+    '.hg',
+    'node_modules',
+    '__pycache__',
+    '.pytest_cache',
+    '.venv',
+    'venv',
+  ])
+
+  const scanRecursive = async (
+    dirHandle: FileSystemDirectoryHandle,
+    relativeDir: string
+  ): Promise<void> => {
+    for await (const [name, entry] of dirHandle.entries()) {
+      if (entry.kind === 'directory') {
+        if (ignoredDirs.has(name)) continue
+
+        const subDir = await dirHandle.getDirectoryHandle(name)
+        const nextRelativeDir = relativeDir ? `${relativeDir}/${name}` : name
+        await scanRecursive(subDir, nextRelativeDir)
+        continue
+      }
+
+      if (name.toUpperCase() === 'SKILL.MD') continue
+
+      const resourcePath = relativeDir ? `${relativeDir}/${name}` : name
+
       try {
         const file = await entry.getFile()
         const size = file.size
 
-        // Check file size limit
         if (size > RESOURCE_LIMITS.MAX_FILE_SIZE) {
           errors.push(
             `${skillDirPath}/${resourcePath}: File too large (${size} bytes, max ${RESOURCE_LIMITS.MAX_FILE_SIZE})`
@@ -157,7 +181,6 @@ async function scanResourceDirectory(
           continue
         }
 
-        // Check total size limit
         if (totalSize + size > RESOURCE_LIMITS.MAX_TOTAL_SIZE) {
           errors.push(
             `${skillDirPath}/${resourcePath}: Total resources too large, skipping remaining files`
@@ -165,7 +188,6 @@ async function scanResourceDirectory(
           break
         }
 
-        // Check file count limit
         if (fileCount >= RESOURCE_LIMITS.MAX_RESOURCES_PER_SKILL) {
           errors.push(
             `${skillDirPath}/${resourcePath}: Too many resource files, skipping remaining`
@@ -173,16 +195,14 @@ async function scanResourceDirectory(
           break
         }
 
-        // Read file content
         const content = await file.text()
         const contentType = getMimeType(name)
-
-        // Generate resource ID (will be updated when skill is saved)
-        const resourceId = generateResourceId('pending', resourcePath)
+        const topLevelDir = resourcePath.split('/')[0] || ''
+        const resourceType = getResourceType(topLevelDir)
 
         resources.push({
-          id: resourceId,
-          skillId: 'pending', // Will be updated when skill is saved
+          id: generateResourceId(skillId, resourcePath),
+          skillId,
           resourcePath,
           resourceType,
           content,
@@ -195,13 +215,12 @@ async function scanResourceDirectory(
         fileCount++
         console.log(`[SkillScanner] Found resource: ${resourcePath} (${size} bytes)`)
       } catch (e) {
-        errors.push(
-          `${skillDirPath}/${resourcePath}: ${e instanceof Error ? e.message : String(e)}`
-        )
+        errors.push(`${skillDirPath}/${resourcePath}: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
   }
 
+  await scanRecursive(skillDirHandle, '')
   console.log(`[SkillScanner] Resource scan complete: ${fileCount} files, ${totalSize} bytes`)
 }
 

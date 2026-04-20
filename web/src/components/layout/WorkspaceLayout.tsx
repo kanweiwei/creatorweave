@@ -631,7 +631,11 @@ export function WorkspaceLayout({
       </div>
 
       {/* Skills Manager Dialog */}
-      <SkillsManager open={skillsManagerOpen} onClose={() => setSkillsManagerOpen(false)} />
+      <SkillsManager
+        open={skillsManagerOpen}
+        onClose={() => setSkillsManagerOpen(false)}
+        directoryHandle={directoryHandle}
+      />
 
       {/* Tools Panel */}
       <ToolsPanel isOpen={toolsPanelOpen} onClose={() => setToolsPanelOpen(false)} />
