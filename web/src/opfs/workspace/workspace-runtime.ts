@@ -734,6 +734,16 @@ export class WorkspaceRuntime {
   }
 
   /**
+   * Read baseline content from .baseline/ for pending modify/delete comparisons.
+   */
+  async readBaselineFile(path: string): Promise<FileContent | null> {
+    if (!this.initialized) await this.initialize()
+    const normalizedPath = this.normalizeWorkspacePath(path)
+    const baseline = await this.readFromBaselineDir(normalizedPath)
+    return baseline?.content ?? null
+  }
+
+  /**
    * Write file to workspace (files/ + pending)
    * @param path File path
    * @param content File content

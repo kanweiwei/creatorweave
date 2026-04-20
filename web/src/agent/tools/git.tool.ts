@@ -35,6 +35,12 @@ function ensureWorkspaceId(context: { workspaceId?: string | null }): string | n
   return workspaceId
 }
 
+function parseBooleanArg(value: unknown, name: string): { ok: true; value: boolean } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: false }
+  if (typeof value === 'boolean') return { ok: true, value }
+  return { ok: false, error: `${name} must be boolean` }
+}
+
 //=============================================================================
 // git_status - 查看工作区状态
 //=============================================================================
@@ -118,9 +124,37 @@ export const gitDiffDefinition: ToolDefinition = {
           type: 'string',
           description: 'Snapshot ID for snapshot mode',
         },
+        cached: {
+          type: 'boolean',
+          description: 'Alias of --cached. Equivalent to mode="cached".',
+        },
         path: {
           type: 'string',
           description: 'Filter by path prefix',
+        },
+        name_only: {
+          type: 'boolean',
+          description: 'Show only names of changed files',
+        },
+        name_status: {
+          type: 'boolean',
+          description: 'Show names and status (A/M/D) of changed files',
+        },
+        stat: {
+          type: 'boolean',
+          description: 'Show diffstat summary',
+        },
+        numstat: {
+          type: 'boolean',
+          description: 'Show numeric diffstat summary',
+        },
+        patch: {
+          type: 'boolean',
+          description: 'Show patch body (default true unless stat/numstat/name_only/name_status is used)',
+        },
+        unified: {
+          type: 'number',
+          description: 'Generate diffs with <n> lines of context (like -U<n>)',
         },
         format: {
           type: 'string',
@@ -140,7 +174,7 @@ export const gitDiffExecutor: ToolExecutor = async (args, context) => {
     }
 
     const modeRaw = args.mode
-    const mode = (modeRaw as 'working' | 'cached' | 'snapshot') || 'working'
+    let mode = (modeRaw as 'working' | 'cached' | 'snapshot') || 'working'
     if (mode !== 'working' && mode !== 'cached' && mode !== 'snapshot') {
       return toolErrorJson(
         'git_diff',
@@ -148,10 +182,62 @@ export const gitDiffExecutor: ToolExecutor = async (args, context) => {
         'mode must be one of: working, cached, snapshot'
       )
     }
+
+    const cachedParsed = parseBooleanArg(args.cached, 'cached')
+    if (!cachedParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', cachedParsed.error)
+    }
+    if (cachedParsed.value) {
+      if (args.mode !== undefined && mode !== 'cached') {
+        return toolErrorJson(
+          'git_diff',
+          'invalid_arguments',
+          'cached=true conflicts with mode. Use mode="cached" or remove mode.'
+        )
+      }
+      mode = 'cached'
+    }
+
     const snapshotId = args.snapshot_id as string | undefined
     if (mode === 'snapshot' && !snapshotId) {
       return toolErrorJson('git_diff', 'invalid_arguments', 'snapshot_id is required when mode="snapshot"')
     }
+
+    const nameOnlyParsed = parseBooleanArg(args.name_only, 'name_only')
+    if (!nameOnlyParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', nameOnlyParsed.error)
+    }
+    const nameStatusParsed = parseBooleanArg(args.name_status, 'name_status')
+    if (!nameStatusParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', nameStatusParsed.error)
+    }
+    if (nameOnlyParsed.value && nameStatusParsed.value) {
+      return toolErrorJson(
+        'git_diff',
+        'invalid_arguments',
+        'name_only and name_status cannot both be true'
+      )
+    }
+
+    const statParsed = parseBooleanArg(args.stat, 'stat')
+    if (!statParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', statParsed.error)
+    }
+    const numstatParsed = parseBooleanArg(args.numstat, 'numstat')
+    if (!numstatParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', numstatParsed.error)
+    }
+
+    const patchParsed = parseBooleanArg(args.patch, 'patch')
+    if (!patchParsed.ok) {
+      return toolErrorJson('git_diff', 'invalid_arguments', patchParsed.error)
+    }
+
+    const unified = args.unified as number | undefined
+    if (unified !== undefined && (!Number.isFinite(unified) || unified < 0 || !Number.isInteger(unified))) {
+      return toolErrorJson('git_diff', 'invalid_arguments', 'unified must be a non-negative integer')
+    }
+
     const path = args.path as string | undefined
     const parsedFormat = parseFormat(args.format)
     if (!parsedFormat.ok) {
@@ -162,13 +248,24 @@ export const gitDiffExecutor: ToolExecutor = async (args, context) => {
       mode,
       snapshotId,
       path,
+      directoryHandle: context.directoryHandle,
+      contextLines: unified,
     })
 
-    const output = formatGitDiff(result)
+    const renderOptions = {
+      nameOnly: nameOnlyParsed.value,
+      nameStatus: nameStatusParsed.value,
+      stat: statParsed.value,
+      numstat: numstatParsed.value,
+      patch: args.patch === undefined ? undefined : patchParsed.value,
+    }
+
+    const output = formatGitDiff(result, renderOptions)
     if (parsedFormat.format === 'json') {
       return toolOkJson('git_diff', {
         format: 'json',
         diff: result,
+        render: renderOptions,
       })
     }
 

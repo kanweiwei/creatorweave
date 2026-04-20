@@ -89,6 +89,59 @@ describe('git.tool envelope + validation', () => {
     expect(parsed.error.code).toBe('invalid_arguments')
   })
 
+  it('git_diff forwards directoryHandle to opfs gitDiff', async () => {
+    const directoryHandle = {} as FileSystemDirectoryHandle
+    const raw = await gitDiffExecutor({ mode: 'working' }, { workspaceId: 'ws_1', directoryHandle } as ToolContext)
+    const parsed = JSON.parse(raw)
+
+    expect(parsed.ok).toBe(true)
+    expect(mocked.gitDiffMock).toHaveBeenCalledWith(
+      'ws_1',
+      expect.objectContaining({
+        mode: 'working',
+        directoryHandle,
+      })
+    )
+  })
+
+  it('git_diff supports cached=true alias and render flags', async () => {
+    const raw = await gitDiffExecutor(
+      { cached: true, name_only: true, patch: false, unified: 0 },
+      context
+    )
+    const parsed = JSON.parse(raw)
+
+    expect(parsed.ok).toBe(true)
+    expect(mocked.gitDiffMock).toHaveBeenCalledWith(
+      'ws_1',
+      expect.objectContaining({
+        mode: 'cached',
+        contextLines: 0,
+      })
+    )
+    expect(mocked.formatGitDiffMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        nameOnly: true,
+        patch: false,
+      })
+    )
+  })
+
+  it('git_diff validates conflicting name flags', async () => {
+    const raw = await gitDiffExecutor({ name_only: true, name_status: true }, context)
+    const parsed = JSON.parse(raw)
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.code).toBe('invalid_arguments')
+  })
+
+  it('git_diff validates unified argument', async () => {
+    const raw = await gitDiffExecutor({ unified: -1 }, context)
+    const parsed = JSON.parse(raw)
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.code).toBe('invalid_arguments')
+  })
+
   it('git_log validates limit', async () => {
     const raw = await gitLogExecutor({ limit: -1 }, context)
     const parsed = JSON.parse(raw)

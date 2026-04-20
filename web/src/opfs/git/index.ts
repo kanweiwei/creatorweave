@@ -15,6 +15,7 @@ import type { SnapshotFileRecord, SnapshotRecord } from '@/sqlite/repositories/f
 import { structuredPatch } from 'diff'
 import micromatch from 'micromatch'
 import { getWorkspaceManager } from '@/opfs'
+import { readFileFromNativeFS } from '@/opfs/utils/file-reader'
 
 export interface GitStatusResult {
   workspaceId: string
@@ -31,6 +32,14 @@ export interface GitDiffResult {
   to: string | null
   files: DiffFile[]
   summary: { filesChanged: number; insertions: number; deletions: number }
+}
+
+export interface GitDiffRenderOptions {
+  nameOnly?: boolean
+  nameStatus?: boolean
+  stat?: boolean
+  numstat?: boolean
+  patch?: boolean
 }
 
 export interface GitLogResult {
@@ -199,11 +208,14 @@ export async function gitDiff(
     mode?: 'working' | 'cached' | 'snapshot'
     snapshotId?: string
     path?: string
+    directoryHandle?: FileSystemDirectoryHandle | null
+    contextLines?: number
   }
 ): Promise<GitDiffResult> {
   const repo = getFSOverlayRepository()
   const mode = options?.mode || 'working'
   const targetSnapshotId = options?.snapshotId
+  const contextLines = normalizeDiffContextLines(options?.contextLines)
 
   let from: string | null = null
   let to: string | null = null
@@ -277,8 +289,18 @@ export async function gitDiff(
     if (snapshotIdForDiff) {
       const snapshotFile = await repo.getSnapshotFileContent(snapshotIdForDiff, op.path)
       if (snapshotFile) {
-        resolved = buildDiffFileFromSnapshotContent(op.path, op.type, snapshotFile)
+        resolved = buildDiffFileFromSnapshotContent(op.path, op.type, snapshotFile, contextLines)
       }
+    }
+
+    if (!resolved && mode === 'working') {
+      resolved = await buildWorkingDiffFileFromCurrentState(
+        workspaceId,
+        op.path,
+        op.type,
+        options?.directoryHandle,
+        contextLines
+      )
     }
 
     const diffFile = resolved || buildFallbackDiffFile(op.path, op.type)
@@ -300,7 +322,79 @@ export async function gitDiff(
   }
 }
 
-export function formatGitDiff(diff: GitDiffResult): string {
+export function formatGitDiff(diff: GitDiffResult, options?: GitDiffRenderOptions): string {
+  if (diff.files.length === 0) {
+    return 'No changes to show'
+  }
+
+  if (options?.nameOnly) {
+    return diff.files.map((file) => file.path).join('\n')
+  }
+
+  if (options?.nameStatus) {
+    return diff.files.map((file) => `${toGitStatusCode(file.kind)}\t${file.path}`).join('\n')
+  }
+
+  const rendered: string[] = []
+  const includesStats = Boolean(options?.stat || options?.numstat)
+  const renderPatch = options?.patch ?? !includesStats
+
+  if (options?.numstat) {
+    rendered.push(renderNumstat(diff.files))
+  } else if (options?.stat) {
+    rendered.push(renderDiffstat(diff.files))
+  }
+
+  if (renderPatch) {
+    rendered.push(renderPatchDiff(diff))
+  }
+
+  return rendered.filter(Boolean).join('\n\n')
+}
+
+function toGitStatusCode(kind: DiffFile['kind']): 'A' | 'D' | 'M' {
+  if (kind === 'add') return 'A'
+  if (kind === 'delete') return 'D'
+  return 'M'
+}
+
+function isBinaryDiffFile(file: DiffFile): boolean {
+  return file.hunks.some((hunk) => hunk.lines.some((line) => line.content === '[binary files differ]'))
+}
+
+function renderNumstat(files: DiffFile[]): string {
+  return files
+    .map((file) => {
+      if (isBinaryDiffFile(file)) {
+        return `-\t-\t${file.path}`
+      }
+      return `${file.additions || 0}\t${file.deletions || 0}\t${file.path}`
+    })
+    .join('\n')
+}
+
+function renderDiffstat(files: DiffFile[]): string {
+  const maxBarWidth = 40
+  return files
+    .map((file) => {
+      if (isBinaryDiffFile(file)) {
+        return `${file.path} | Bin`
+      }
+      const additions = file.additions || 0
+      const deletions = file.deletions || 0
+      const total = additions + deletions
+      if (total === 0) {
+        return `${file.path} | 0`
+      }
+      const plusCount = Math.max(0, Math.round((additions / total) * Math.min(total, maxBarWidth)))
+      const minusCount = Math.max(0, Math.min(Math.min(total, maxBarWidth) - plusCount, maxBarWidth))
+      const bar = `${'+'.repeat(plusCount)}${'-'.repeat(minusCount)}`
+      return `${file.path} | ${total} ${bar}`
+    })
+    .join('\n')
+}
+
+function renderPatchDiff(diff: GitDiffResult): string {
   const lines: string[] = []
 
   if (diff.from || diff.to) {
@@ -332,10 +426,6 @@ export function formatGitDiff(diff: GitDiffResult): string {
       }
     }
     lines.push('')
-  }
-
-  if (diff.files.length === 0) {
-    return 'No changes to show'
   }
 
   return lines.join('\n')
@@ -687,6 +777,16 @@ function mapSnapshotToCommit(snapshot: SnapshotRecord): SnapshotCommit {
   }
 }
 
+function normalizeDiffContextLines(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 3
+  }
+  const normalized = Math.trunc(value)
+  if (normalized < 0) return 0
+  if (normalized > 100) return 100
+  return normalized
+}
+
 function formatRestoreMessage(params: {
   staged: boolean
   restored: number
@@ -777,7 +877,8 @@ function buildFallbackDiffFile(path: string, opType: 'create' | 'modify' | 'dele
 function buildDiffFileFromSnapshotContent(
   path: string,
   opType: 'create' | 'modify' | 'delete',
-  snapshotFile: SnapshotFileRecord
+  snapshotFile: SnapshotFileRecord,
+  contextLines: number = 3
 ): DiffFile {
   const kind: DiffFile['kind'] = opType === 'create' ? 'add' : opType === 'delete' ? 'delete' : 'modify'
 
@@ -800,7 +901,7 @@ function buildDiffFileFromSnapshotContent(
   const afterText = snapshotFile.afterContentKind === 'text' ? (snapshotFile.afterContentText || '') : ''
 
   const patch = structuredPatch(path, path, beforeText, afterText, '', '', {
-    context: 3,
+    context: contextLines,
   })
 
   let additions = 0
@@ -842,4 +943,105 @@ function buildDiffFileFromSnapshotContent(
     deletions,
     hunks,
   }
+}
+
+async function buildWorkingDiffFileFromCurrentState(
+  workspaceId: string,
+  path: string,
+  opType: 'create' | 'modify' | 'delete',
+  directoryHandle?: FileSystemDirectoryHandle | null,
+  contextLines: number = 3
+): Promise<DiffFile | null> {
+  const manager = await getWorkspaceManager()
+  const workspace = await manager.getWorkspace(workspaceId)
+  if (!workspace) return null
+
+  const afterText = await readWorkingAfterText(workspace, path, opType, directoryHandle)
+  const beforeText = await readWorkingBeforeText(workspace, path, opType, directoryHandle)
+
+  if (opType === 'create' && afterText === null) return null
+  if (opType === 'delete' && beforeText === null) return null
+  if (opType === 'modify' && (beforeText === null || afterText === null)) return null
+
+  return buildDiffFileFromText(path, opType, beforeText || '', afterText || '', contextLines)
+}
+
+type WorkingDiffWorkspace = {
+  readCachedFile: (path: string) => Promise<unknown>
+  readFile: (
+    path: string,
+    directoryHandle?: FileSystemDirectoryHandle | null
+  ) => Promise<{ content: unknown }>
+  readBaselineFile: (path: string) => Promise<unknown>
+}
+
+async function readWorkingAfterText(
+  workspace: WorkingDiffWorkspace,
+  path: string,
+  opType: 'create' | 'modify' | 'delete',
+  directoryHandle?: FileSystemDirectoryHandle | null
+): Promise<string | null> {
+  if (opType === 'delete') return null
+
+  try {
+    const cached = await workspace.readCachedFile(path)
+    if (typeof cached === 'string') return cached
+  } catch {
+    // Ignore and try broader workspace read.
+  }
+
+  try {
+    const fromWorkspace = await workspace.readFile(path, directoryHandle)
+    if (typeof fromWorkspace.content === 'string') return fromWorkspace.content
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+async function readWorkingBeforeText(
+  workspace: WorkingDiffWorkspace,
+  path: string,
+  opType: 'create' | 'modify' | 'delete',
+  directoryHandle?: FileSystemDirectoryHandle | null
+): Promise<string | null> {
+  if (opType === 'create') return null
+
+  if (directoryHandle) {
+    const native = await readFileFromNativeFS(directoryHandle, path)
+    if (typeof native === 'string') return native
+  }
+
+  try {
+    const baseline = await workspace.readBaselineFile(path)
+    if (typeof baseline === 'string') return baseline
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function buildDiffFileFromText(
+  path: string,
+  opType: 'create' | 'modify' | 'delete',
+  beforeText: string,
+  afterText: string,
+  contextLines: number = 3
+): DiffFile {
+  const snapshotLike: SnapshotFileRecord = {
+    snapshotId: 'working',
+    workspaceId: 'working',
+    path,
+    opType,
+    beforeContentKind: 'text',
+    beforeContentText: beforeText,
+    beforeContentBlob: null,
+    afterContentKind: 'text',
+    afterContentText: afterText,
+    afterContentBlob: null,
+  }
+
+  return buildDiffFileFromSnapshotContent(path, opType, snapshotLike, contextLines)
 }

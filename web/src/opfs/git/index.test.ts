@@ -50,9 +50,16 @@ vi.mock('@/opfs', () => ({
   }),
 }))
 
+vi.mock('@/opfs/utils/file-reader', () => ({
+  readFileFromNativeFS: vi.fn(),
+}))
+
 import { formatGitDiff, gitDiff, gitRestore, gitStatus } from './index'
 import { gitLog } from './index'
 import { formatGitShow, gitShow } from './index'
+import { readFileFromNativeFS } from '@/opfs/utils/file-reader'
+
+const readFileFromNativeFSMock = vi.mocked(readFileFromNativeFS)
 
 describe('opfs/git gitDiff', () => {
   beforeEach(() => {
@@ -71,6 +78,7 @@ describe('opfs/git gitDiff', () => {
     executeMock.mockReset()
     workspaceWriteFileMock.mockReset()
     workspaceDeleteFileMock.mockReset()
+    readFileFromNativeFSMock.mockReset()
     getWorkspaceMock.mockReset()
   })
 
@@ -209,6 +217,146 @@ describe('opfs/git gitDiff', () => {
     expect(result.to).toBe('s_new')
     expect(result.from).toBe('head_1')
     expect(result.files.map((f) => f.path)).toContain('src/new.ts')
+  })
+
+  it('shows concrete text diff for working mode modify with native baseline', async () => {
+    listPendingOpsMock.mockResolvedValue([
+      {
+        id: 'op_working_1',
+        workspaceId: 'ws_1',
+        path: 'src/demo.txt',
+        type: 'modify',
+        fsMtime: 0,
+        timestamp: 0,
+      },
+    ])
+    getSnapshotFileContentMock.mockResolvedValue(null)
+    readFileFromNativeFSMock.mockResolvedValue('line1\nold line\nline3\n')
+    getWorkspaceMock.mockResolvedValue({
+      readCachedFile: vi.fn(async () => 'line1\nnew line\nline3\n'),
+      readBaselineFile: vi.fn(async () => null),
+    })
+
+    const result = await gitDiff('ws_1', { mode: 'working', directoryHandle: {} as FileSystemDirectoryHandle })
+    const rendered = formatGitDiff(result)
+
+    expect(rendered).toContain('-old line')
+    expect(rendered).toContain('+new line')
+    expect(rendered).not.toContain('... src/demo.txt (modify)')
+  })
+
+  it('shows concrete text diff for working mode modify with OPFS baseline fallback', async () => {
+    listPendingOpsMock.mockResolvedValue([
+      {
+        id: 'op_working_2',
+        workspaceId: 'ws_1',
+        path: 'src/fallback.txt',
+        type: 'modify',
+        fsMtime: 0,
+        timestamp: 0,
+      },
+    ])
+    getSnapshotFileContentMock.mockResolvedValue(null)
+    getWorkspaceMock.mockResolvedValue({
+      readCachedFile: vi.fn(async () => 'after\n'),
+      readBaselineFile: vi.fn(async () => 'before\n'),
+    })
+
+    const result = await gitDiff('ws_1', { mode: 'working' })
+    const rendered = formatGitDiff(result)
+
+    expect(rendered).toContain('-before')
+    expect(rendered).toContain('+after')
+    expect(rendered).not.toContain('... src/fallback.txt (modify)')
+  })
+
+  it('applies unified context lines like git -U<n>', async () => {
+    listSnapshotsMock.mockResolvedValue([{ id: 'snap_u0' }])
+    listSnapshotOpsMock.mockResolvedValue([
+      {
+        id: 'op_u0',
+        workspaceId: 'ws_1',
+        snapshotId: 'snap_u0',
+        path: 'src/u0.txt',
+        type: 'modify',
+        status: 'pending',
+        fsMtime: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ])
+    getSnapshotFileContentMock.mockResolvedValue({
+      snapshotId: 'snap_u0',
+      workspaceId: 'ws_1',
+      path: 'src/u0.txt',
+      opType: 'modify',
+      beforeContentKind: 'text',
+      beforeContentText: 'line1\nold line\nline3\n',
+      beforeContentBlob: null,
+      afterContentKind: 'text',
+      afterContentText: 'line1\nnew line\nline3\n',
+      afterContentBlob: null,
+    })
+
+    const result = await gitDiff('ws_1', { mode: 'snapshot', snapshotId: 'snap_u0', contextLines: 0 })
+    const rendered = formatGitDiff(result)
+
+    expect(rendered).toContain('-old line')
+    expect(rendered).toContain('+new line')
+    expect(rendered).not.toContain(' line1')
+    expect(rendered).not.toContain(' line3')
+  })
+
+  it('renders name-only, name-status, stat and numstat outputs', () => {
+    const diffResult = {
+      workspaceId: 'ws_1',
+      from: null,
+      to: null,
+      files: [
+        {
+          path: 'src/a.ts',
+          kind: 'modify' as const,
+          additions: 3,
+          deletions: 1,
+          hunks: [
+            {
+              header: '@@ -1,1 +1,1 @@',
+              lines: [{ type: 'context' as const, content: 'demo' }],
+            },
+          ],
+        },
+        {
+          path: 'src/new.ts',
+          kind: 'add' as const,
+          additions: 2,
+          deletions: 0,
+          hunks: [
+            {
+              header: '@@ -0,0 +1,2 @@',
+              lines: [{ type: 'add' as const, content: 'x' }],
+            },
+          ],
+        },
+      ],
+      summary: {
+        filesChanged: 2,
+        insertions: 5,
+        deletions: 1,
+      },
+    }
+
+    const nameOnly = formatGitDiff(diffResult, { nameOnly: true })
+    const nameStatus = formatGitDiff(diffResult, { nameStatus: true })
+    const stat = formatGitDiff(diffResult, { stat: true })
+    const numstat = formatGitDiff(diffResult, { numstat: true })
+
+    expect(nameOnly).toBe('src/a.ts\nsrc/new.ts')
+    expect(nameStatus).toContain('M\tsrc/a.ts')
+    expect(nameStatus).toContain('A\tsrc/new.ts')
+    expect(stat).toContain('src/a.ts | 4')
+    expect(stat).toContain('src/new.ts | 2')
+    expect(numstat).toContain('3\t1\tsrc/a.ts')
+    expect(numstat).toContain('2\t0\tsrc/new.ts')
   })
 })
 
