@@ -35,7 +35,7 @@ export type {
 const MAX_ITERATIONS = 20
 const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
 const DEFAULT_TOOL_TIMEOUT = 30000
-const TOOL_TIMEOUT_EXEMPTIONS = new Set<string>(['run_workflow'])
+const TOOL_TIMEOUT_EXEMPTIONS = new Set<string>(['run_workflow', 'spawn_subagent', 'batch_spawn'])
 const SUMMARY_MIN_DROPPED_GROUPS = 2
 const SUMMARY_MIN_DROPPED_CONTENT_CHARS = 800
 const SUMMARY_MIN_INTERVAL_CONVERT_CALLS = 8

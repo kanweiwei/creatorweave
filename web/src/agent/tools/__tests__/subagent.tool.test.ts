@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SubagentRuntime, ToolContext } from '../tool-types'
+import { SubagentError, SubagentErrorCode, type SubagentRuntime, type ToolContext } from '../tool-types'
 import {
   batchSpawnDefinition,
   batchSpawnExecutor,
@@ -17,8 +17,9 @@ function parseJson(result: string): Record<string, unknown> {
 function createMockRuntime(): SubagentRuntime {
   return {
     spawn: vi.fn().mockResolvedValue({
-      status: 'async_launched',
+      status: 'completed',
       agentId: 'subagent_1',
+      content: 'task done',
     }),
     sendMessage: vi.fn().mockResolvedValue({
       success: true,
@@ -48,9 +49,10 @@ function createMockRuntime(): SubagentRuntime {
       total: 0,
     }),
     batchSpawn: vi.fn().mockResolvedValue({
-      launched: [{ task_index: 0, agentId: 'subagent_1' }],
-      rejected: [],
+      completed: [{ task_index: 0, agentId: 'subagent_1', content: 'done' }],
+      failed: [],
     }),
+    shutdown: vi.fn(),
   }
 }
 
@@ -85,7 +87,7 @@ describe('subagent tools', () => {
 
   it('maps status query error to TASK_NOT_FOUND', async () => {
     const runtime = createMockRuntime()
-    ;(runtime.getStatus as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('TASK_NOT_FOUND'))
+    ;(runtime.getStatus as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new SubagentError(SubagentErrorCode.TASK_NOT_FOUND, 'not found'))
     const result = await getSubagentStatusExecutor(
       { agentId: 'missing' },
       { directoryHandle: null, subagentRuntime: runtime } as ToolContext

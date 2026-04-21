@@ -87,4 +87,29 @@ describe('SubagentRepository', () => {
 
     expect(status).toBeNull()
   })
+
+  it('saveBatch uses upsert without workspace-wide delete', async () => {
+    const repo = new SubagentRepository()
+    await repo.saveBatch('w1', [
+      {
+        agentId: 'a1',
+        workspaceId: 'w1',
+        description: 'desc',
+        status: 'pending',
+        mode: 'act',
+        messages: [],
+        queue: [],
+        stopped: false,
+        created_at: 1,
+        updated_at: 1,
+        last_activity_at: 1,
+      },
+    ])
+
+    expect(hoisted.db.transaction).toHaveBeenCalledTimes(1)
+    expect(hoisted.db.execute).toHaveBeenCalledTimes(1)
+    const sql = hoisted.db.execute.mock.calls[0]?.[0] as string
+    expect(sql).toContain('ON CONFLICT(agent_id) DO UPDATE SET')
+    expect(sql).not.toContain('DELETE FROM subagent_tasks')
+  })
 })

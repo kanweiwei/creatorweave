@@ -106,6 +106,19 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   const hasCurrentToolCallInDraft = !!(
     currentToolCall && draftToolCalls.some((tc) => tc.id === currentToolCall.id)
   )
+  const suppressExecutingToolCallIds = new Set<string>()
+  if (isProcessing) {
+    for (const step of orderedRuntimeSteps) {
+      if (step.type !== 'tool_call') continue
+      const hasResult = !!(step.result ?? toolResults.get(step.toolCall.id))
+      if (step.streaming && !hasResult) {
+        suppressExecutingToolCallIds.add(step.toolCall.id)
+      }
+    }
+    if (currentToolCall && !toolResults.get(currentToolCall.id)) {
+      suppressExecutingToolCallIds.add(currentToolCall.id)
+    }
+  }
   const mergedTimelineItems = isProcessing
     ? [
         ...turn.messages.map((message, index) => ({
@@ -130,6 +143,12 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
         return a.order - b.order
       })
     : []
+  const hasCurrentToolCallInRuntimeSteps = !!(
+    currentToolCall &&
+    orderedRuntimeSteps.some(
+      (step) => step.type === 'tool_call' && step.toolCall.id === currentToolCall.id
+    )
+  )
   const shouldRenderMergedTimeline = isProcessing && mergedTimelineItems.length > 0
 
   // Find the last message with content for copy button
@@ -158,6 +177,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                     message={item.message}
                     toolResults={toolResults}
                     showDivider={false}
+                    suppressExecutingToolCallIds={suppressExecutingToolCallIds}
                   />
                 </div>
               )
@@ -227,6 +247,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                         undefined
                       : undefined
                   }
+                  subagentEvents={step.subagentEvents}
                 />
               </div>
             )
@@ -240,6 +261,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
               message={msg}
               toolResults={toolResults}
               showDivider={idx > 0}
+              suppressExecutingToolCallIds={suppressExecutingToolCallIds}
             />
           ))}
 
@@ -295,6 +317,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                       undefined
                     : undefined
                 }
+                subagentEvents={step.subagentEvents}
               />
             )
           })}
@@ -332,7 +355,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
         {isProcessing &&
           currentToolCall &&
           !hasCurrentToolCallInDraft &&
-          !committedToolCallIds.has(currentToolCall.id) && (
+          !hasCurrentToolCallInRuntimeSteps && (
             <ToolCallDisplay
               toolCall={currentToolCall}
               isExecuting={true}
@@ -440,15 +463,19 @@ const AssistantStep = memo(function AssistantStep({
   message,
   toolResults,
   showDivider,
+  suppressExecutingToolCallIds,
 }: {
   message: Message
   toolResults: Map<string, string>
   showDivider: boolean
+  suppressExecutingToolCallIds?: Set<string>
 }) {
   const t = useT()
   const hasReasoning = !!message.reasoning
   const hasContent = !!message.content
-  const hasToolCalls = !!(message.toolCalls && message.toolCalls.length > 0)
+  const visibleToolCalls =
+    message.toolCalls?.filter((tc) => !suppressExecutingToolCallIds?.has(tc.id)) || []
+  const hasToolCalls = visibleToolCalls.length > 0
   const isContextSummary = message.kind === 'context_summary'
   const isWorkflowDryRun = message.kind === 'workflow_dry_run'
   const isWorkflowRealRun = message.kind === 'workflow_real_run'
@@ -511,7 +538,7 @@ const AssistantStep = memo(function AssistantStep({
           {/* Tool calls section */}
           {hasToolCalls && (
             <div className="space-y-1">
-              {message.toolCalls!.map((tc) => (
+              {visibleToolCalls.map((tc) => (
                 <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults.get(tc.id)} />
               ))}
             </div>

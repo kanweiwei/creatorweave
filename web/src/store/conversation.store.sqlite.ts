@@ -115,6 +115,13 @@ type DraftAssistantEvent =
     }
   | { type: 'compression_start' }
   | { type: 'compression_complete'; mode: 'skip' | 'compress' }
+  | {
+      type: 'subagent_progress'
+      agentId: string
+      status: string
+      summary: string
+      timestamp: number
+    }
 
 function createDraftStepId(prefix: 'reasoning' | 'content' | 'compression'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -377,6 +384,22 @@ function applyDraftAssistantEvent(conv: Conversation, event: DraftAssistantEvent
         }
       }
       draft.activeCompressionStepId = null
+      return
+    }
+    case 'subagent_progress': {
+      // Bridge subagent notification to the active tool step
+      if (!draft.activeToolStepId) return
+      const step = findDraftStep(draft, draft.activeToolStepId)
+      if (!step || step.type !== 'tool_call') return
+      const toolName = step.toolCall.function.name
+      if (toolName !== 'spawn_subagent' && toolName !== 'batch_spawn') return
+      if (!step.subagentEvents) step.subagentEvents = []
+      step.subagentEvents.push({
+        agentId: event.agentId,
+        status: event.status,
+        summary: event.summary,
+        timestamp: event.timestamp,
+      })
       return
     }
   }
@@ -1812,10 +1835,29 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             agentMode,
           },
           onNotification: (event: SubagentTaskNotification) => {
-            const line = `[task_notification] ${event.status} ${event.agentId} - ${event.summary}`
             set((state) => {
               const c = state.conversations.find((x) => x.id === conversationId)
               if (!c) return
+              // Bridge to active tool step if spawn_subagent/batch_spawn is executing
+              if (c.draftAssistant?.activeToolStepId) {
+                const step = c.draftAssistant.steps.find((s) => s.id === c.draftAssistant!.activeToolStepId)
+                if (step && step.type === 'tool_call') {
+                  const name = step.toolCall.function.name
+                  if (name === 'spawn_subagent' || name === 'batch_spawn') {
+                    applyDraftAssistantEvent(c, {
+                      type: 'subagent_progress',
+                      agentId: event.agentId,
+                      status: event.status,
+                      summary: event.summary,
+                      timestamp: event.timestamp,
+                    })
+                    c.updatedAt = Date.now()
+                    return
+                  }
+                }
+              }
+              // Fallback: plain text message for non-spawn notifications
+              const line = `[task_notification] ${event.status} ${event.agentId} - ${event.summary}`
               c.messages.push(createAssistantMessage(line))
               c.updatedAt = Date.now()
             })

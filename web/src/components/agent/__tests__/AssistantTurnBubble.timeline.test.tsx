@@ -88,4 +88,82 @@ describe('AssistantTurnBubble timeline ordering', () => {
 
     expect(container.querySelector('.lucide-bot')).toBeNull()
   })
+
+  it('does not duplicate executing tool call from committed message and runtime state', () => {
+    const toolCall = {
+      id: 'tool-dup-1',
+      type: 'function' as const,
+      function: {
+        name: 'batch_spawn',
+        arguments: '{}',
+      },
+    }
+
+    const { container } = render(
+      <AssistantTurnBubble
+        turn={{
+          type: 'assistant',
+          messages: [
+            {
+              id: 'assistant-1',
+              role: 'assistant',
+              content: '正在准备派发任务',
+              toolCalls: [toolCall],
+              timestamp: 100,
+            },
+          ],
+          timestamp: 100,
+          totalUsage: null,
+        }}
+        toolResults={new Map()}
+        isProcessing={true}
+        currentToolCall={toolCall}
+      />
+    )
+
+    const text = container.textContent || ''
+    const count = text.split('batch_spawn').length - 1
+    expect(count).toBe(1)
+  })
+
+  it('does not duplicate executing tool call from runtime steps and current tool call', () => {
+    const toolCall = {
+      id: 'tool-dup-2',
+      type: 'function' as const,
+      function: {
+        name: 'batch_spawn',
+        arguments: '{}',
+      },
+    }
+
+    const runtimeSteps: DraftAssistantStep[] = [
+      {
+        id: 'tool-step-1',
+        timestamp: 200,
+        type: 'tool_call',
+        toolCall,
+        args: '{}',
+        streaming: true,
+      },
+    ]
+
+    const { container } = render(
+      <AssistantTurnBubble
+        turn={{
+          type: 'assistant',
+          messages: [],
+          timestamp: 100,
+          totalUsage: null,
+        }}
+        toolResults={new Map()}
+        isProcessing={true}
+        runtimeSteps={runtimeSteps}
+        currentToolCall={toolCall}
+      />
+    )
+
+    const text = container.textContent || ''
+    const count = text.split('batch_spawn').length - 1
+    expect(count).toBe(1)
+  })
 })

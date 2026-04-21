@@ -7,7 +7,7 @@ import type { ToolRegistry } from '@/agent/tool-registry'
 import type {
   BatchSpawnSubagentInput,
   SpawnSubagentInput,
-  SpawnSubagentSyncResult,
+  SpawnSubagentResult,
   SubagentRuntime,
   SubagentTaskNotification,
   SubagentTaskStatus,
@@ -15,6 +15,8 @@ import type {
   SubagentTaskUsage,
   ToolContext,
 } from '@/agent/tools/tool-types'
+import { SubagentError, SubagentErrorCode } from '@/agent/tools/tool-types'
+import { TranscriptWriter, getTranscriptDir, getTranscriptFile } from './transcript'
 
 type SubagentTaskInternal = {
   agentId: string
@@ -40,6 +42,7 @@ type SubagentTaskInternal = {
   lifecycle_version: number
   running_notification_armed: boolean
   run_timeout?: ReturnType<typeof setTimeout>
+  transcriptWriter?: TranscriptWriter
 }
 
 type RuntimeDeps = {
@@ -49,6 +52,8 @@ type RuntimeDeps = {
   contextManager: ContextManager
   baseToolContext: ToolContext
   onNotification?: (event: SubagentTaskNotification) => void
+  /** Returns the OPFS workspace directory for transcript storage. Optional — transcript disabled if not provided. */
+  getWorkspaceDir?: () => Promise<FileSystemDirectoryHandle>
 }
 
 const SUBAGENT_SYSTEM_PROMPT = `You are a sub-agent executing a specific task. Follow the instructions precisely.
@@ -65,7 +70,7 @@ const SUBAGENT_CONTROL_TOOLS = new Set([
   'list_subagents',
 ])
 
-const DEFAULT_EXECUTION_TIMEOUT_MS = 300000
+const DEFAULT_EXECUTION_TIMEOUT_MS = 0 // 0 = no timeout
 const MAX_EXECUTION_TIMEOUT_MS = 3600000
 const DEFAULT_ENQUEUE_TIMEOUT_MS = 5000
 const DEFAULT_STOP_TIMEOUT_MS = 10000
@@ -75,6 +80,7 @@ const DEFAULT_MESSAGE_TIMEOUT_MS = 300000
 const SUMMARY_MAX_CHARS = 500
 const CAS_MAX_RETRIES = 3
 const CAS_RETRY_DELAY_MS = 10
+const DEFAULT_MAX_CONCURRENT = 20
 
 class SubagentRuntimeImpl implements SubagentRuntime {
   private tasks = new Map<string, SubagentTaskInternal>()
@@ -91,28 +97,58 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     this.deps = deps
   }
 
+  /** Graceful shutdown — mark all active tasks as failed(SESSION_INTERRUPTED). */
+  shutdown(): void {
+    const now = Date.now()
+    for (const task of this.tasks.values()) {
+      if (task.status === 'running' || task.status === 'pending') {
+        task.status = 'failed'
+        task.error = { code: 'SESSION_INTERRUPTED', message: 'Tab closed while subagent was active.' }
+        task.updated_at = now
+        task.last_activity_at = now
+        this.clearRunTimeout(task)
+        // Close transcript if open (fire-and-forget)
+        if (task.transcriptWriter) {
+          task.transcriptWriter.close().catch(() => {})
+          task.transcriptWriter = undefined
+        }
+      }
+    }
+    this.persistToSQLite()
+  }
+
   async spawn(
     input: SpawnSubagentInput
-  ): Promise<SpawnSubagentSyncResult | { status: 'async_launched'; agentId: string }> {
+  ): Promise<SpawnSubagentResult> {
     await this.ensureHydrated()
     const description = (input.description || '').trim()
     const prompt = (input.prompt || '').trim()
     const name = typeof input.name === 'string' ? input.name.trim() : undefined
     const mode = input.mode || this.deps.baseToolContext.agentMode || 'act'
-    const runInBackground = input.run_in_background !== false
     const timeoutMs = this.parseExecutionTimeout(input.timeout_ms)
 
     if (!description) {
-      throw new Error('INVALID_INPUT: description is required')
+      throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'description is required', { field: 'description' })
     }
     if (!prompt) {
-      throw new Error('INVALID_INPUT: prompt is required')
+      throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'prompt is required', { field: 'prompt' })
     }
     if (name) {
       const existing = this.nameToId.get(name)
       if (existing) {
-        throw new Error('NAME_CONFLICT: name already exists')
+        throw new SubagentError(SubagentErrorCode.NAME_CONFLICT, `name "${name}" already exists`)
       }
+    }
+
+    // Concurrency check — count active (pending + running) tasks
+    const activeCount = Array.from(this.tasks.values()).filter(
+      (t) => t.status === 'pending' || t.status === 'running'
+    ).length
+    if (activeCount >= DEFAULT_MAX_CONCURRENT) {
+      throw new SubagentError(
+        SubagentErrorCode.CONCURRENCY_LIMIT,
+        `maximum concurrent subagents reached (${DEFAULT_MAX_CONCURRENT})`,
+      )
     }
 
     const now = Date.now()
@@ -140,29 +176,31 @@ class SubagentRuntimeImpl implements SubagentRuntime {
 
     this.tasks.set(agentId, task)
     if (name) this.nameToId.set(name, agentId)
-    this.persistToSQLite()
+    // Await the initial persist so the row exists in SQLite before CAS transitions start.
+    // Without this, saveBatch (DELETE ALL + INSERT) can race with transitionStatus (UPDATE + SELECT changes()).
+    await this.persistToSQLiteAsync()
 
-    if (runInBackground) {
-      this.ensureProcessing(task)
-      return {
-        status: 'async_launched',
-        agentId,
-      }
-    }
-
+    // Always block until the subagent completes
     await this.ensureProcessing(task)
     const latest = this.tasks.get(agentId)
     if (!latest) {
-      throw new Error('TASK_NOT_FOUND')
+      throw new SubagentError(SubagentErrorCode.TASK_NOT_FOUND, `subagent ${agentId} not found`)
     }
     if (latest.status !== 'completed') {
-      throw new Error(latest.error?.code || 'SUBAGENT_FAILED')
+      const errCode = latest.error?.code || SubagentErrorCode.RESOURCE_EXHAUSTED
+      throw new SubagentError(errCode as keyof typeof SubagentErrorCode, `subagent finished with status ${latest.status}`)
     }
-    return {
+    const result: SpawnSubagentResult = {
       status: 'completed',
+      agentId,
       content: this.extractLatestAssistantContent(latest.messages),
       usage: latest.usage,
     }
+
+    // Cleanup completed task from memory — result already captured
+    this.removeTask(agentId)
+
+    return result
   }
 
   async sendMessage(input: {
@@ -268,14 +306,14 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     await this.ensureHydrated()
     const task = this.getByIdOrName((input.agentId || '').trim())
     if (!task) {
-      throw new Error('TASK_NOT_FOUND')
+      throw new SubagentError(SubagentErrorCode.TASK_NOT_FOUND, `subagent ${input.agentId} not found`)
     }
     if (task.status === 'completed' || task.status === 'failed' || task.status === 'killed') {
       return { success: true, already_stopped: true }
     }
     const parsedStopTimeout = this.parseStopTimeout(input.timeout_ms)
     if (!parsedStopTimeout.ok) {
-      throw new Error('INVALID_INPUT: timeout_ms must be a non-negative number')
+      throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'timeout_ms must be a non-negative number', { field: 'timeout_ms' })
     }
     if (input.force) {
       await this.killTask(task, {
@@ -321,13 +359,21 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     await this.ensureHydrated()
     const task = this.getByIdOrName((input.agentId || '').trim())
     if (!task) {
-      throw new Error('TASK_NOT_FOUND')
+      throw new SubagentError(SubagentErrorCode.TASK_NOT_FOUND, `subagent ${input.agentId} not found`)
     }
     const prompt = (input.prompt || '').trim()
     if (!prompt) {
-      throw new Error('INVALID_INPUT: prompt is required')
+      throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'prompt is required', { field: 'prompt' })
     }
     const recovered = task.messages.length
+    // If no in-memory messages, try loading from transcript
+    if (recovered === 0) {
+      const transcriptMessages = await this.loadTranscriptMessages(task.agentId)
+      if (transcriptMessages.length > 0) {
+        task.messages = transcriptMessages
+      }
+    }
+    const transcriptRecovered = task.messages.length
     if (typeof input.timeout_ms === 'number') {
       task.timeout_ms = this.parseExecutionTimeout(input.timeout_ms)
     }
@@ -344,7 +390,7 @@ class SubagentRuntimeImpl implements SubagentRuntime {
       status: 'resumed',
       agentId: task.agentId,
       resumed_from: null,
-      transcript_entries_recovered: recovered,
+      transcript_entries_recovered: transcriptRecovered,
     }
   }
 
@@ -364,7 +410,7 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     await this.ensureHydrated()
     const task = this.getByIdOrName((input.agentId || '').trim())
     if (!task) {
-      throw new Error('TASK_NOT_FOUND')
+      throw new SubagentError(SubagentErrorCode.TASK_NOT_FOUND, `subagent ${input.agentId} not found`)
     }
     return {
       agentId: task.agentId,
@@ -410,12 +456,15 @@ class SubagentRuntimeImpl implements SubagentRuntime {
   }
 
   async batchSpawn(input: BatchSpawnSubagentInput): Promise<{
-    launched: Array<{
+    completed: Array<{
       task_index: number
       agentId: string
+      content: string
+      usage?: SubagentTaskUsage
     }>
-    rejected: Array<{
+    failed: Array<{
       task_index: number
+      agentId: string
       reason: string
       error_code: string
     }>
@@ -425,47 +474,113 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     const maxConcurrency = Number.isFinite(input.max_concurrency)
       ? Math.max(1, Math.min(20, Math.floor(Number(input.max_concurrency))))
       : 5
-    const runInBackground = input.run_in_background !== false
 
-    const launched: Array<{ task_index: number; agentId: string }> = []
-    const rejected: Array<{ task_index: number; reason: string; error_code: string }> = []
+    const completed: Array<{ task_index: number; agentId: string; content: string; usage?: SubagentTaskUsage }> = []
+    const failed: Array<{ task_index: number; agentId: string; reason: string; error_code: string }> = []
 
+    // Create internal tasks concurrently, then start processing
+    const internalTasks: Array<{ index: number; task: SubagentTaskInternal }> = []
+    for (let i = 0; i < tasks.length; i++) {
+      const taskSpec = tasks[i]
+      try {
+        const description = (taskSpec.description || '').trim()
+        const prompt = (taskSpec.prompt || '').trim()
+        const name = typeof taskSpec.name === 'string' ? taskSpec.name.trim() : undefined
+        if (!description) throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'description is required', { field: 'description' })
+        if (!prompt) throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'prompt is required', { field: 'prompt' })
+        if (name) {
+          const existing = this.nameToId.get(name)
+          if (existing) throw new SubagentError(SubagentErrorCode.NAME_CONFLICT, `name "${name}" already exists`)
+        }
+        const mode = taskSpec.mode || this.deps.baseToolContext.agentMode || 'act'
+        const timeoutMs = this.parseExecutionTimeout(taskSpec.timeout_ms)
+        const now = Date.now()
+        const agentId = `subagent_${generateId()}`
+        const task: SubagentTaskInternal = {
+          agentId,
+          name,
+          description,
+          status: 'pending',
+          created_at: now,
+          updated_at: now,
+          last_activity_at: now,
+          mode,
+          messages: [],
+          queue: [{ message: prompt, enqueued_at: now }],
+          max_queue_size: DEFAULT_QUEUE_SIZE,
+          overflow_action: DEFAULT_OVERFLOW_ACTION,
+          message_timeout_ms: DEFAULT_MESSAGE_TIMEOUT_MS,
+          timeout_ms: timeoutMs,
+          processing: false,
+          stopped: false,
+          lifecycle_version: 0,
+          running_notification_armed: false,
+        }
+        this.tasks.set(agentId, task)
+        if (name) this.nameToId.set(name, agentId)
+        internalTasks.push({ index: i, task })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const subagentError = error instanceof SubagentError ? error : null
+        failed.push({
+          task_index: i,
+          agentId: '',
+          reason: message,
+          error_code: subagentError?.code || 'BATCH_SPAWN_FAILED',
+        })
+      }
+    }
+    // Await the initial persist so rows exist in SQLite before CAS transitions start.
+    await this.persistToSQLiteAsync()
+
+    // Start processing up to maxConcurrency tasks in parallel
     let cursor = 0
-    const workers = Array.from({ length: Math.min(maxConcurrency, Math.max(tasks.length, 1)) }).map(
-      async () => {
-        while (cursor < tasks.length) {
-          const taskIndex = cursor
-          cursor += 1
-          const task = tasks[taskIndex]
-          try {
-            const result = await this.spawn({
-              ...task,
-              run_in_background: runInBackground,
+    const workers = Array.from({ length: Math.min(maxConcurrency, internalTasks.length) }).map(async () => {
+      while (cursor < internalTasks.length) {
+        const item = internalTasks[cursor++]
+        if (!item) break
+        const { index, task } = item
+        try {
+          await this.ensureProcessing(task)
+          const latest = this.tasks.get(task.agentId)
+          if (!latest || latest.status !== 'completed') {
+            failed.push({
+              task_index: index,
+              agentId: task.agentId,
+              reason: latest?.error?.message || `subagent finished with status ${latest?.status || 'unknown'}`,
+              error_code: latest?.error?.code || 'SUBAGENT_FAILED',
             })
-            if (result.status === 'async_launched') {
-              launched.push({ task_index: taskIndex, agentId: result.agentId })
-            } else {
-              const existing = this.findByDescriptionAndLatest(task.description)
-              launched.push({ task_index: taskIndex, agentId: existing?.agentId || '' })
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            rejected.push({
-              task_index: taskIndex,
-              reason: message,
-              error_code: message.includes('NAME_CONFLICT')
-                ? 'NAME_CONFLICT'
-                : message.includes('INVALID_INPUT')
-                  ? 'INVALID_INPUT'
-                  : 'BATCH_SPAWN_FAILED',
+          } else {
+            completed.push({
+              task_index: index,
+              agentId: task.agentId,
+              content: this.extractLatestAssistantContent(latest.messages),
+              usage: latest.usage,
             })
           }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          failed.push({
+            task_index: index,
+            agentId: task.agentId,
+            reason: message,
+            error_code: 'BATCH_SPAWN_FAILED',
+          })
         }
       }
-    )
+    })
     await Promise.all(workers)
 
-    return { launched, rejected }
+    // Sort by task_index for deterministic output
+    completed.sort((a, b) => a.task_index - b.task_index)
+    failed.sort((a, b) => a.task_index - b.task_index)
+
+    // Cleanup completed tasks from memory
+    for (const item of completed) {
+      this.removeTask(item.agentId)
+    }
+
+    return { completed, failed }
   }
 
   private async killTask(
@@ -496,6 +611,15 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     task.loop?.cancel()
   }
 
+  /** Remove a completed/failed task from memory and release its name. */
+  private removeTask(agentId: string): void {
+    const task = this.tasks.get(agentId)
+    if (!task) return
+    if (task.name) this.nameToId.delete(task.name)
+    this.tasks.delete(agentId)
+    this.deleteTaskFromSQLite(agentId)
+  }
+
   private getByIdOrName(idOrName: string): SubagentTaskInternal | undefined {
     if (!idOrName) return undefined
     const direct = this.tasks.get(idOrName)
@@ -518,20 +642,41 @@ class SubagentRuntimeImpl implements SubagentRuntime {
   }
 
   private async processQueue(task: SubagentTaskInternal): Promise<void> {
+    console.info('[SubagentRuntime] processQueue.start', {
+      agentId: task.agentId,
+      status: task.status,
+      queueDepth: task.queue.length,
+    })
     while (task.queue.length > 0) {
       if (task.status === 'killed' || task.stopped) {
         task.running_notification_armed = false
         this.clearRunTimeout(task)
+        await this.closeTranscript(task)
         return
       }
       this.pruneExpiredQueue(task)
       if (task.queue.length === 0) {
+        // All messages expired before processing — mark as failed
+        if (task.status === 'pending') {
+          task.error = { code: 'QUEUE_EMPTY', message: 'All queued messages expired before processing.' }
+          await this.applyStatusTransition(task, 'pending', 'failed')
+          this.emitNotification({
+            event_type: 'task_notification',
+            agentId: task.agentId,
+            status: 'failed',
+            summary: this.toSummary(task.error.message),
+            exit_reason: 'error',
+            error: { code: task.error.code, message: task.error.message, recoverable: true },
+            timestamp: Date.now(),
+          })
+        }
         return
       }
       const queued = task.queue.shift()
       if (!queued) return
 
       task.running_notification_armed = true
+      await this.openTranscript(task)
       const runningTransition = await this.applyStatusTransition(
         task,
         ['pending', 'running'],
@@ -543,12 +688,28 @@ class SubagentRuntimeImpl implements SubagentRuntime {
       }
       const runningVersion = task.lifecycle_version
       this.armRunTimeout(task, runningVersion)
+      console.info('[SubagentRuntime] processQueue.running', {
+        agentId: task.agentId,
+        lifecycle_version: runningVersion,
+        queueDepth: task.queue.length,
+      })
 
       try {
         const loop = this.ensureLoop(task)
-        task.messages.push(createUserMessage(queued.message))
+        const userMsg = createUserMessage(queued.message)
+        task.messages.push(userMsg)
+        await this.appendTranscript(task, userMsg)
         const startedAt = Date.now()
         task.messages = await loop.run(task.messages)
+        await this.flushTranscript(task)
+        console.info('[SubagentRuntime] processQueue.loopDone', {
+          agentId: task.agentId,
+          status: task.status,
+          stopped: task.stopped,
+          lifecycle_version: task.lifecycle_version,
+          runningVersion,
+          messagesCount: task.messages.length,
+        })
         if (
           task.stopped ||
           task.status !== 'running' ||
@@ -560,6 +721,11 @@ class SubagentRuntimeImpl implements SubagentRuntime {
         }
         task.running_notification_armed = false
         const transitionedToCompleted = await this.applyStatusTransition(task, 'running', 'completed')
+        console.info('[SubagentRuntime] processQueue.completed', {
+          agentId: task.agentId,
+          transitioned: transitionedToCompleted,
+          status: task.status,
+        })
         if (!transitionedToCompleted) {
           this.clearRunTimeout(task)
           return
@@ -591,6 +757,7 @@ class SubagentRuntimeImpl implements SubagentRuntime {
           usage: task.usage,
           timestamp: completedAt,
         })
+        await this.closeTranscript(task)
       } catch (error) {
         if (
           task.stopped ||
@@ -623,6 +790,7 @@ class SubagentRuntimeImpl implements SubagentRuntime {
           },
           timestamp: task.updated_at,
         })
+        await this.closeTranscript(task)
         return
       }
     }
@@ -697,13 +865,14 @@ class SubagentRuntimeImpl implements SubagentRuntime {
   }
 
   private parseExecutionTimeout(raw: number | undefined): number {
-    if (typeof raw !== 'number') return DEFAULT_EXECUTION_TIMEOUT_MS
-    if (!Number.isFinite(raw) || raw <= 0) {
-      throw new Error('INVALID_INPUT: timeout_ms must be a positive number')
+    if (typeof raw !== 'number') return 0 // no timeout by default
+    if (!Number.isFinite(raw) || raw < 0) {
+      throw new SubagentError(SubagentErrorCode.INVALID_INPUT, 'timeout_ms must be a non-negative number', { field: 'timeout_ms' })
     }
     const normalized = Math.floor(raw)
+    if (normalized === 0) return 0 // 0 = no timeout
     if (normalized > MAX_EXECUTION_TIMEOUT_MS) {
-      throw new Error('TIMEOUT_EXCEEDS_MAX')
+      throw new SubagentError(SubagentErrorCode.TIMEOUT_EXCEEDS_MAX, `timeout_ms must be ≤${MAX_EXECUTION_TIMEOUT_MS}`, { field: 'timeout_ms' })
     }
     return normalized
   }
@@ -926,6 +1095,7 @@ class SubagentRuntimeImpl implements SubagentRuntime {
 
   private armRunTimeout(task: SubagentTaskInternal, lifecycleVersion: number): void {
     this.clearRunTimeout(task)
+    if (!task.timeout_ms) return // 0 = no timeout
     task.run_timeout = setTimeout(() => {
       void this.handleRunTimeout(task, lifecycleVersion)
     }, task.timeout_ms)
@@ -1006,6 +1176,11 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     void this.persistToSQLiteInternal()
   }
 
+  /** Awaitable version — use when subsequent CAS depends on the row existing. */
+  private async persistToSQLiteAsync(): Promise<void> {
+    await this.persistToSQLiteInternal()
+  }
+
   private async persistToSQLiteInternal(): Promise<void> {
     try {
       const { getSubagentRepository } = await import('@/sqlite')
@@ -1015,6 +1190,22 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     } catch {
       // ignore persistence failures for runtime continuity
     }
+  }
+
+  private deleteTaskFromSQLite(agentId: string): void {
+    void (async () => {
+      try {
+        const { getSubagentRepository } = await import('@/sqlite')
+        const repo = getSubagentRepository() as {
+          deleteTask?: (workspaceId: string, agentId: string) => Promise<void>
+        }
+        if (typeof repo.deleteTask === 'function') {
+          await repo.deleteTask(this.deps.workspaceId, agentId)
+        }
+      } catch {
+        // ignore delete failures; runtime remains usable in-memory
+      }
+    })()
   }
 
   private async hydrateFromSQLite(): Promise<void> {
@@ -1051,9 +1242,13 @@ class SubagentRuntimeImpl implements SubagentRuntime {
           lifecycle_version: 0,
           running_notification_armed: false,
           run_timeout: undefined,
+          transcriptWriter: undefined,
         }
         this.tasks.set(revived.agentId, revived)
-        if (revived.name) this.nameToId.set(revived.name, revived.agentId)
+        // Only register name for failed tasks (resumable); completed/killed are stale
+        if (revived.name && revived.status === 'failed') {
+          this.nameToId.set(revived.name, revived.agentId)
+        }
       }
     } catch {
       // ignore hydration failures; runtime remains usable in-memory
@@ -1094,17 +1289,102 @@ class SubagentRuntimeImpl implements SubagentRuntime {
     }
   }
 
-  private findByDescriptionAndLatest(description: string): SubagentTaskInternal | undefined {
-    return Array.from(this.tasks.values())
-      .filter((task) => task.description === description)
-      .sort((a, b) => b.created_at - a.created_at)[0]
+  // -------------------------------------------------------------------------
+  // Transcript helpers
+  // -------------------------------------------------------------------------
+
+  private async openTranscript(task: SubagentTaskInternal): Promise<void> {
+    if (!this.deps.getWorkspaceDir) return
+    try {
+      const wsDir = await this.deps.getWorkspaceDir()
+      const dir = await getTranscriptDir(wsDir, task.agentId)
+      const file = await getTranscriptFile(dir)
+      const writer = new TranscriptWriter(file, task.agentId)
+      await writer.open()
+      // Append existing in-memory messages (for resumed tasks)
+      for (const msg of task.messages) {
+        await writer.append(msg)
+      }
+      task.transcriptWriter = writer
+    } catch {
+      // Transcript failure is non-fatal — task continues without persistence
+    }
   }
+
+  private async appendTranscript(task: SubagentTaskInternal, message: Message): Promise<void> {
+    if (!task.transcriptWriter) return
+    try {
+      await task.transcriptWriter.append(message)
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  private async flushTranscript(task: SubagentTaskInternal): Promise<void> {
+    if (!task.transcriptWriter) return
+    try {
+      // Append any new messages that loop.run added
+      // The writer only tracks what was explicitly appended, so we flush the full list
+      // to ensure nothing is missed after loop.run replaces the messages array
+      for (const msg of task.messages) {
+        await task.transcriptWriter.append(msg)
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  private async closeTranscript(task: SubagentTaskInternal): Promise<void> {
+    if (!task.transcriptWriter) return
+    try {
+      await task.transcriptWriter.close()
+    } catch {
+      // Non-fatal
+    }
+    task.transcriptWriter = undefined
+  }
+
+  private async loadTranscriptMessages(agentId: string): Promise<Message[]> {
+    if (!this.deps.getWorkspaceDir) return []
+    try {
+      const wsDir = await this.deps.getWorkspaceDir()
+      const dir = await getTranscriptDir(wsDir, agentId)
+      const exists = await (async () => {
+        try { await dir.getFileHandle('transcript.jsonl'); return true } catch { return false }
+      })()
+      if (!exists) return []
+      const file = await getTranscriptFile(dir)
+      const { TranscriptReader } = await import('./transcript')
+      const reader = new TranscriptReader(file)
+      const result = await reader.read()
+      return result.messages
+    } catch {
+      // Transcript load failure is non-fatal
+      return []
+    }
+  }
+
 }
 
 const runtimeRegistry = new Map<string, SubagentRuntimeImpl>()
 
+/** Global beforeunload handler — registered once. */
+let beforeunloadRegistered = false
+
+function registerBeforeunload(): void {
+  if (beforeunloadRegistered) return
+  if (typeof window === 'undefined') return
+  beforeunloadRegistered = true
+  window.addEventListener('beforeunload', () => {
+    for (const runtime of runtimeRegistry.values()) {
+      runtime.shutdown()
+    }
+  })
+}
+
 export function __resetSubagentRuntimeRegistryForTests(): void {
   runtimeRegistry.clear()
+  beforeunloadRegistered = false
 }
 
 export function getOrCreateSubagentRuntime(input: {
@@ -1114,6 +1394,8 @@ export function getOrCreateSubagentRuntime(input: {
   contextManager: ContextManager
   baseToolContext: ToolContext
   onNotification?: (event: SubagentTaskNotification) => void
+  /** Returns the OPFS workspace directory for transcript storage. Optional. */
+  getWorkspaceDir?: () => Promise<FileSystemDirectoryHandle>
 }): SubagentRuntime {
   const key = input.workspaceId || 'default'
   const existing = runtimeRegistry.get(key)
@@ -1124,6 +1406,7 @@ export function getOrCreateSubagentRuntime(input: {
     contextManager: input.contextManager,
     baseToolContext: input.baseToolContext,
     onNotification: input.onNotification,
+    getWorkspaceDir: input.getWorkspaceDir,
   }
   if (existing) {
     existing.updateDeps(deps)
@@ -1131,5 +1414,6 @@ export function getOrCreateSubagentRuntime(input: {
   }
   const created = new SubagentRuntimeImpl(deps)
   runtimeRegistry.set(key, created)
+  registerBeforeunload()
   return created
 }

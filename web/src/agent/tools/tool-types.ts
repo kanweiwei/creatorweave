@@ -38,6 +38,49 @@ export interface WorkflowProgressHooks {
 
 export type SubagentTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'killed'
 
+// ---------------------------------------------------------------------------
+// SubAgent Error System (§4.7)
+// ---------------------------------------------------------------------------
+
+/** SubAgent error codes — covers all client (4xx) and system (5xx) errors. */
+export const SubagentErrorCode = {
+  // Client errors (4xx)
+  INVALID_INPUT: 'INVALID_INPUT',
+  INVALID_MESSAGE: 'INVALID_MESSAGE',
+  INVALID_AGENT_TYPE: 'INVALID_AGENT_TYPE',
+  TIMEOUT_EXCEEDS_MAX: 'TIMEOUT_EXCEEDS_MAX',
+  TASK_NOT_FOUND: 'TASK_NOT_FOUND',
+  TASK_ALREADY_COMPLETED: 'TASK_ALREADY_COMPLETED',
+  NAME_CONFLICT: 'NAME_CONFLICT',
+  QUEUE_FULL: 'QUEUE_FULL',
+  QUEUE_EMPTY: 'QUEUE_EMPTY',
+  CONCURRENCY_LIMIT: 'CONCURRENCY_LIMIT',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  // System errors (5xx)
+  PERSISTENCE_WRITE_FAILED: 'PERSISTENCE_WRITE_FAILED',
+  TRANSCRIPT_NOT_FOUND: 'TRANSCRIPT_NOT_FOUND',
+  TRANSCRIPT_CORRUPTED: 'TRANSCRIPT_CORRUPTED',
+  PROCESS_ZOMBIE: 'PROCESS_ZOMBIE',
+  RESOURCE_EXHAUSTED: 'RESOURCE_EXHAUSTED',
+} as const
+
+export type SubagentErrorCodeType = (typeof SubagentErrorCode)[keyof typeof SubagentErrorCode]
+
+/** Structured error thrown by the subagent runtime and caught by tool executors. */
+export class SubagentError extends Error {
+  readonly code: SubagentErrorCodeType
+  readonly field?: string
+  readonly recoverable: boolean
+
+  constructor(code: SubagentErrorCodeType, message: string, options?: { field?: string; recoverable?: boolean }) {
+    super(message)
+    this.name = 'SubagentError'
+    this.code = code
+    this.field = options?.field
+    this.recoverable = options?.recoverable ?? false
+  }
+}
+
 export interface SubagentTaskUsage {
   total_tokens: number
   input_tokens: number
@@ -78,29 +121,23 @@ export interface SpawnSubagentInput {
   prompt: string
   name?: string
   mode?: 'plan' | 'act'
-  run_in_background?: boolean
   timeout_ms?: number
 }
 
 export interface BatchSpawnSubagentInput {
   tasks: Array<SpawnSubagentInput>
-  run_in_background?: boolean
   max_concurrency?: number
 }
 
-export interface SpawnSubagentSyncResult {
+export interface SpawnSubagentResult {
   status: 'completed'
+  agentId: string
   content: string
   usage?: SubagentTaskUsage
 }
 
-export interface SpawnSubagentAsyncResult {
-  status: 'async_launched'
-  agentId: string
-}
-
 export interface SubagentRuntime {
-  spawn(input: SpawnSubagentInput): Promise<SpawnSubagentSyncResult | SpawnSubagentAsyncResult>
+  spawn(input: SpawnSubagentInput): Promise<SpawnSubagentResult>
   sendMessage(input: {
     to: string
     message: string
@@ -151,16 +188,21 @@ export interface SubagentRuntime {
     total: number
   }>
   batchSpawn(input: BatchSpawnSubagentInput): Promise<{
-    launched: Array<{
+    completed: Array<{
       task_index: number
       agentId: string
+      content: string
+      usage?: SubagentTaskUsage
     }>
-    rejected: Array<{
+    failed: Array<{
       task_index: number
+      agentId: string
       reason: string
       error_code: string
     }>
   }>
+  /** Graceful shutdown: marks all active tasks as failed(SESSION_INTERRUPTED). */
+  shutdown(): void
 }
 
 export interface ReadFileStateEntry {

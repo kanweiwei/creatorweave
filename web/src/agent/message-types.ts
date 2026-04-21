@@ -131,6 +131,13 @@ export type DraftAssistantStep =
       args: string
       result?: string
       streaming: boolean
+      /** SubAgent progress events bridged from runtime notifications during blocking spawn */
+      subagentEvents?: Array<{
+        agentId: string
+        status: string
+        summary: string
+        timestamp: number
+      }>
     }
   | {
       id: string
