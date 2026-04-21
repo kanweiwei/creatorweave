@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, Wrench, CheckCircle2, XCircle, Loader2, Bot } from 'lucide-react'
 import type { ToolCall } from '@/agent/message-types'
 import { CopyIconButton } from './CopyIconButton'
+import { MarkdownContent } from './MarkdownContent'
 import { useT } from '@/i18n'
 
 interface SubagentEvent {
@@ -181,18 +182,20 @@ export function ToolCallDisplay({
         </span>
       </button>
 
-      {/* SubAgent progress section — always visible when events exist */}
-      {isSubagentTool && subagentEvents && subagentEvents.length > 0 && (
+      {/* SubAgent progress section — visible when expanded */}
+      {expanded && isSubagentTool && subagentEvents && subagentEvents.length > 0 && (
         <div className="border-t border-neutral-200 px-3 py-2 dark:border-neutral-700">
           <SubagentProgressSection events={subagentEvents} />
         </div>
       )}
 
-      {/* SubAgent result summary — always visible when completed */}
-      {isSubagentTool && spawnResult?.content && !isExecuting && (
+      {/* SubAgent result summary — visible when expanded */}
+      {expanded && isSubagentTool && spawnResult?.content && !isExecuting && (
         <div className="border-t border-neutral-200 px-3 py-2 dark:border-neutral-700">
           <div className="rounded bg-white p-2 text-xs text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
-            {spawnResult.content}
+            <div className="prose-sm max-w-none break-words">
+              <MarkdownContent content={spawnResult.content} />
+            </div>
           </div>
           {spawnResult.usage && (
             <div className="mt-1 flex gap-3 text-[10px] text-neutral-400">

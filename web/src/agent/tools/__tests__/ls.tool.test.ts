@@ -194,35 +194,35 @@ describe('ls tool', () => {
     expect(resolveAgentHandle).toHaveBeenCalledWith('novel-editor', '', { allowMissing: false })
   })
 
-  it('matches exact Chinese filename pattern at workspace root', async () => {
+  it('matches exact filename pattern at workspace root', async () => {
     const rootHandle = createDirectoryHandleWithFiles([
-      '贷款合同模板.docx',
-      'AI智能助手简介（丰富版）.docx',
-      'AI助手简介.docx',
+      'loan-contract-template.docx',
+      'ai-assistant-overview-rich.docx',
+      'ai-assistant-overview.docx',
     ])
 
     const result = await lsExecutor(
-      { pattern: '贷款合同模板.docx' },
+      { pattern: 'loan-contract-template.docx' },
       { directoryHandle: rootHandle } as unknown as ToolContext
     )
 
-    expect(result).toContain('贷款合同模板.docx')
+    expect(result).toContain('loan-contract-template.docx')
     expect(result).not.toContain('No files matching pattern')
   })
 
-  it('matches exact Chinese filename pattern when path is "./"', async () => {
+  it('matches exact filename pattern when path is "./"', async () => {
     const rootHandle = createDirectoryHandleWithFiles([
-      '贷款合同模板.docx',
-      'AI智能助手简介（丰富版）.docx',
-      'AI助手简介.docx',
+      'loan-contract-template.docx',
+      'ai-assistant-overview-rich.docx',
+      'ai-assistant-overview.docx',
     ])
 
     const result = await lsExecutor(
-      { path: './', pattern: '贷款合同模板.docx' },
+      { path: './', pattern: 'loan-contract-template.docx' },
       { directoryHandle: rootHandle } as unknown as ToolContext
     )
 
-    expect(result).toContain('贷款合同模板.docx')
+    expect(result).toContain('loan-contract-template.docx')
     expect(result).not.toContain('No files matching pattern')
   })
 })
