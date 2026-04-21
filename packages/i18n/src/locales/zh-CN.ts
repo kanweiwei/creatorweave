@@ -1774,6 +1774,7 @@ export const zhCN = {
     createFirstWorkspace: "创建第一个工作区",
     deleteWorkspaceFailed: "删除工作区失败",
     deleteWorkspace: "删除工作区",
+    renameWorkspace: "重命名工作区",
     dragToResizeHeight: "拖动调整高度",
     centerDot: "中心圆点",
     files: "文件",

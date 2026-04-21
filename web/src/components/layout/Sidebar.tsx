@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Plus, Trash2, PanelLeftClose, PanelLeft, FolderTree, Puzzle, Clock, History } from 'lucide-react'
+import { Plus, Trash2, PanelLeftClose, PanelLeft, FolderTree, Puzzle, Clock, History, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   BrandButton,
@@ -98,6 +98,7 @@ export function Sidebar({
     deleteConversation,
     deleteConversations,
     isConversationRunning,
+    updateTitle,
   } = useConversationStore()
 
   const { directoryHandle, directoryName } = useAgentStore()
@@ -124,12 +125,46 @@ export function Sidebar({
   const [conversationRatio, _setConversationRatio] = useState(loadConversationRatio)
   const [clearConversationsDialogOpen, setClearConversationsDialogOpen] = useState(false)
   const [clearingConversations, setClearingConversations] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [composing, setComposing] = useState(false)
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       onRequestClose?.()
     }
   }, [isMobile, onRequestClose])
+
+  // Rename handlers
+  const startRename = useCallback((convId: string, currentTitle: string) => {
+    setEditingId(convId)
+    setEditingTitle(currentTitle)
+    // Focus the input after React renders it
+    requestAnimationFrame(() => {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    })
+  }, [])
+
+  const confirmRename = useCallback(() => {
+    if (editingId && editingTitle.trim()) {
+      const trimmedTitle = editingTitle.trim()
+      // Find current conversation to check if title actually changed
+      const conv = scopedConversations.find((c) => c.id === editingId)
+      if (conv && conv.title !== trimmedTitle) {
+        updateTitle(editingId, trimmedTitle)
+      }
+    }
+    setEditingId(null)
+    setEditingTitle('')
+  }, [editingId, editingTitle, updateTitle, scopedConversations])
+
+  const cancelRename = useCallback(() => {
+    setEditingId(null)
+    setEditingTitle('')
+    setComposing(false)
+  }, [])
 
   // Drag sidebar width (horizontal)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -309,6 +344,7 @@ export function Sidebar({
               const isRunning = isConversationRunning(conv.id)
               const isActive = conv.id === activeConversationId
               const pendingReviewCount = pendingCountByConversationId.get(conv.id) || 0
+              const isEditing = editingId === conv.id
               return (
                 <div
                   key={conv.id}
@@ -322,10 +358,16 @@ export function Sidebar({
                       : 'hover:bg-hover text-secondary'
                   }`}
                   onClick={() => {
+                    if (isEditing) return
                     setActive(conv.id)
                     closeMobileSidebar()
                   }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    startRename(conv.id, conv.title)
+                  }}
                   onKeyDown={(e) => {
+                    if (isEditing) return
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       setActive(conv.id)
@@ -337,7 +379,30 @@ export function Sidebar({
                   {isRunning && (
                     <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-warning" />
                   )}
-                  <span className="min-w-0 flex-1 truncate">{conv.title}</span>
+                  {isEditing ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onCompositionStart={() => setComposing(true)}
+                      onCompositionEnd={() => setComposing(false)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation()
+                        if (e.key === 'Enter' && !composing) {
+                          confirmRename()
+                        } else if (e.key === 'Escape') {
+                          cancelRename()
+                        }
+                      }}
+                      onBlur={confirmRename}
+                      onClick={(e) => e.stopPropagation()}
+                      className="min-w-0 flex-1 rounded border border-primary-300 bg-white px-1.5 py-0.5 text-xs text-primary outline-none focus:ring-1 focus:ring-primary-500 dark:border-primary-600 dark:bg-card dark:text-primary"
+                      maxLength={100}
+                    />
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate">{conv.title}</span>
+                  )}
                   {pendingReviewCount > 0 && (
                     <span
                       className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-warning"
@@ -346,12 +411,28 @@ export function Sidebar({
                       {pendingReviewCount}
                     </span>
                   )}
+                  {/* Rename button - hidden during editing */}
+                  {!isEditing && (
+                    <BrandButton
+                      iconButton
+                      variant="ghost"
+                      className="ml-auto h-6 w-6 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        startRename(conv.id, conv.title)
+                      }}
+                      title={t('sidebar.renameWorkspace')}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </BrandButton>
+                  )}
                   <BrandButton
                     iconButton
                     variant="ghost"
-                    className="ml-auto h-6 w-6 opacity-0 group-hover:opacity-100"
+                    className={`h-6 w-6 ${isEditing ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}
                     onClick={async (e) => {
                       e.stopPropagation()
+                      if (isEditing) return
                       try {
                         await deleteConversation(conv.id)
                         toast.success(t('sidebar.workspaceDeleted'))

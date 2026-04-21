@@ -300,8 +300,8 @@ export function PendingSyncPanel() {
         }
         diffInputs.push({
           path: change.path,
-          beforeText: beforeText.slice(0, 2000),
-          afterText: afterText.slice(0, 2000),
+          beforeText,
+          afterText,
         })
       }
       let diffSections: string[] = []

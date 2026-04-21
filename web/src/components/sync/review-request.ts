@@ -79,8 +79,8 @@ async function buildReviewMessage(changes: FileChange[]): Promise<string> {
 
     diffInputs.push({
       path: change.path,
-      beforeText: beforeText.slice(0, 2400),
-      afterText: afterText.slice(0, 2400),
+      beforeText,
+      afterText,
     })
   }
 

@@ -1804,6 +1804,7 @@ export const jaJP = {
     createFirstWorkspace: "最初のワークスペースを作成",
     deleteWorkspaceFailed: "ワークスペースの削除に失敗しました",
     deleteWorkspace: "ワークスペースを削除",
+    renameWorkspace: "ワークスペース名を変更",
     dragToResizeHeight: "ドラッグして高さを調整",
     centerDot: "センターポイント",
     files: "ファイル",

@@ -1816,6 +1816,7 @@ export const enUS = {
     createFirstWorkspace: "Create First Workspace",
     deleteWorkspaceFailed: "Failed to delete workspace",
     deleteWorkspace: "Delete Workspace",
+    renameWorkspace: "Rename Workspace",
     dragToResizeHeight: "Drag to resize height",
     centerDot: "Center",
     files: "Files",

@@ -1786,6 +1786,7 @@ export const koKR = {
     createFirstWorkspace: "첫 번째 워크스페이스 만들기",
     deleteWorkspaceFailed: "워크스페이스 삭제 실패",
     deleteWorkspace: "워크스페이스 삭제",
+    renameWorkspace: "워크스페이스 이름 변경",
     dragToResizeHeight: "드래그하여 높이 조정",
     centerDot: "중앙 점",
     files: "파일",
