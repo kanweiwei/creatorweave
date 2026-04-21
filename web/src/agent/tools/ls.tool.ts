@@ -560,33 +560,33 @@ async function executeGlobMode(
     const staticPrefix = scope.subPath ? '' : getStaticGlobPrefix(pattern)
     const effectiveRoot = scope.subPath || staticPrefix
 
-    // For workspace scope, prefer OPFS files/ so glob sees the same files as Pyodide at /mnt/
-    // Fall back to native FS when OPFS cannot resolve the requested path.
-    let searchHandle: FileSystemDirectoryHandle
-    let exists = true
+    // For workspace scope, collect handles from both native FS and OPFS
+    // so glob can find files regardless of which filesystem they live in.
+    const searchHandles: Array<{ handle: FileSystemDirectoryHandle; source: 'native' | 'opfs' }> = []
+
     if (scope.kind === 'workspace') {
+      // 1. Native FS (disk files — always attempt)
+      const nativeResult = await scope.resolveHandle(effectiveRoot, { allowMissing: true })
+      if (nativeResult.exists) {
+        searchHandles.push({ handle: nativeResult.handle, source: 'native' })
+      }
+
+      // 2. OPFS (pending changes, .skills/, etc.)
       const opfsFilesHandle = await getOPFSFilesHandle(toolContext.workspaceId)
       if (opfsFilesHandle) {
-        const resolved = await resolveDirectoryHandle(opfsFilesHandle, effectiveRoot, { allowMissing: true })
-        if (resolved.exists) {
-          searchHandle = resolved.handle
-        } else {
-          const r = await scope.resolveHandle(effectiveRoot, { allowMissing: true })
-          searchHandle = r.handle
-          exists = r.exists
+        const opfsResult = await resolveDirectoryHandle(opfsFilesHandle, effectiveRoot, { allowMissing: true })
+        if (opfsResult.exists) {
+          searchHandles.push({ handle: opfsResult.handle, source: 'opfs' })
         }
-      } else {
-        const r = await scope.resolveHandle(effectiveRoot, { allowMissing: true })
-        searchHandle = r.handle
-        exists = r.exists
       }
     } else {
       const r = await scope.resolveHandle(effectiveRoot, { allowMissing: true })
-      searchHandle = r.handle
-      exists = r.exists
+      if (r.exists) {
+        searchHandles.push({ handle: r.handle, source: 'native' })
+      }
     }
 
-    if (!exists) {
+    if (searchHandles.length === 0) {
       return `No files matching pattern "${pattern}"`
     }
 
@@ -597,57 +597,67 @@ async function executeGlobMode(
     const startedAt = Date.now()
     const deadlineAt = startedAt + deadlineMs
     const matches: string[] = []
-    const stack: Array<{ handle: FileSystemDirectoryHandle; fullPath: string; localPath: string; depth: number }> =
-      [{ handle: searchHandle, fullPath: effectiveRoot, localPath: '', depth: 0 }]
+    const seenPaths = new Set<string>()
     let isTruncated = false
     let timedOut = false
 
-    while (stack.length > 0) {
-      if (abortSignal?.aborted) {
-        return JSON.stringify({ error: 'Glob search failed: operation aborted' })
-      }
-      const current = stack.pop()!
-      if (Date.now() > deadlineAt) {
-        timedOut = true
-        break
-      }
+    for (const { handle: searchHandle } of searchHandles) {
+      if (isTruncated || timedOut) break
 
-      const handles = await readDirectoryEntriesSorted(current.handle)
-      for (const handle of handles) {
+      const stack: Array<{ handle: FileSystemDirectoryHandle; fullPath: string; localPath: string; depth: number }> =
+        [{ handle: searchHandle, fullPath: effectiveRoot, localPath: '', depth: 0 }]
+
+      while (stack.length > 0) {
         if (abortSignal?.aborted) {
           return JSON.stringify({ error: 'Glob search failed: operation aborted' })
         }
+        const current = stack.pop()!
         if (Date.now() > deadlineAt) {
           timedOut = true
           break
         }
 
-        const nextDepth = current.depth + 1
-        if (nextDepth > maxDepth) continue
-
-        const fullPath = current.fullPath ? `${current.fullPath}/${handle.name}` : handle.name
-        const localPath = current.localPath ? `${current.localPath}/${handle.name}` : handle.name
-
-        if (handle.kind === 'directory') {
-          if (shouldSkipDirectory(handle.name, includeIgnored, extraExcludes)) continue
-          stack.push({
-            handle: handle as FileSystemDirectoryHandle,
-            fullPath,
-            localPath,
-            depth: nextDepth,
-          })
-          continue
-        }
-
-        if (micromatch.isMatch(fullPath, pattern, micromatchOpts) || micromatch.isMatch(localPath, pattern, micromatchOpts)) {
-          matches.push(fullPath)
-          if (maxResults !== undefined && matches.length >= maxResults) {
-            isTruncated = true
+        const handles = await readDirectoryEntriesSorted(current.handle)
+        for (const handle of handles) {
+          if (abortSignal?.aborted) {
+            return JSON.stringify({ error: 'Glob search failed: operation aborted' })
+          }
+          if (Date.now() > deadlineAt) {
+            timedOut = true
             break
           }
+
+          const nextDepth = current.depth + 1
+          if (nextDepth > maxDepth) continue
+
+          const fullPath = current.fullPath ? `${current.fullPath}/${handle.name}` : handle.name
+          const localPath = current.localPath ? `${current.localPath}/${handle.name}` : handle.name
+
+          if (handle.kind === 'directory') {
+            if (shouldSkipDirectory(handle.name, includeIgnored, extraExcludes)) continue
+            stack.push({
+              handle: handle as FileSystemDirectoryHandle,
+              fullPath,
+              localPath,
+              depth: nextDepth,
+            })
+            continue
+          }
+
+          // Deduplicate by path (native FS takes precedence)
+          if (seenPaths.has(fullPath)) continue
+          seenPaths.add(fullPath)
+
+          if (micromatch.isMatch(fullPath, pattern, micromatchOpts) || micromatch.isMatch(localPath, pattern, micromatchOpts)) {
+            matches.push(fullPath)
+            if (maxResults !== undefined && matches.length >= maxResults) {
+              isTruncated = true
+              break
+            }
+          }
         }
+        if (isTruncated || timedOut) break
       }
-      if (isTruncated || timedOut) break
     }
 
     if (timedOut) {
