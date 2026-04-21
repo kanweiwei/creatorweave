@@ -164,6 +164,19 @@ function applyCurlyQuotes(str: string, straight: string, open: string, close: st
   }).join('')
 }
 
+/** Format hunks from structuredPatch into a compact unified-diff string */
+function formatHunksToDiff(hunks: Array<{ oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }>): string {
+  if (!hunks.length) return ''
+  const parts: string[] = []
+  for (const hunk of hunks) {
+    parts.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`)
+    for (const line of hunk.lines) {
+      parts.push(line)
+    }
+  }
+  return parts.join('\n')
+}
+
 export const editDefinition: ToolDefinition = {
   type: 'function',
   function: {
@@ -346,9 +359,10 @@ async function executeSingleEdit(
     const pendingCount = getPendingChanges().length
     const status = target.kind === 'workspace' ? 'pending' : 'saved'
 
-    const patch = structuredPatch(path, path, fileContent, updatedFile, '', '', {
+    const patchResult = structuredPatch(path, path, fileContent, updatedFile, '', '', {
       context: 3,
-    }).hunks
+    })
+    const diffText = formatHunksToDiff(patchResult.hunks)
 
     const session = useRemoteStore.getState().session
     if (session) {
@@ -360,14 +374,9 @@ async function executeSingleEdit(
     return toolOkJson('edit', {
       noop: isNoopEdit,
       path,
-      filePath: path,
       action: 'modify',
       replacedCount,
-      oldString: oldText,
-      newString: newText,
-      originalFile: fileContent,
-      updatedFile,
-      structuredPatch: patch,
+      diff: diffText || undefined,
       replaceAll,
       status,
       pendingCount,

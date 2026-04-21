@@ -103,7 +103,7 @@ describe('file edit tool', () => {
     expect(writeFileMock).not.toHaveBeenCalled()
   })
 
-  it('replaces all matches when replace_all is true and returns structuredPatch', async () => {
+  it('replaces all matches when replace_all is true and returns diff', async () => {
     resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'src/a.ts' })
     readFileMock.mockResolvedValueOnce({
       content: 'const x = old\nconst y = old\n',
@@ -123,7 +123,9 @@ describe('file edit tool', () => {
     const data = unwrapOk(result)
 
     expect(data.replaceAll).toBe(true)
-    expect(Array.isArray(data.structuredPatch)).toBe(true)
+    expect(typeof data.diff).toBe('string')
+    expect(data.diff).toContain('-old')
+    expect(data.diff).toContain('+new')
     expect(writeFileMock).toHaveBeenCalledWith(
       'src/a.ts',
       'const x = new\nconst y = new\n',
