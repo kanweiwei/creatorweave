@@ -14,7 +14,7 @@ import type { ToolContext } from './tools/tool-types'
 import type { Message } from './message-types'
 import { ContextManager } from './context-manager'
 import { ToolRegistry } from './tool-registry'
-import { UNIVERSAL_SYSTEM_PROMPT } from './prompts/universal-system-prompt'
+import { getUniversalSystemPrompt } from './prompts/universal-system-prompt'
 import { PiAIProvider } from './llm/pi-ai-provider'
 import { type AgentMode } from './agent-mode'
 import { generateContextSummaryWithLLM } from './loop/context-summary'
@@ -33,7 +33,7 @@ export type {
 } from './loop/types'
 
 const MAX_ITERATIONS = 20
-const DEFAULT_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT
+const DEFAULT_SYSTEM_PROMPT = getUniversalSystemPrompt()
 const DEFAULT_TOOL_TIMEOUT = 30000
 const TOOL_TIMEOUT_EXEMPTIONS = new Set<string>(['run_workflow', 'spawn_subagent', 'batch_spawn'])
 const SUMMARY_MIN_DROPPED_GROUPS = 2

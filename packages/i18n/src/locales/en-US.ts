@@ -159,6 +159,13 @@ export const enUS = {
     // Sync tabs
     sync: "Cross-device Sync",
     offline: "Offline Tasks",
+    experimental: "Experimental",
+
+    // Experimental features
+    experimentalWarning: "These features are experimental",
+    experimentalWarningDesc: "Enabling them may cause stability issues. Some features depend on your provider's concurrency capacity.",
+    batchSpawn: "Parallel Subagents (batch_spawn)",
+    batchSpawnDesc: "Allow AI to launch multiple subtasks in parallel. Requires provider support for high concurrency, otherwise rate limit errors may occur.",
 
     // Sync panel
     syncPanel: {

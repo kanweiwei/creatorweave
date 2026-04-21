@@ -121,6 +121,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   }
   const mergedTimelineItems = isProcessing
     ? [
+        // Committed messages first, preserving their insertion order
         ...turn.messages.map((message, index) => ({
           kind: 'message' as const,
           key: `msg-${message.id}`,
@@ -128,20 +129,23 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
           timestamp: message.timestamp,
           message,
         })),
-        ...orderedRuntimeSteps.map((step, index) => ({
-          kind: 'runtime' as const,
-          key: `step-${step.id}`,
-          order: turn.messages.length + index,
-          timestamp:
-            typeof step.timestamp === 'number'
-              ? step.timestamp
-              : turn.timestamp + turn.messages.length + index + 1,
-          step,
-        })),
-      ].sort((a, b) => {
-        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
-        return a.order - b.order
-      })
+        // Runtime steps after all committed messages, sorted by timestamp
+        ...orderedRuntimeSteps
+          .map((step, index) => ({
+            kind: 'runtime' as const,
+            key: `step-${step.id}`,
+            order: index,
+            timestamp:
+              typeof step.timestamp === 'number'
+                ? step.timestamp
+                : turn.timestamp + index + 1,
+            step,
+          }))
+          .sort((a, b) => {
+            if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+            return a.order - b.order
+          }),
+      ]
     : []
   const hasCurrentToolCallInRuntimeSteps = !!(
     currentToolCall &&

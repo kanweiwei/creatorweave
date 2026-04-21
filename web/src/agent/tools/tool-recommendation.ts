@@ -240,6 +240,18 @@ const TOOL_METADATA: Record<
   },
 }
 
+/** Get TOOL_METADATA filtered by enabled features (e.g. batch_spawn) */
+function getToolMetadata() {
+  const entries = Object.entries(TOOL_METADATA)
+  try {
+    const { useSettingsStore } = require('@/store/settings.store')
+    if (!useSettingsStore.getState().enableBatchSpawn) {
+      return Object.fromEntries(entries.filter(([k]) => k !== 'batch_spawn'))
+    }
+  } catch { /* fallback: return all */ }
+  return TOOL_METADATA
+}
+
 //=============================================================================
 // Intent Analyzer
 //=============================================================================
@@ -332,7 +344,7 @@ export class RecommendationEngine {
     // Score tools based on intent match
     const toolScores: Map<string, number> = new Map()
 
-    for (const [toolName, metadata] of Object.entries(TOOL_METADATA)) {
+    for (const [toolName, metadata] of Object.entries(getToolMetadata())) {
       let score = 0
 
       // Direct intent match
@@ -398,7 +410,7 @@ export class RecommendationEngine {
       batch: [],
     }
 
-    for (const [toolName, metadata] of Object.entries(TOOL_METADATA)) {
+    for (const [toolName, metadata] of Object.entries(getToolMetadata())) {
       const category = metadata.category
       result[category].push({
         toolName,

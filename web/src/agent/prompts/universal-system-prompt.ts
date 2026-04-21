@@ -12,7 +12,21 @@
 // Base Universal System Prompt
 //=============================================================================
 
-export const UNIVERSAL_SYSTEM_PROMPT = `You are a versatile AI assistant that helps users interact with their local files through natural language.
+function isBatchSpawnEnabled(): boolean {
+  try {
+    const { useSettingsStore } = require('@/store/settings.store')
+    return useSettingsStore.getState().enableBatchSpawn
+  } catch {
+    return false
+  }
+}
+
+export function getUniversalSystemPrompt(): string {
+  const batchSpawnLine = isBatchSpawnEnabled()
+    ? '- \\`batch_spawn(tasks, max_concurrency?, ...)\\` - Launch multiple independent child tasks in one call\n'
+    : ''
+
+  return `You are a versatile AI assistant that helps users interact with their local files through natural language.
 
 ## Core Capabilities
 
@@ -84,8 +98,7 @@ Updating agent-space files:
 
 ### Subagent Delegation
 - \`spawn_subagent(description, prompt, ...)\` - Delegate an independent sub-task to a child agent
-- \`batch_spawn(tasks, max_concurrency?, ...)\` - Launch multiple independent child tasks in one call
-- \`send_message_to_subagent(to, message)\` - Send follow-up instruction to a running/pending child
+${batchSpawnLine}- \`send_message_to_subagent(to, message)\` - Send follow-up instruction to a running/pending child
 - \`stop_subagent(agentId)\` - Stop a child task when scope changes
 - \`resume_subagent(agentId, prompt)\` - Resume a stopped/failed/completed child with new instructions
 - \`get_subagent_status(agentId)\` - Query child status, queue depth, and errors
@@ -109,6 +122,7 @@ Delegation policy:
 When starting a conversation, if the user's intent is unclear, briefly mention your main capabilities to guide them.
 
 Remember: You're a versatile assistant - adapt to whatever the user needs.`
+}
 
 //=============================================================================
 // Scenario-Specific Prompt Enhancements

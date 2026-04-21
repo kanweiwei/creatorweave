@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Check,
   Wifi,
+  FlaskConical,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useT } from '@/i18n'
@@ -37,13 +38,15 @@ import {
   BrandDialogBody,
 } from '@creatorweave/ui'
 import { BrandButton } from '@creatorweave/ui'
+import { BrandSwitch } from '@creatorweave/ui'
+import { useSettingsStore } from '@/store/settings.store'
 import { getSessionStateManager } from '@/remote/session-state-serialization'
 
 // =============================================================================
 // Types
 // =============================================================================
 
-type SettingsTab = 'llm' | 'sync' | 'offline'
+type SettingsTab = 'llm' | 'sync' | 'offline' | 'experimental'
 
 interface SessionSyncMetadata {
   syncId: string
@@ -650,6 +653,29 @@ function SyncPanel({ deviceId, browserInfo, relayUrl = 'http://localhost:3001' }
 }
 
 // =============================================================================
+// Experimental Feature Toggle
+// =============================================================================
+
+interface ExperimentalToggleProps {
+  title: string
+  description: string
+  checked: boolean
+  onChange: (value: boolean) => void
+}
+
+function ExperimentalToggle({ title, description, checked, onChange }: ExperimentalToggleProps) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-secondary dark:text-neutral-200">{title}</p>
+        <p className="mt-1 text-xs text-tertiary dark:text-neutral-400">{description}</p>
+      </div>
+      <BrandSwitch checked={checked} onCheckedChange={onChange} />
+    </div>
+  )
+}
+
+// =============================================================================
 // Settings Dialog Content
 // =============================================================================
 
@@ -681,6 +707,7 @@ const SettingsDialogContent = forwardRef<
     { id: 'llm', label: t('settings.title'), icon: <Settings className="h-4 w-4" /> },
     { id: 'sync', label: t('settings.sync'), icon: <Cloud className="h-4 w-4" /> },
     { id: 'offline', label: t('settings.offline'), icon: <Wifi className="h-4 w-4" /> },
+    { id: 'experimental', label: t('settings.experimental'), icon: <FlaskConical className="h-4 w-4" /> },
   ]
 
   return (
@@ -748,6 +775,30 @@ const SettingsDialogContent = forwardRef<
           {activeTab === 'offline' && (
             <div className="py-1">
               <OfflineQueue />
+            </div>
+          )}
+
+          {/* Experimental Features Tab */}
+          {activeTab === 'experimental' && (
+            <div className="space-y-4 py-1">
+              {/* Warning banner */}
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-800 dark:text-amber-200">
+                  <p className="font-medium">{t('settings.experimentalWarning')}</p>
+                  <p className="mt-1 text-xs">
+                    {t('settings.experimentalWarningDesc')}
+                  </p>
+                </div>
+              </div>
+
+              {/* batch_spawn toggle */}
+              <ExperimentalToggle
+                title={t('settings.batchSpawn')}
+                description={t('settings.batchSpawnDesc')}
+                checked={useSettingsStore.getState().enableBatchSpawn}
+                onChange={(v) => useSettingsStore.getState().setEnableBatchSpawn(v)}
+              />
             </div>
           )}
         </div>

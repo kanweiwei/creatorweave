@@ -45,6 +45,9 @@ interface SettingsState {
   enableThinking: boolean
   thinkingLevel: ThinkingLevel
 
+  // 实验性功能 (Experimental features, disabled by default)
+  enableBatchSpawn: boolean
+
   // API key status - NOT persisted, derived from SQLite
   // Use getHasApiKey() or checkHasApiKey() to get the current value
   hasApiKey: boolean
@@ -67,6 +70,7 @@ interface SettingsState {
   setMaxIterations: (iterations: number) => void
   setEnableThinking: (v: boolean) => void
   setThinkingLevel: (v: ThinkingLevel) => void
+  setEnableBatchSpawn: (v: boolean) => void
   setHasApiKey: (has: boolean) => void
   getEffectiveProviderConfig: () => EffectiveProviderConfig | null
 
@@ -96,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       maxIterations: 20,
       enableThinking: false,
       thinkingLevel: 'medium' as ThinkingLevel,
+      enableBatchSpawn: false,
       hasApiKey: false,
 
       setProviderType: (providerType) => {
@@ -255,6 +260,7 @@ export const useSettingsStore = create<SettingsState>()(
         }),
       setEnableThinking: (enableThinking) => set({ enableThinking }),
       setThinkingLevel: (thinkingLevel) => set({ thinkingLevel }),
+      setEnableBatchSpawn: (enableBatchSpawn) => set({ enableBatchSpawn }),
       setHasApiKey: (hasApiKey) => set({ hasApiKey }),
       getEffectiveProviderConfig: () => {
         const state = get()
@@ -347,6 +353,7 @@ export const useSettingsStore = create<SettingsState>()(
         maxIterations: state.maxIterations,
         enableThinking: state.enableThinking,
         thinkingLevel: state.thinkingLevel,
+        enableBatchSpawn: state.enableBatchSpawn,
       }),
     }
   )

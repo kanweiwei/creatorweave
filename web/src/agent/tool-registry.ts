@@ -9,6 +9,7 @@ import type { ToolDefinition, ToolExecutor, ToolEntry, ToolContext } from './too
 import type { PluginMetadata } from '@/types/plugin'
 import { formatErrorForUser, withAutoRetry } from './error-handling'
 import { isToolAllowedInMode, type AgentMode } from './agent-mode'
+import { useSettingsStore } from '@/store/settings.store'
 
 // Import unified IO tools
 import { readDefinition, readExecutor, writeDefinition, writeExecutor } from './tools/io.tool'
@@ -134,25 +135,39 @@ export class ToolRegistry {
     return this.tools.delete(name)
   }
 
-  /** Get all tool definitions (for LLM API) */
+  /** Get all tool definitions (for LLM API), respecting feature flags */
   getToolDefinitions(): ToolDefinition[] {
-    return Array.from(this.tools.values()).map((entry) => entry.definition)
+    return this.filterByFeatureFlags(
+      Array.from(this.tools.values()).map((entry) => entry.definition),
+    )
   }
 
   /**
-   * Get tool definitions filtered by agent mode.
+   * Get tool definitions filtered by agent mode and feature flags.
    * In 'plan' mode, only read-only tools are returned.
    * In 'act' mode, all tools are returned.
    */
   getToolDefinitionsForMode(mode: AgentMode): ToolDefinition[] {
-    const allDefinitions = Array.from(this.tools.values()).map((entry) => entry.definition)
-    
+    let definitions = Array.from(this.tools.values()).map((entry) => entry.definition)
+
+    // Filter by feature flags first
+    definitions = this.filterByFeatureFlags(definitions)
+
     if (mode === 'act') {
-      return allDefinitions
+      return definitions
     }
-    
+
     // Plan mode: filter to read-only tools only
-    return allDefinitions.filter(tool => isToolAllowedInMode(tool.function.name, mode))
+    return definitions.filter(tool => isToolAllowedInMode(tool.function.name, mode))
+  }
+
+  /** Filter out tools disabled by feature flags (e.g. batch_spawn) */
+  private filterByFeatureFlags(definitions: ToolDefinition[]): ToolDefinition[] {
+    const { enableBatchSpawn } = useSettingsStore.getState()
+    if (!enableBatchSpawn) {
+      return definitions.filter(tool => tool.function.name !== 'batch_spawn')
+    }
+    return definitions
   }
 
   /**
