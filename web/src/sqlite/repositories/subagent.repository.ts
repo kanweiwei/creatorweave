@@ -37,6 +37,26 @@ export interface StoredSubagentTask {
   last_activity_at: number
 }
 
+export interface TransitionSubagentStatusInput {
+  workspaceId: string
+  agentId: string
+  fromStatus: SubagentTaskStatus | SubagentTaskStatus[]
+  toStatus: SubagentTaskStatus
+  mode: AgentMode
+  messages: Message[]
+  queue: Array<{ message: string; enqueued_at: number }>
+  usage?: SubagentTaskUsage
+  error?: { code: string; message: string }
+  stopped: boolean
+  updated_at: number
+  last_activity_at: number
+}
+
+export interface TransitionSubagentStatusResult {
+  applied: boolean
+  currentStatus?: SubagentTaskStatus
+}
+
 export class SubagentRepository {
   async findByWorkspaceId(workspaceId: string): Promise<StoredSubagentTask[]> {
     const db = getSQLiteDB()
@@ -48,6 +68,18 @@ export class SubagentRepository {
       [workspaceId]
     )
     return rows.map((row) => this.rowToTask(row))
+  }
+
+  async getStatus(workspaceId: string, agentId: string): Promise<SubagentTaskStatus | null> {
+    const db = getSQLiteDB()
+    const row = await db.queryFirst<{ status: string }>(
+      `SELECT status
+         FROM subagent_tasks
+        WHERE workspace_id = ?
+          AND agent_id = ?`,
+      [workspaceId, agentId]
+    )
+    return (row?.status as SubagentTaskStatus | undefined) || null
   }
 
   async saveBatch(workspaceId: string, tasks: StoredSubagentTask[]): Promise<void> {
@@ -80,6 +112,62 @@ export class SubagentRepository {
         )
       }
     })
+  }
+
+  async transitionStatus(
+    input: TransitionSubagentStatusInput
+  ): Promise<TransitionSubagentStatusResult> {
+    const db = getSQLiteDB()
+    const fromStatuses = Array.isArray(input.fromStatus) ? input.fromStatus : [input.fromStatus]
+    if (fromStatuses.length === 0) {
+      return { applied: false }
+    }
+
+    const placeholders = fromStatuses.map(() => '?').join(', ')
+    await db.execute(
+      `UPDATE subagent_tasks
+          SET status = ?,
+              mode = ?,
+              messages_json = ?,
+              queue_json = ?,
+              usage_json = ?,
+              error_json = ?,
+              stopped = ?,
+              updated_at = ?,
+              last_activity_at = ?
+        WHERE workspace_id = ?
+          AND agent_id = ?
+          AND status IN (${placeholders})`,
+      [
+        input.toStatus,
+        input.mode,
+        toJSON(input.messages),
+        toJSON(input.queue),
+        toJSON(input.usage || null),
+        toJSON(input.error || null),
+        boolToInt(input.stopped),
+        input.updated_at,
+        input.last_activity_at,
+        input.workspaceId,
+        input.agentId,
+        ...fromStatuses,
+      ]
+    )
+    const changed = await db.queryFirst<{ count: number }>('SELECT changes() as count')
+    if ((changed?.count || 0) > 0) {
+      return { applied: true }
+    }
+    const current = await db.queryFirst<{ status: string }>(
+      `SELECT status
+         FROM subagent_tasks
+        WHERE workspace_id = ?
+          AND agent_id = ?`,
+      [input.workspaceId, input.agentId]
+    )
+    return {
+      applied: false,
+      currentStatus: current?.status as SubagentTaskStatus | undefined,
+    }
   }
 
   private rowToTask(row: SubagentTaskRow): StoredSubagentTask {

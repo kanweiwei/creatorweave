@@ -79,6 +79,7 @@ export interface SpawnSubagentInput {
   name?: string
   mode?: 'plan' | 'act'
   run_in_background?: boolean
+  timeout_ms?: number
 }
 
 export interface BatchSpawnSubagentInput {
@@ -103,6 +104,8 @@ export interface SubagentRuntime {
   sendMessage(input: {
     to: string
     message: string
+    timeout_ms?: number
+    overflow_action?: 'reject' | 'drop_oldest'
   }): Promise<{
     success: boolean
     message: string
@@ -114,10 +117,12 @@ export interface SubagentRuntime {
   stop(input: {
     agentId: string
     force?: boolean
+    timeout_ms?: number
   }): Promise<{ success: boolean; already_stopped?: boolean }>
   resume(input: {
     agentId: string
     prompt: string
+    timeout_ms?: number
   }): Promise<{
     status: 'resumed'
     agentId: string

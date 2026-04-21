@@ -70,8 +70,8 @@ If you encounter errors, describe them clearly including what you tried and what
 
 实现清单：
 
-- [ ] 定义 SubAgent 最小 system prompt（不可自定义）
-- [ ] spawn 时 system prompt + user(prompt) 构成初始上下文
+- [x] 定义 SubAgent 最小 system prompt（不可自定义）
+- [x] spawn 时 system prompt + user(prompt) 构成初始上下文
 - [ ] resume 时 system prompt + transcript 摘要 + user(prompt) 构成恢复上下文
 - [ ] 不注入 SOUL.md / IDENTITY.md / AGENTS.md / HEARTBEAT.md
 
@@ -93,9 +93,9 @@ agent-loop.ts (主代理)
 实现清单：
 
 - [ ] 提取 agent-loop 中可复用逻辑为共享模块（LLM 调用、工具执行、消息解析）
-- [ ] SubAgentRunner 使用共享模块，独立管理自己的上下文和状态
-- [ ] SubAgent 不写入主代理的 conversation store
-- [ ] SubAgent 结果通过 task_notification 回传主代理
+- [x] SubAgentRunner 使用共享模块，独立管理自己的上下文和状态
+- [x] SubAgent 不写入主代理的 conversation store
+- [x] SubAgent 结果通过 task_notification 回传主代理
 
 ## 2.4 SubAgent 默认工具集
 
@@ -168,10 +168,10 @@ agent-loop.ts (主代理)
 
 #### 3.3.1 状态转换竞态防护
 
-- [ ] 实现乐观锁状态转换：更新时使用 `WHERE agent_id = ? AND status = ?`
-- [ ] 若 `affected_rows = 0`，重新读取当前状态并按优先级决策
-- [ ] 优先级规则：外部指令（stop）> 自然完成（complete/fail）
-- [ ] 并发 stop + complete：stop 先到则结果为 killed，complete 先到则结果为 completed
+- [x] 实现乐观锁状态转换：更新时使用 `WHERE agent_id = ? AND status = ?`
+- [x] 若 `affected_rows = 0`，重新读取当前状态并按优先级决策
+- [x] 优先级规则：外部指令（stop）> 自然完成（complete/fail）
+- [x] 并发 stop + complete：stop 先到则结果为 killed，complete 先到则结果为 completed
 - [ ] 写入单元测试覆盖所有并发竞态场景
 
 ## 4. API 契约（MVP）
@@ -195,7 +195,7 @@ agent-loop.ts (主代理)
 - [ ] 实现 `name` 格式校验（仅 `[a-zA-Z0-9_-]`）
 - [ ] 实现 `name` 唯一性校验（同会话不可重名，冲突返回 `NAME_CONFLICT`）
 - [ ] 实现 `subagent_type` 合法性校验，非法值返回 `INVALID_AGENT_TYPE`
-- [ ] 实现 `timeout_ms` 范围校验（0 < value ≤ 3600000）
+- [x] 实现 `timeout_ms` 范围校验（0 < value ≤ 3600000）
 - [ ] 所有校验错误统一返回 `{ error: { code: "INVALID_INPUT", field: string, message: string, recoverable: false } }`
 
 ### 4.1 spawn_subagent
@@ -249,14 +249,14 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] 同步模式（`run_in_background=false`）：主代理阻塞等待结果
-- [ ] 异步模式（`run_in_background=true`，默认）：立即返回 `agentId`
-- [ ] 生成唯一 `agentId`（UUID v4）
-- [ ] 创建持久化记录（status=pending → running）
-- [ ] 注册 `name` 别名到查找表
-- [ ] `name` 重名时返回 `NAME_CONFLICT`
-- [ ] 设置超时定时器（`timeout_ms`）
-- [ ] 超时触发：状态转 `failed`，`exit_reason=timeout`，发送通知
+- [x] 同步模式（`run_in_background=false`）：主代理阻塞等待结果
+- [x] 异步模式（`run_in_background=true`，默认）：立即返回 `agentId`
+- [x] 生成唯一 `agentId`（UUID v4）
+- [x] 创建持久化记录（status=pending → running）
+- [x] 注册 `name` 别名到查找表
+- [x] `name` 重名时返回 `NAME_CONFLICT`
+- [x] 设置超时定时器（`timeout_ms`）
+- [x] 超时触发：状态转 `failed`，`exit_reason=timeout`，发送通知
 - [ ] 返回值包含 `agentId` 和 `outputFile` 路径
 - [ ] 达到并发上限时返回 `CONCURRENCY_LIMIT`
 - [ ] 请求高权限但未授权时返回 `PERMISSION_DENIED`（不自动降级）
@@ -312,19 +312,19 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] `pending` 状态：消息排队，待进入 `running` 后消费
-- [ ] `running` 状态：消息排队，下一轮工具执行点消费
-- [ ] `failed|killed` 状态：自动触发 resume，`message` 作为 resume prompt
-- [ ] `completed` 状态：返回 `TASK_ALREADY_COMPLETED`
-- [ ] 不存在的 agentId：返回 `TASK_NOT_FOUND`
-- [ ] 空消息：返回 `INVALID_MESSAGE`
-- [ ] 消息队列最大长度 100，满时按 `overflow_action` 处理
-- [ ] `overflow_action=reject`：返回 `QUEUE_FULL`
-- [ ] `overflow_action=drop_oldest`：丢弃最早消息，新消息入队
-- [ ] 消息超时清理：超过 `message_timeout_ms` 未消费的消息自动丢弃
-- [ ] `timeout_ms` 含义明确为"等待排队超时"（非等待处理完成）
-- [ ] 支持 `name` 别名查找（与 `agentId` 等价）
-- [ ] 同一子代理按消息顺序消费（FIFO）
+- [x] `pending` 状态：消息排队，待进入 `running` 后消费
+- [x] `running` 状态：消息排队，下一轮工具执行点消费
+- [x] `failed|killed` 状态：自动触发 resume，`message` 作为 resume prompt
+- [x] `completed` 状态：返回 `TASK_ALREADY_COMPLETED`
+- [x] 不存在的 agentId：返回 `TASK_NOT_FOUND`
+- [x] 空消息：返回 `INVALID_MESSAGE`
+- [x] 消息队列最大长度 100，满时按 `overflow_action` 处理
+- [x] `overflow_action=reject`：返回 `QUEUE_FULL`
+- [x] `overflow_action=drop_oldest`：丢弃最早消息，新消息入队
+- [x] 消息超时清理：超过 `message_timeout_ms` 未消费的消息自动丢弃
+- [x] `timeout_ms` 含义明确为"等待排队超时"（非等待处理完成）
+- [x] 支持 `name` 别名查找（与 `agentId` 等价）
+- [x] 同一子代理按消息顺序消费（FIFO）
 - [ ] 自动 resume 失败时透传 resume 错误码，并返回 `resume_error`
 
 ### 4.3 stop_subagent
@@ -353,13 +353,13 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] `force=false`：发送软中断信号，等待 cleanup
-- [ ] `force=true`：直接硬终止
-- [ ] 软中断超时后自动升级为硬终止
-- [ ] 状态转 `killed`，`exit_reason=stopped`
-- [ ] 发送 `task_notification(status=killed)`
-- [ ] 取消该子代理的超时定时器
-- [ ] 幂等处理：已终止状态返回 `{ success: true, already_stopped: true }`
+- [x] `force=false`：发送软中断信号，等待 cleanup
+- [x] `force=true`：直接硬终止
+- [x] 软中断超时后自动升级为硬终止
+- [x] 状态转 `killed`，`exit_reason=stopped`
+- [x] 发送 `task_notification(status=killed)`
+- [x] 取消该子代理的超时定时器
+- [x] 幂等处理：已终止状态返回 `{ success: true, already_stopped: true }`
 - [ ] worktree 隔离模式：清理临时工作目录（根据 `cleanup_on_exit` 配置）
 - [ ] 注销 `name` 别名（如已注册）
 - [ ] zombie 状态检测：连续 3 次硬终止失败返回 `PROCESS_ZOMBIE`
@@ -420,9 +420,9 @@ agent-loop.ts (主代理)
 - [ ] `from_checkpoint` 支持从指定 checkpoint 恢复
 - [ ] `from_checkpoint=null` 时从 transcript 最后完整消息恢复
 - [ ] 重建上下文并重新注册任务
-- [ ] 状态转 `running`，发送 `task_notification(status=running)`
+- [x] 状态转 `running`，发送 `task_notification(status=running)`
 - [ ] 设置新的超时定时器
-- [ ] 返回恢复信息（resumed_from、recovered 条目数）
+- [x] 返回恢复信息（resumed_from、recovered 条目数）
 - [ ] `schema_version` 不兼容时返回 `SCHEMA_VERSION_MISMATCH`
 - [ ] 恢复失败时保持原状态不变（不污染状态）
 
@@ -460,10 +460,10 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] 根据 `agentId` 查询当前状态
-- [ ] 返回完整状态信息（含 usage、queue_depth）
-- [ ] 不存在的 agentId 返回 `TASK_NOT_FOUND`
-- [ ] 支持 `name` 别名查询
+- [x] 根据 `agentId` 查询当前状态
+- [x] 返回完整状态信息（含 usage、queue_depth）
+- [x] 不存在的 agentId 返回 `TASK_NOT_FOUND`
+- [x] 支持 `name` 别名查询
 
 #### 4.5.2 list_subagents
 
@@ -492,10 +492,10 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] 返回当前会话所有子代理摘要列表
-- [ ] 支持 `status` 过滤
-- [ ] 支持 `limit`/`offset` 分页
-- [ ] 返回 `total` 总数
+- [x] 返回当前会话所有子代理摘要列表
+- [x] 支持 `status` 过滤
+- [x] 支持 `limit`/`offset` 分页
+- [x] 返回 `total` 总数
 
 ### 4.6 batch_spawn（Phase 2）
 
@@ -663,14 +663,14 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] 通知事件结构严格遵循上述 TypeScript 类型
-- [ ] `summary` 长度限制 500 字符
-- [ ] `running` 通知在子代理首次工具调用时触发（非启动时）
-- [ ] `completed` 通知包含 `result` 和 `usage`
-- [ ] `failed` 通知包含 `error`（含 code、message、recoverable）
-- [ ] `killed` 通知包含 `exit_reason`
-- [ ] 通知不阻塞子代理执行（异步投递）
-- [ ] 通知投递失败时记录 WARN 日志，不重试
+- [x] 通知事件结构严格遵循上述 TypeScript 类型
+- [x] `summary` 长度限制 500 字符
+- [x] `running` 通知在子代理首次工具调用时触发（非启动时）
+- [x] `completed` 通知包含 `result` 和 `usage`
+- [x] `failed` 通知包含 `error`（含 code、message、recoverable）
+- [x] `killed` 通知包含 `exit_reason`
+- [x] 通知不阻塞子代理执行（异步投递）
+- [x] 通知投递失败时记录 WARN 日志，不重试
 
 ### 5.1 结构化结果协议（Phase 2）
 
@@ -700,10 +700,10 @@ agent-loop.ts (主代理)
 
 实现清单：
 
-- [ ] `fresh` 策略：子代理从空上下文开始
-- [ ] `continue` 策略：resume 时加载完整 transcript 作为上下文
-- [ ] 子代理上下文窗口大小独立配置
-- [ ] 子代理输出通过通知摘要回流，不直接注入主代理上下文
+- [x] `fresh` 策略：子代理从空上下文开始
+- [x] `continue` 策略：resume 时加载完整 transcript 作为上下文
+- [x] 子代理上下文窗口大小独立配置
+- [x] 子代理输出通过通知摘要回流，不直接注入主代理上下文
 - [ ] Phase 2 `fork` 策略：深拷贝主代理当前上下文快照
 
 ## 7. 权限与隔离
@@ -1035,7 +1035,7 @@ agent-loop.ts (主代理)
 - [ ] **AC-3**: force stop 立即终止
 - [ ] **AC-3**: 已终止子代理重复 stop 返回 already_stopped
 - [ ] **AC-4**: 完成/失败通知 100 次中 ≥99 次在 5s 内到达
-- [ ] **AC-5**: resume 从 transcript 恢复上下文
+- [x] **AC-5**: resume 从 transcript 恢复上下文
 - [ ] **AC-5**: resume 清理不完整消息块
 - [ ] **AC-5**: transcript 丢失返回 TRANSCRIPT_NOT_FOUND
 - [ ] **AC-6**: 5 个并发子代理运行时主代理响应 <500ms
@@ -1071,20 +1071,20 @@ agent-loop.ts (主代理)
 | 功能 | 状态 | 优先级 | Checklist |
 |-----|------|-------|----------|
 | 运行时适配（Web Worker 载体、OPFS 映射） | 待实现 | P0 | §2.1 |
-| SubAgent system prompt 与上下文构建 | 待实现 | P0 | §2.2 |
-| agent-loop 复用与 SubAgentRunner | 待实现 | P0 | §2.3 |
+| SubAgent system prompt 与上下文构建 | 部分完成 | P0 | §2.2 |
+| agent-loop 复用与 SubAgentRunner | 部分完成 | P0 | §2.3 |
 | 默认工具集与权限边界 | 待实现 | P0 | §2.4 |
-| spawn/send/stop/resume | 待实现 | P0 | §4.1, §4.2, §4.3, §4.4 |
-| task_notification | 待实现 | P0 | §5 |
-| 超时机制 | 待实现 | P0 | §9.1 |
+| spawn/send/stop/resume | 已完成（MVP） | P0 | §4.1, §4.2, §4.3, §4.4 |
+| task_notification | 已完成（MVP） | P0 | §5 |
+| 超时机制 | 部分完成 | P0 | §9.1 |
 | transcript + metadata 持久化 | 待实现 | P0 | §8, §8.1 |
-| fresh + continue 上下文策略 | 待实现 | P0 | §6 |
+| fresh + continue 上下文策略 | 已完成（MVP） | P0 | §6 |
 | 基础权限与 OPFS 子目录隔离 | 待实现 | P0 | §7.1, §7.3 |
 | 字段校验与错误码 | 待实现 | P0 | §4.0, §4.7 |
-| 状态转换竞态防护 | 待实现 | P0 | §3.3.1 |
-| get_subagent_status / list_subagents | 待实现 | P1 | §4.5 |
+| 状态转换竞态防护 | 部分完成 | P0 | §3.3.1 |
+| get_subagent_status / list_subagents | 已完成（MVP） | P1 | §4.5 |
 | 基础指标与日志 | 待实现 | P1 | §10 |
-| 队列规格（max_queue_size） | 待实现 | P1 | §4.2 |
+| 队列规格（max_queue_size） | 已完成（MVP） | P1 | §4.2 |
 | 输出文件规范 | 待实现 | P1 | §4.8 |
 | 数据清理策略 | 待实现 | P2 | §8.2 |
 | Token 预算控制 | 待实现 | P2 | §9.2 |
@@ -1095,5 +1095,41 @@ agent-loop.ts (主代理)
 |-----|------|
 | fork 上下文策略 | 规划中 |
 | 细粒度工具与权限控制 | 规划中 |
-| batch_spawn 批量派发 | 规划中 |
-| 结构化结果协议（result_schema_id + result_json） | 规划中 |
+| batch_spawn 批量派发 | 已实现（提前落地） |
+| 结构化结果协议（result_schema_id + result_json） | 已实现（通知侧基础版） |
+
+## 13. 下一开发任务（建议）
+
+### 13.1 任务名称
+
+**SubAgent 稳定性补完（Phase 1 收口）**
+
+### 13.2 范围（P0）
+
+1. `timeout_ms` 真实生效：spawn/resume 超时自动终止并发通知。
+2. 队列规格补齐：`max_queue_size`、`overflow_action`、`message_timeout_ms`。
+3. 竞态防护：实现 `stop` 与 `complete/fail` 的原子状态转换（乐观锁语义）。
+4. 通知协议补齐：`summary` 长度限制、`running` 触发时机对齐为“首次工具调用”。
+
+### 13.3 验收标准
+
+1. 新增单测覆盖：队列溢出、消息超时、stop/complete 竞态、超时终止。
+2. 文档 §11 对应 AC 至少勾选：AC-2、AC-3、AC-4 的关键路径。
+3. 行为与错误码对齐 §4.2 / §4.3 / §4.7，不引入兼容性回退。
+
+### 13.4 当前进展
+
+- 已完成：`timeout_ms` 生效（spawn/resume）、队列容量/溢出/过期清理、`send_message_to_subagent.timeout_ms` 等待排队语义、stop 软中断超时升级硬终止、stop vs complete 竞态优先级、通知 `summary<=500` 与 `running` 触发时机修正、通知失败 WARN 日志、持久化层 CAS 状态迁移、冲突重试与最终状态回读（含 repository 层单测）、重启后 `running/pending -> SESSION_INTERRUPTED` 与 resume 恢复路径测试。
+- 未完成：并发竞态场景覆盖的测试矩阵补齐（尤其跨进程/持久化冲突）。
+
+## 14. 下一开发任务（建议）
+
+### 14.1 任务名称
+
+**SubAgent 并发测试矩阵补齐（Phase 1 终版）**
+
+### 14.2 范围（P0）
+
+1. 补齐 CAS 冲突回归测试（stop/complete、timeout/complete、resume/stop）。
+2. 新增跨进程/重启后冲突测试，验证持久化状态回读一致性。
+3. 对齐 AC-4（竞态防护）勾选与测试证据。

@@ -47,6 +47,10 @@ export const spawnSubagentDefinition: ToolDefinition = {
           type: 'boolean',
           description: 'When true (default), launch asynchronously and return immediately.',
         },
+        timeout_ms: {
+          type: 'number',
+          description: 'Execution timeout in milliseconds (default 300000, max 3600000).',
+        },
       },
       required: ['description', 'prompt'],
     },
@@ -69,6 +73,15 @@ export const sendMessageToSubagentDefinition: ToolDefinition = {
         message: {
           type: 'string',
           description: 'Message payload for the target subagent.',
+        },
+        timeout_ms: {
+          type: 'number',
+          description: 'Optional enqueue wait timeout in milliseconds.',
+        },
+        overflow_action: {
+          type: 'string',
+          enum: ['reject', 'drop_oldest'],
+          description: 'Queue overflow strategy. Default reject.',
         },
       },
       required: ['to', 'message'],
@@ -130,6 +143,10 @@ export const stopSubagentDefinition: ToolDefinition = {
           type: 'boolean',
           description: 'Force immediate stop.',
         },
+        timeout_ms: {
+          type: 'number',
+          description: 'Soft-stop wait timeout in milliseconds (default 10000).',
+        },
       },
       required: ['agentId'],
     },
@@ -151,6 +168,10 @@ export const resumeSubagentDefinition: ToolDefinition = {
         prompt: {
           type: 'string',
           description: 'Prompt to continue the task.',
+        },
+        timeout_ms: {
+          type: 'number',
+          description: 'Execution timeout in milliseconds (default 300000, max 3600000).',
         },
       },
       required: ['agentId', 'prompt'],
@@ -212,15 +233,23 @@ export const spawnSubagentExecutor: ToolExecutor = async (args, context) => {
       name: typeof args.name === 'string' ? args.name : undefined,
       mode: args.mode === 'plan' || args.mode === 'act' ? args.mode : undefined,
       run_in_background: args.run_in_background === false ? false : true,
+      timeout_ms: typeof args.timeout_ms === 'number' ? args.timeout_ms : undefined,
     })
     return toolOkJson(TOOL_NAME_SPAWN, result)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const isNameConflict = message.includes('NAME_CONFLICT')
     const isInputError = message.includes('INVALID_INPUT')
+    const isTimeoutExceedsMax = message.includes('TIMEOUT_EXCEEDS_MAX')
     return toolErrorJson(
       TOOL_NAME_SPAWN,
-      isNameConflict ? 'NAME_CONFLICT' : isInputError ? 'INVALID_INPUT' : 'SUBAGENT_SPAWN_FAILED',
+      isNameConflict
+        ? 'NAME_CONFLICT'
+        : isTimeoutExceedsMax
+          ? 'TIMEOUT_EXCEEDS_MAX'
+          : isInputError
+            ? 'INVALID_INPUT'
+            : 'SUBAGENT_SPAWN_FAILED',
       message
     )
   }
@@ -257,7 +286,15 @@ export const sendMessageToSubagentExecutor: ToolExecutor = async (args, context)
 
   const to = typeof args.to === 'string' ? args.to : ''
   const message = typeof args.message === 'string' ? args.message : ''
-  const result = await runtime.sendMessage({ to, message })
+  const result = await runtime.sendMessage({
+    to,
+    message,
+    timeout_ms: typeof args.timeout_ms === 'number' ? args.timeout_ms : undefined,
+    overflow_action:
+      args.overflow_action === 'drop_oldest' || args.overflow_action === 'reject'
+        ? args.overflow_action
+        : undefined,
+  })
   if (!result.success) {
     return toolErrorJson(TOOL_NAME_SEND, result.message, result.message, {
       details: result,
@@ -274,13 +311,18 @@ export const stopSubagentExecutor: ToolExecutor = async (args, context) => {
     const result = await runtime.stop({
       agentId: typeof args.agentId === 'string' ? args.agentId : '',
       force: args.force === true,
+      timeout_ms: typeof args.timeout_ms === 'number' ? args.timeout_ms : undefined,
     })
     return toolOkJson(TOOL_NAME_STOP, result)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return toolErrorJson(
       TOOL_NAME_STOP,
-      message.includes('TASK_NOT_FOUND') ? 'TASK_NOT_FOUND' : 'SUBAGENT_STOP_FAILED',
+      message.includes('TASK_NOT_FOUND')
+        ? 'TASK_NOT_FOUND'
+        : message.includes('INVALID_INPUT')
+          ? 'INVALID_INPUT'
+          : 'SUBAGENT_STOP_FAILED',
       message
     )
   }
@@ -294,13 +336,19 @@ export const resumeSubagentExecutor: ToolExecutor = async (args, context) => {
     const result = await runtime.resume({
       agentId: typeof args.agentId === 'string' ? args.agentId : '',
       prompt: typeof args.prompt === 'string' ? args.prompt : '',
+      timeout_ms: typeof args.timeout_ms === 'number' ? args.timeout_ms : undefined,
     })
     return toolOkJson(TOOL_NAME_RESUME, result)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    const isTimeoutExceedsMax = message.includes('TIMEOUT_EXCEEDS_MAX')
     return toolErrorJson(
       TOOL_NAME_RESUME,
-      message.includes('TASK_NOT_FOUND') ? 'TASK_NOT_FOUND' : 'SUBAGENT_RESUME_FAILED',
+      message.includes('TASK_NOT_FOUND')
+        ? 'TASK_NOT_FOUND'
+        : isTimeoutExceedsMax
+          ? 'TIMEOUT_EXCEEDS_MAX'
+          : 'SUBAGENT_RESUME_FAILED',
       message
     )
   }
