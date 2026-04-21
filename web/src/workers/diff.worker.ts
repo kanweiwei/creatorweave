@@ -6,6 +6,17 @@
  * OPFS API is available in Worker context.
  */
 
+/**
+ * OS-generated files to skip during scans.
+ * Duplicated here because workers cannot import from the main bundle.
+ */
+const SCAN_IGNORED_NAMES = new Set([
+  '.DS_Store',
+  'Thumbs.db',
+  'desktop.ini',
+  '.localized',
+])
+
 //=============================================================================
 // Type Definitions
 //=============================================================================
@@ -116,6 +127,7 @@ async function handleScan(payload: { filesDirHandle: FileSystemDirectoryHandle }
           const path = prefix ? `${prefix}/${entry.name}` : entry.name
 
           if (entry.kind === 'file') {
+            if (SCAN_IGNORED_NAMES.has(entry.name)) return
             try {
               const file = await entry.getFile()
               yield {
@@ -128,6 +140,7 @@ async function handleScan(payload: { filesDirHandle: FileSystemDirectoryHandle }
               console.warn(`Skipping file ${path}:`, error)
             }
           } else if (entry.kind === 'directory') {
+            if (SCAN_IGNORED_NAMES.has(entry.name)) return
             // Recursively scan subdirectory
             yield* scanDir(entry as FileSystemDirectoryHandle, path)
           }
@@ -264,6 +277,7 @@ async function handleScanAndCompare(payload: {
           const path = prefix ? `${prefix}/${entry.name}` : entry.name
 
           if (entry.kind === 'file') {
+            if (SCAN_IGNORED_NAMES.has(entry.name)) return
             try {
               const file = await entry.getFile()
               yield {
@@ -276,6 +290,7 @@ async function handleScanAndCompare(payload: {
               console.warn(`Skipping file ${path}:`, error)
             }
           } else if (entry.kind === 'directory') {
+            if (SCAN_IGNORED_NAMES.has(entry.name)) return
             // Recursively scan subdirectory
             yield* scanDir(entry as FileSystemDirectoryHandle, path)
           }

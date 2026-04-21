@@ -19,7 +19,7 @@ import type {
   ConflictInfo,
 } from '../types/opfs-types'
 import { ErrorCode } from '../types/opfs-types'
-import { getFileContentType } from '../utils/opfs-utils'
+import { getFileContentType, shouldSkipScanEntry } from '../utils/opfs-utils'
 import { WorkspacePendingManager } from './workspace-pending'
 import {
   buildConflictMarkerContent,
@@ -187,6 +187,7 @@ export class WorkspaceRuntime {
     index: Set<string>
   ): Promise<void> {
     for await (const [name, handle] of dir.entries()) {
+      if (shouldSkipScanEntry(name)) continue
       const path = prefix ? `${prefix}/${name}` : name
       if (handle.kind === 'file') {
         index.add(path)

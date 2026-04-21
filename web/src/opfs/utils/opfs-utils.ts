@@ -9,6 +9,24 @@ import type { FileContent, FileMetadata, StorageEstimate, StorageStatus } from '
 import { STORAGE_THRESHOLDS } from '../types/opfs-types'
 
 /**
+ * Filesystem entries to skip during OPFS scans and sync.
+ * Covers OS-generated metadata files that should never appear as pending changes.
+ */
+export const SCAN_IGNORED_NAMES = new Set([
+  '.DS_Store',      // macOS folder metadata
+  'Thumbs.db',      // Windows thumbnail cache
+  'desktop.ini',    // Windows folder settings
+  '.localized',     // macOS localization marker
+])
+
+/**
+ * Check if a filesystem entry name should be skipped during scanning.
+ */
+export function shouldSkipScanEntry(name: string): boolean {
+  return SCAN_IGNORED_NAMES.has(name)
+}
+
+/**
  * Encode path using URL encoding to avoid path conflicts
  * @param path Original path
  * @returns Encoded path
