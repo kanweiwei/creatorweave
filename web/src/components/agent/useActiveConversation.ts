@@ -4,7 +4,7 @@
  */
 
 import { useConversationStore } from '@/store/conversation.store'
-import type { Message, ToolCall, WorkflowExecutionState } from '@/agent/message-types'
+import type { DraftAssistantStep, Message, ToolCall, WorkflowExecutionState } from '@/agent/message-types'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -19,7 +19,7 @@ export interface ActiveConversationSlice {
     toolResults: Record<string, string>
     toolCall: ToolCall | null
     toolArgs: string
-    steps: { type: string }[]
+    steps: DraftAssistantStep[]
     activeReasoningStepId?: string | null
     activeContentStepId?: string | null
     activeToolStepId?: string | null

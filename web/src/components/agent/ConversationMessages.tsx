@@ -9,7 +9,7 @@ import { AssistantTurnBubble } from './AssistantTurnBubble'
 import { WorkflowExecutionProgress } from './WorkflowExecutionProgress'
 import { groupMessagesIntoTurns } from './group-messages'
 import { useWorkflowProgressAnchor } from './useWorkflowProgressAnchor'
-import type { Message, ToolCall, WorkflowExecutionState } from '@/agent/message-types'
+import type { DraftAssistantStep, Message, ToolCall, WorkflowExecutionState } from '@/agent/message-types'
 
 type ConversationMessagesProps = {
   activeMessages: Message[]
@@ -20,7 +20,7 @@ type ConversationMessagesProps = {
   streamingContentMessage: { reasoning: string; content: string } | undefined
   activeDraftAssistant: {
     toolCalls: ToolCall[]
-    steps: { type: string }[]
+    steps: DraftAssistantStep[]
     toolResults: Record<string, string>
     reasoning: string
     content: string
@@ -37,7 +37,7 @@ type ConversationMessagesProps = {
   onEditAndResend: (userMessageId: string, newContent: string) => void
   onRegenerate: ((userMessageId: string) => void) | undefined
   onCancel: () => void
-  messagesEndRef: React.RefObject<HTMLDivElement | null>
+  messagesEndRef: React.RefObject<HTMLDivElement>
 }
 
 /** Build runtime props for an AssistantTurnBubble. Returns undefined values when not active. */

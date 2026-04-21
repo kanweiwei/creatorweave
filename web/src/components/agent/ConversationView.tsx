@@ -44,7 +44,7 @@ export function ConversationView({
 
   const logic = useConversationLogic()
   const {
-    input, setInput, mentionedAgentIds, setMentionedAgentIds, inputResetToken, messagesEndRef,
+    input, setInput, setMentionedAgentIds, inputResetToken, messagesEndRef,
     allAgents, activeAgentId, setActiveAgent, createAgent, deleteAgent, mentionAgents,
     convId, activeMessages, activeDraftAssistant, activeStreamingState,
     activeWorkflowExecution, conversationError, activeContextWindowUsage,
@@ -54,7 +54,7 @@ export function ConversationView({
     agentMode, setAgentMode,
     handleSend, handleCancel, handleRunWorkflow, handleRealRunWorkflow,
     handleDeleteAgentLoop, handleEditAndResend, regenerateUserMessage,
-    clearSuggestedFollowUp, runCustomWorkflowDryRun,
+    runCustomWorkflowDryRun,
     useConversationStore: convStore,
   } = logic
 
