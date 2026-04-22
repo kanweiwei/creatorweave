@@ -344,23 +344,8 @@ export function Sidebar({
           className="flex flex-col overflow-hidden"
           style={{ height: `${conversationRatio}%` }}
         >
-          <div className="p-2 pb-1">
-            <BrandButton
-              variant="ghost"
-              className="h-7 w-full justify-start gap-1.5 bg-muted px-2 text-xs"
-              onClick={() => {
-                const conv = createNew()
-                void setActive(conv.id)
-                closeMobileSidebar()
-              }}
-            >
-              <Plus className="h-3 w-3" />
-              {t('sidebar.newWorkspace')}
-            </BrandButton>
-          </div>
-
           {/* Workspace tab filter */}
-          <div className="flex items-center gap-0.5 px-2 pb-1">
+          <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
             <BrandButton
               variant="ghost"
               className={`h-6 flex-1 justify-center px-1 text-[11px] ${
@@ -387,6 +372,23 @@ export function Sidebar({
               )}
             </BrandButton>
           </div>
+
+          {workspaceTab === 'active' && (
+            <div className="px-2 pb-1">
+              <BrandButton
+                variant="ghost"
+                className="h-7 w-full justify-start gap-1.5 bg-muted px-2 text-xs"
+                onClick={() => {
+                  const conv = createNew()
+                  void setActive(conv.id)
+                  closeMobileSidebar()
+                }}
+              >
+                <Plus className="h-3 w-3" />
+                {t('sidebar.newWorkspace')}
+              </BrandButton>
+            </div>
+          )}
 
           <div className="custom-scrollbar flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
             {displayedConversations.map((conv) => {
