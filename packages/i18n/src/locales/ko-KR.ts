@@ -1943,6 +1943,19 @@ export const koKR = {
       atLeastOneRule: "최소 하나의 점수 규칙을 활성화해야 합니다",
     },
   },
+
+  // Question Card (ask_user_question tool)
+  questionCard: {
+    answered: "답변 완료",
+    title: "에이전트 질문",
+    affectedFiles: "관련 파일",
+    yes: "예",
+    no: "아니오",
+    confirm: "확인",
+    placeholder: "답변을 입력하세요…",
+    submitHint: "Ctrl+Enter로 제출",
+    submit: "제출",
+  },
 } as const;
 
 export default koKR;

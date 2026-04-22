@@ -1936,6 +1936,19 @@ export const zhCN = {
       atLeastOneRule: "至少启用一条评分规则",
     },
   },
+
+  // Question Card (ask_user_question tool)
+  questionCard: {
+    answered: "已回答",
+    title: "Agent 提问",
+    affectedFiles: "相关文件",
+    yes: "确认",
+    no: "取消",
+    confirm: "确认",
+    placeholder: "请输入你的回答…",
+    submitHint: "Ctrl+Enter 提交",
+    submit: "提交",
+  },
 } as const;
 
 export default zhCN;

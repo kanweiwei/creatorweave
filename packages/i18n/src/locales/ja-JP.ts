@@ -1961,6 +1961,19 @@ export const jaJP = {
       atLeastOneRule: "少なくとも1つのスコアリング・ルールを有効にしてください",
     },
   },
+
+  // Question Card (ask_user_question tool)
+  questionCard: {
+    answered: "回答済み",
+    title: "エージェントからの質問",
+    affectedFiles: "関連ファイル",
+    yes: "はい",
+    no: "いいえ",
+    confirm: "確認",
+    placeholder: "回答を入力してください…",
+    submitHint: "Ctrl+Enter で送信",
+    submit: "送信",
+  },
 } as const;
 
 export default jaJP;

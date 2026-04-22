@@ -1983,6 +1983,19 @@ export const enUS = {
       atLeastOneRule: "At least one scoring rule must be enabled",
     },
   },
+
+  // Question Card (ask_user_question tool)
+  questionCard: {
+    answered: "Answered",
+    title: "Agent Question",
+    affectedFiles: "Related Files",
+    yes: "Yes",
+    no: "No",
+    confirm: "Confirm",
+    placeholder: "Type your answer…",
+    submitHint: "Ctrl+Enter to submit",
+    submit: "Submit",
+  },
 } as const;
 
 export default enUS;
