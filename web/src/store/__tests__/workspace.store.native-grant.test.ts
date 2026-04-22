@@ -208,4 +208,33 @@ describe('workspace.store native directory grant feedback', () => {
     expect(bindRuntimeDirectoryHandleMock).toHaveBeenCalledWith('project-1', handle)
     expect(bindRuntimeDirectoryHandleMock).not.toHaveBeenCalledWith('ws-1', handle)
   })
+
+  it('refreshWorkspaces clears stale pendingChanges and preview state', async () => {
+    useWorkspaceStore.setState({
+      pendingChanges: {
+        changes: [{ type: 'modify', path: 'stale.txt', size: 1 }],
+        added: 0,
+        modified: 1,
+        deleted: 0,
+      },
+      showPreview: true,
+      previewSelectedPath: 'stale.txt',
+      unsyncedSnapshots: [
+        {
+          snapshotId: 'snap_stale',
+          summary: 'stale',
+          createdAt: Date.now(),
+          opCount: 1,
+        },
+      ],
+    })
+
+    await useWorkspaceStore.getState().refreshWorkspaces()
+
+    const state = useWorkspaceStore.getState()
+    expect(state.pendingChanges).toBeNull()
+    expect(state.showPreview).toBe(false)
+    expect(state.previewSelectedPath).toBeNull()
+    expect(state.unsyncedSnapshots).toEqual([])
+  })
 })

@@ -257,6 +257,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 workspaces: [],
                 activeWorkspaceId: null,
                 currentPendingCount: 0,
+                pendingChanges: null,
+                showPreview: false,
+                previewSelectedPath: null,
+                unsyncedSnapshots: [],
                 isLoading: false,
                 initialized: true,
               })
@@ -287,6 +291,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               workspaces,
               activeWorkspaceId: activeId,
               currentPendingCount: activeId ? workspaces[0]?.pendingCount || 0 : 0,
+              pendingChanges: null,
+              showPreview: false,
+              previewSelectedPath: null,
+              unsyncedSnapshots: [],
               isLoading: false,
               initialized: true,
             })
@@ -298,6 +306,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             const message = e instanceof Error ? e.message : 'Failed to initialize workspaces'
             set({
               error: message,
+              pendingChanges: null,
+              showPreview: false,
+              previewSelectedPath: null,
+              unsyncedSnapshots: [],
               isLoading: false,
               initialized: true,
             })
@@ -414,7 +426,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
 
           // Set switching lock
-          set({ switchingWorkspaceId: id, isLoading: true, error: null })
+          set({
+            switchingWorkspaceId: id,
+            isLoading: true,
+            error: null,
+            pendingChanges: null,
+            previewSelectedPath: null,
+          })
 
           // Capture target conversation ID before async operations to avoid race condition
           const targetConversationId = id
