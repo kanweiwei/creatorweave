@@ -83,13 +83,13 @@ export class WorkspacePendingManager {
    * Add pending record for file modification
    * @param path File path
    */
-  async add(path: string, fsMtime?: number): Promise<void> {
+  async add(path: string, fsMtime?: number, options?: { forceUpdateMtime?: boolean }): Promise<void> {
     if (!this.initialized) await this.initialize()
 
     const repo = getFSOverlayRepository()
     const existing = this.pendingChanges.get(path)
     const nextType = existing?.type === 'create' ? 'create' : 'modify'
-    const op = await repo.upsertPendingOp(this.workspaceId, path, nextType, fsMtime)
+    const op = await repo.upsertPendingOp(this.workspaceId, path, nextType, fsMtime, options)
     this.setPendingChange(op)
   }
 

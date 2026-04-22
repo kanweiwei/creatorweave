@@ -392,10 +392,10 @@ export class WorkspaceRuntime {
    * - First modify in current pending cycle: write baseline.
    * - Subsequent modifies in same pending cycle: keep original baseline.
    */
-  private async captureModifyBaseline(path: string, content: FileContent): Promise<void> {
+  private async captureModifyBaseline(path: string, content: FileContent, forceOverwrite = false): Promise<void> {
     const hasPendingPath = this.pendingManager.hasPendingPath(path)
     const existingBaseline = await this.readFromBaselineDir(path)
-    if (hasPendingPath && existingBaseline) {
+    if (!forceOverwrite && hasPendingPath && existingBaseline) {
       return
     }
 
@@ -817,8 +817,34 @@ export class WorkspaceRuntime {
       }
     }
 
+    // Detect if the OLD content in files/ has conflict markers (from a prior
+    // detectSyncConflicts materialization). If so, this edit is resolving a
+    // conflict — update the baseline mtime and content to match the current DISK version.
+    let resolvingConflict = false
+    if (
+      !isNewFile &&
+      baselineContent !== null &&
+      directoryHandle &&
+      typeof content === 'string' &&
+      baselineFsMtime > 0
+    ) {
+      try {
+        const oldFilesContent = await this.readFromFilesDir(normalizedPath)
+        if (
+          oldFilesContent &&
+          oldFilesContent.contentType === 'text' &&
+          typeof oldFilesContent.content === 'string' &&
+          hasConflictMarkers(oldFilesContent.content)
+        ) {
+          resolvingConflict = true
+        }
+      } catch {
+        // Best effort detection
+      }
+    }
+
     if (!isNewFile && baselineContent !== null) {
-      await this.captureModifyBaseline(normalizedPath, baselineContent)
+      await this.captureModifyBaseline(normalizedPath, baselineContent, resolvingConflict)
     }
 
     // Write to files/ directory
@@ -838,7 +864,9 @@ export class WorkspaceRuntime {
     if (isNewFile) {
       await this.pendingManager.markAsCreated(normalizedPath, baselineFsMtime)
     } else {
-      await this.pendingManager.add(normalizedPath, baselineFsMtime)
+      await this.pendingManager.add(normalizedPath, baselineFsMtime, {
+        forceUpdateMtime: resolvingConflict,
+      })
     }
 
     // Update last accessed time

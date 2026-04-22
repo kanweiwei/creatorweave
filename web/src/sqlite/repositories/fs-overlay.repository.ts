@@ -501,7 +501,8 @@ export class FSOverlayRepository {
     workspaceId: string,
     path: string,
     type: OpType,
-    fsMtime?: number
+    fsMtime?: number,
+    options?: { forceUpdateMtime?: boolean }
   ): Promise<PendingOverlayOp> {
     const db = getSQLiteDB()
     const now = Date.now()
@@ -517,7 +518,13 @@ export class FSOverlayRepository {
     )
 
     if (existing?.id) {
-      const baselineFsMtime = existing.fs_mtime > 0 ? existing.fs_mtime : requestedFsMtime
+      // When forceUpdateMtime is true (conflict resolution edit), use the
+      // caller's mtime so the pending record aligns with the current DISK mtime.
+      // Otherwise preserve the original baseline to maintain conflict detection.
+      const baselineFsMtime =
+        options?.forceUpdateMtime && requestedFsMtime > 0
+          ? requestedFsMtime
+          : (existing.fs_mtime > 0 ? existing.fs_mtime : requestedFsMtime)
       await db.execute(
         `UPDATE fs_ops
          SET changeset_id = ?, op_type = ?, fs_mtime = ?, updated_at = ?, error_message = NULL, review_status = 'pending'
