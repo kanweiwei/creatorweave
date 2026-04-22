@@ -47,6 +47,13 @@ const createMockRepo = () => ({
   getCategories: vi.fn(() =>
     Promise.resolve(Array.from(new Set(mockSkills.map((s) => s.category))))
   ),
+  findBySource: vi.fn((source: string) =>
+    Promise.resolve(mockSkills.filter((s) => s.source === source))
+  ),
+  deleteResourcesForSkill: vi.fn(() => Promise.resolve()),
+  getEnabledSkillNames: vi.fn(() =>
+    Promise.resolve(mockSkills.filter((s) => s.enabled).map((s) => s.name))
+  ),
 })
 
 let mockRepoInstance = createMockRepo()
@@ -116,6 +123,16 @@ describe('skill-storage.sqlite', () => {
       expect(result).toHaveLength(2)
       expect(result[0].id).toBe('skill-1')
       expect(result[1].id).toBe('skill-2')
+    })
+
+    it('should filter out project source skills', async () => {
+      mockSkills.push(
+        createMockSkill({ id: 'skill-user', source: 'user' }),
+        createMockSkill({ id: 'skill-project', source: 'project' })
+      )
+
+      const result = await skillStorage.getAllSkills()
+      expect(result.map((s) => s.id)).toEqual(['skill-user'])
     })
   })
 
@@ -201,6 +218,27 @@ describe('skill-storage.sqlite', () => {
       await skillStorage.saveSkill(skill, '# Markdown')
 
       expect(mockRepoInstance.save).toHaveBeenCalled()
+    })
+
+    it('should not persist project source skills', async () => {
+      const projectSkill: Skill = {
+        id: 'project:.skills/local-skill',
+        name: 'Local Skill',
+        description: 'Project scoped',
+        category: 'general' as SkillCategory,
+        triggers: { keywords: [] },
+        instruction: 'Instructions',
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        version: '1.0.0',
+        author: 'test',
+        tags: [],
+        source: 'project',
+      }
+
+      await skillStorage.saveSkill(projectSkill, '# Markdown')
+      expect(mockRepoInstance.save).not.toHaveBeenCalled()
     })
   })
 
@@ -304,6 +342,23 @@ describe('skill-storage.sqlite', () => {
       expect(result).toHaveLength(2)
       expect(result).toContain('testing')
       expect(result).toContain('debugging')
+    })
+  })
+
+  describe('purgeProjectSkillsFromStorage', () => {
+    it('should delete legacy project skills and return purged count', async () => {
+      mockSkills.push(
+        createMockSkill({ id: 'skill-user', source: 'user' }),
+        createMockSkill({ id: 'project:.skills/local-1', source: 'project' }),
+        createMockSkill({ id: 'project:.skills/local-2', source: 'project' })
+      )
+
+      const count = await skillStorage.purgeProjectSkillsFromStorage()
+
+      expect(count).toBe(2)
+      expect(mockRepoInstance.deleteResourcesForSkill).toHaveBeenCalledTimes(2)
+      expect(mockRepoInstance.delete).toHaveBeenCalledWith('project:.skills/local-1')
+      expect(mockRepoInstance.delete).toHaveBeenCalledWith('project:.skills/local-2')
     })
   })
 

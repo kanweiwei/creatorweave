@@ -8,7 +8,7 @@
  * - Build skills block for system prompt (metadata-only, on-demand loading)
  */
 
-import type { Skill, SkillMetadata, SkillMatchContext } from './skill-types'
+import type { Skill, SkillMetadata, SkillMatchContext, SkillResource } from './skill-types'
 import * as storage from './skill-storage'
 import {
   buildAvailableSkillsBlock,
@@ -22,7 +22,10 @@ import { generateResourceId } from './skill-resources'
 
 export class SkillManager {
   private _initialized = false
-  private cachedSkills: Skill[] = []
+  private cachedPersistentSkills: Skill[] = []
+  private cachedProjectSkills: Skill[] = []
+  private projectResourcesBySkillId = new Map<string, SkillResource[]>()
+  private activeProjectId: string | null = null
   private initPromise: Promise<void> | null = null
 
   /** Check if the skill manager has been initialized */
@@ -50,6 +53,9 @@ export class SkillManager {
 
   private async _doInitialize(): Promise<void> {
     try {
+      // Project skills are now runtime-scoped and must not persist in SQLite.
+      await storage.purgeProjectSkillsFromStorage()
+
       console.log(
         '[SkillManager] _doInitialize: starting, seeding',
         BUILTIN_SKILLS.length,
@@ -75,7 +81,7 @@ export class SkillManager {
 
       console.log(
         '[SkillManager] _doInitialize: complete, cached',
-        this.cachedSkills.length,
+        this.getSkills().length,
         'skills'
       )
       this._initialized = true
@@ -90,61 +96,22 @@ export class SkillManager {
    * Imports both skills and their associated resource files.
    */
   async scanProject(
-    rootHandle: FileSystemDirectoryHandle
+    rootHandle: FileSystemDirectoryHandle,
+    projectId?: string | null
   ): Promise<{ added: number; resourcesAdded: number; errors: string[] }> {
     const { skills, resources, errors } = await scanProjectSkills(rootHandle)
+    const preExistingIds = new Set(this.cachedProjectSkills.map((skill) => skill.id))
+    const normalizedResources = this.normalizeProjectResources(skills, resources, errors)
+    this.setProjectSkills(skills, normalizedResources, projectId)
 
     let added = 0
-    let resourcesAdded = 0
-
-    // Save all skills — upsert keeps project skills in sync with disk
     for (const skill of skills) {
-      const existing = await storage.getSkillById(skill.id)
-      await storage.saveSkill(skill, '')
-      if (!existing) {
+      if (!preExistingIds.has(skill.id)) {
         added++
-        console.log(`[SkillManager] Imported skill: ${skill.name} (${skill.id})`)
-      } else {
-        console.log(`[SkillManager] Updated skill: ${skill.name} (${skill.id})`)
       }
     }
 
-    // Replace existing resources for scanned skills to keep DB in sync with disk.
-    for (const skill of skills) {
-      await storage.deleteSkillResources(skill.id)
-    }
-
-    // Then, save resources
-    for (const resource of resources) {
-      let skillId = resource.skillId
-      if (!skillId || skillId === 'pending') {
-        if (skills.length !== 1) {
-          errors.push(
-            `Unable to resolve owning skill for resource '${resource.resourcePath}' (skillId missing)`
-          )
-          continue
-        }
-        skillId = skills[0].id
-      }
-
-      const normalizedResource = {
-        ...resource,
-        skillId,
-        id: resource.id && !resource.id.startsWith('pending:')
-          ? resource.id
-          : generateResourceId(skillId, resource.resourcePath),
-      }
-
-      await storage.saveSkillResource(normalizedResource)
-      resourcesAdded++
-      console.log(`[SkillManager] Imported resource: ${normalizedResource.resourcePath}`)
-    }
-
-    if (added > 0 || resourcesAdded > 0) {
-      await this.refreshCache()
-    }
-
-    return { added, resourcesAdded, errors }
+    return { added, resourcesAdded: normalizedResources.length, errors }
   }
 
   /**
@@ -156,7 +123,7 @@ export class SkillManager {
    * @returns The skills system block to append to the system prompt
    */
   getSkillsBlock(sessionState: SessionSkillState | undefined, context: SkillMatchContext): string {
-    const metadata = this.cachedSkills.map((s) => ({
+    const metadata = this.getSkills().map((s) => ({
       id: s.id,
       name: s.name,
       version: s.version,
@@ -196,14 +163,209 @@ export class SkillManager {
    * Get all cached skills (for UI display).
    */
   getSkills(): Skill[] {
-    return this.cachedSkills
+    return [...this.cachedPersistentSkills, ...this.cachedProjectSkills]
+  }
+
+  /**
+   * Get cached skill metadata (for UI list).
+   */
+  getSkillMetadata(): SkillMetadata[] {
+    return this.getSkills().map((s) => ({
+      id: s.id,
+      name: s.name,
+      version: s.version,
+      description: s.description,
+      author: s.author,
+      category: s.category,
+      tags: s.tags,
+      source: s.source,
+      triggers: s.triggers,
+      enabled: s.enabled,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }))
+  }
+
+  /**
+   * Get a cached skill by ID.
+   */
+  getSkillById(id: string): Skill | null {
+    return this.getSkills().find((skill) => skill.id === id) || null
+  }
+
+  /**
+   * Case-insensitive skill lookup by name.
+   */
+  getSkillByName(name: string): Skill | null {
+    const normalized = name.toLowerCase().trim()
+    return this.getSkills().find((skill) => skill.name.toLowerCase() === normalized) || null
+  }
+
+  /**
+   * Get enabled skill names from combined cache.
+   */
+  getEnabledSkillNames(): string[] {
+    return this.getSkills()
+      .filter((skill) => skill.enabled)
+      .map((skill) => skill.name)
+      .sort((a, b) => a.localeCompare(b))
+  }
+
+  /**
+   * Get resources for a skill (project resources are runtime-scoped in memory).
+   */
+  async getSkillResources(skillId: string): Promise<SkillResource[]> {
+    if (skillId.startsWith('project:')) {
+      return this.projectResourcesBySkillId.get(skillId) || []
+    }
+    return storage.getSkillResources(skillId)
+  }
+
+  /**
+   * Replace current project skill cache.
+   */
+  setProjectSkills(skills: Skill[], resources: SkillResource[], projectId?: string | null): void {
+    this.activeProjectId = projectId ?? this.activeProjectId
+    this.cachedProjectSkills = skills.map((skill) => ({
+      ...skill,
+      enabled: this.getProjectSkillEnabled(this.activeProjectId, skill.id, skill.enabled),
+    }))
+
+    const bySkillId = new Map<string, SkillResource[]>()
+    for (const resource of resources) {
+      const list = bySkillId.get(resource.skillId)
+      if (list) {
+        list.push(resource)
+      } else {
+        bySkillId.set(resource.skillId, [resource])
+      }
+    }
+    this.projectResourcesBySkillId = bySkillId
+  }
+
+  /**
+   * Clear runtime-scoped project skills for active project switch/reset.
+   */
+  clearProjectSkills(): void {
+    this.cachedProjectSkills = []
+    this.projectResourcesBySkillId = new Map<string, SkillResource[]>()
+    this.activeProjectId = null
+  }
+
+  /**
+   * Persist and update enabled status for a project-scoped skill.
+   */
+  setProjectSkillEnabled(skillId: string, enabled: boolean, projectId?: string | null): void {
+    const targetProjectId = projectId ?? this.activeProjectId
+    if (!targetProjectId) {
+      // Fallback for cases where active project is unknown (in-memory only).
+      this.cachedProjectSkills = this.cachedProjectSkills.map((skill) =>
+        skill.id === skillId ? { ...skill, enabled } : skill
+      )
+      return
+    }
+
+    const state = this.loadProjectSkillState(targetProjectId)
+    state[skillId] = enabled
+    this.saveProjectSkillState(targetProjectId, state)
+
+    this.cachedProjectSkills = this.cachedProjectSkills.map((skill) =>
+      skill.id === skillId ? { ...skill, enabled } : skill
+    )
   }
 
   /**
    * Refresh the in-memory skill cache from SQLite.
    */
   async refreshCache(): Promise<void> {
-    this.cachedSkills = await storage.getAllSkills()
+    this.cachedPersistentSkills = await storage.getAllSkills()
+  }
+
+  private normalizeProjectResources(
+    skills: Skill[],
+    resources: SkillResource[],
+    errors: string[]
+  ): SkillResource[] {
+    const normalized: SkillResource[] = []
+
+    for (const resource of resources) {
+      let skillId = resource.skillId
+      if (!skillId || skillId === 'pending') {
+        if (skills.length !== 1) {
+          errors.push(
+            `Unable to resolve owning skill for resource '${resource.resourcePath}' (skillId missing)`
+          )
+          continue
+        }
+        skillId = skills[0].id
+      }
+
+      normalized.push({
+        ...resource,
+        skillId,
+        id:
+          resource.id && !resource.id.startsWith('pending:')
+            ? resource.id
+            : generateResourceId(skillId, resource.resourcePath),
+      })
+    }
+
+    return normalized
+  }
+
+  private getProjectSkillEnabled(
+    projectId: string | null,
+    skillId: string,
+    fallback: boolean
+  ): boolean {
+    if (!projectId) return fallback
+    const state = this.loadProjectSkillState(projectId)
+    return Object.prototype.hasOwnProperty.call(state, skillId) ? state[skillId] : fallback
+  }
+
+  private getProjectSkillStateKey(projectId: string): string {
+    return `creatorweave:project-skill-enabled:${projectId}`
+  }
+
+  private loadProjectSkillState(projectId: string): Record<string, boolean> {
+    const storage = this.getLocalStorage()
+    if (!storage) return {}
+
+    try {
+      const raw = storage.getItem(this.getProjectSkillStateKey(projectId))
+      if (!raw) return {}
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object') return {}
+      const result: Record<string, boolean> = {}
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'boolean') {
+          result[key] = value
+        }
+      }
+      return result
+    } catch {
+      return {}
+    }
+  }
+
+  private saveProjectSkillState(projectId: string, state: Record<string, boolean>): void {
+    const storage = this.getLocalStorage()
+    if (!storage) return
+
+    try {
+      storage.setItem(this.getProjectSkillStateKey(projectId), JSON.stringify(state))
+    } catch (error) {
+      console.warn('[SkillManager] Failed to persist project skill state:', error)
+    }
+  }
+
+  private getLocalStorage(): Storage | null {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return null
+      return window.localStorage
+    } catch {
+      return null
+    }
   }
 }
 

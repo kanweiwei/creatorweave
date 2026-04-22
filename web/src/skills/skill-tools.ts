@@ -7,8 +7,8 @@
 
 import type { ToolDefinition, ToolExecutor, ToolContext } from '@/agent/tools/tool-types'
 import { toolOkJson, toolErrorJson } from '@/agent/tools/tool-envelope'
-import * as storage from './skill-storage'
 import { formatResourceList } from './skill-resources'
+import { getSkillManager } from './skill-manager'
 
 //=============================================================================
 // read_skill Tool
@@ -28,7 +28,7 @@ export const readSkillDefinition: ToolDefinition = {
       properties: {
         skill_name: {
           type: 'string',
-          description: 'The name of the skill to load (e.g., \"code-review\", \"debugging\")',
+          description: 'The name of the skill to load (e.g., "code-review", "debugging")',
         },
       },
       required: ['skill_name'],
@@ -45,18 +45,20 @@ export const readSkillExecutor: ToolExecutor = async (
   _context: ToolContext
 ): Promise<string> => {
   const { skill_name } = args as { skill_name: string }
+  const manager = getSkillManager()
+  await manager.initialize()
 
   // Case-insensitive lookup
   const skillName = skill_name.toLowerCase().trim()
-  const skill = await storage.getSkillByName(skillName)
+  const skill = manager.getSkillByName(skillName)
 
   if (!skill) {
-    const availableSkills = await storage.getAllEnabledSkillNames()
+    const availableSkills = manager.getEnabledSkillNames()
     return toolErrorJson('read_skill', 'skill_not_found', `Skill '${skill_name}' not found. Available skills: ${availableSkills.join(', ')}`)
   }
 
   // Get associated resources
-  const resources = await storage.getSkillResources(skill.id)
+  const resources = await manager.getSkillResources(skill.id)
 
   // Format output
   let output = `# ${skill.name}
@@ -135,7 +137,7 @@ export const readSkillResourceDefinition: ToolDefinition = {
         resource_path: {
           type: 'string',
           description:
-            'The path to the resource (e.g., \"references/api-docs.md\", \"scripts/analyze.py\")',
+            'The path to the resource (e.g., "references/api-docs.md", "scripts/analyze.py")',
         },
       },
       required: ['skill_name', 'resource_path'],
@@ -152,21 +154,22 @@ export const readSkillResourceExecutor: ToolExecutor = async (
   _context: ToolContext
 ): Promise<string> => {
   const { skill_name, resource_path } = args as { skill_name: string; resource_path: string }
+  const manager = getSkillManager()
+  await manager.initialize()
 
   // Case-insensitive skill lookup
   const skillName = skill_name.toLowerCase().trim()
-  const skill = await storage.getSkillByName(skillName)
+  const skill = manager.getSkillByName(skillName)
 
   if (!skill) {
     return toolErrorJson('read_skill_resource', 'skill_not_found', `Skill '${skill_name}' not found. Please check the skill name and try again.`)
   }
 
   // Get the resource
-  const resource = await storage.getSkillResource(skill.id, resource_path)
+  const available = await manager.getSkillResources(skill.id)
+  const resource = available.find((r) => r.resourcePath === resource_path)
 
   if (!resource) {
-    // List available resources for helpful error message
-    const available = await storage.getSkillResources(skill.id)
     const availablePaths = available.map((r) => `  - ${r.resourcePath}`).join('\n')
     return toolErrorJson(
       'read_skill_resource',

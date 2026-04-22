@@ -24,4 +24,5 @@ export {
   getSkillResourceTotalSize,
   getSkillByName,
   getAllEnabledSkillNames,
+  purgeProjectSkillsFromStorage,
 } from './skill-storage.sqlite'

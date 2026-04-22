@@ -20,6 +20,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useConversationStore } from '@/store/conversation.store'
 import { useAgentStore } from '@/store/agent.store'
+import { useProjectStore } from '@/store/project.store'
 import { useSettingsStore } from '@/store/settings.store'
 import { useConversationContextStore } from '@/store/conversation-context.store'
 import { useWorkspacePreferencesStore } from '@/store/workspace-preferences.store'
@@ -34,13 +35,10 @@ import { WelcomeScreenV2 } from '@/components/WelcomeScreenV2'
 import { SyncPreviewPanel } from '@/components/sync'
 import { Drawer } from '@/components/ui/drawer'
 import { SkillsManager } from '@/components/skills/SkillsManager'
-import { ProjectSkillsDialog } from '@/components/skills/ProjectSkillsDialog'
 import { ToolsPanel, QuickActionsPanel } from '@/components/tools'
 import { scanProjectSkills, syncResourcesToOPFS, syncProjectSkillsToActiveWorkspace } from '@/skills/skill-scanner'
 import { getSkillManager } from '@/skills/skill-manager'
-import * as skillStorage from '@/skills/skill-storage'
 import { useSkillsStore } from '@/store/skills.store'
-import type { SkillMetadata } from '@/skills/skill-types'
 import { createUserMessage } from '@/agent/message-types'
 import {
   CommandPalette,
@@ -94,6 +92,7 @@ export function WorkspaceLayout({
     loadFromDB,
   } = useConversationStore()
   const { directoryHandle } = useAgentStore()
+  const activeProjectId = useProjectStore((s) => s.activeProjectId || null)
   const { providerType, modelName, maxTokens, hasApiKey } = useSettingsStore()
   const { role } = useRemoteStore()
   const showPreview = useConversationContextStore((state) => state.showPreview)
@@ -107,13 +106,11 @@ export function WorkspaceLayout({
 
   // Skills management state
   const [skillsManagerOpen, setSkillsManagerOpen] = useState(false)
-  const [projectSkills, setProjectSkills] = useState<SkillMetadata[]>([])
-  const [showProjectSkillsDialog, setShowProjectSkillsDialog] = useState(false)
   const [toolsPanelOpen, setToolsPanelOpen] = useState(false)
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [skillsSyncing, setSkillsSyncing] = useState(false)
-  const skillsStore = useSkillsStore()
   const skillsLoaded = useSkillsStore((s) => s.loaded) // Reactive state
+  const loadSkills = useSkillsStore((s) => s.loadSkills)
 
   // Phase 4: Workspace preferences state
   const {
@@ -171,36 +168,6 @@ export function WorkspaceLayout({
   // Skills management handlers
   const handleSkillsManagerOpen = useCallback(() => {
     setSkillsManagerOpen(true)
-  }, [])
-
-  const handleProjectSkillsConfirm = useCallback(
-    async (selectedIds: string[]) => {
-      console.log('[WorkspaceLayout] Loading skills:', selectedIds)
-      // Load selected skills into skills store
-      for (const id of selectedIds) {
-        const skill = projectSkills.find((s) => s.id === id)
-        if (skill) {
-          console.log('[WorkspaceLayout] Saving skill to store:', {
-            id: skill.id,
-            name: skill.name,
-          })
-          await skillsStore.addSkill(skill as any)
-          console.log(
-            '[WorkspaceLayout] Skill saved, current store skills:',
-            skillsStore.skills.map((s) => s.id)
-          )
-        }
-      }
-      console.log('[WorkspaceLayout] All skills saved, closing dialog')
-      setShowProjectSkillsDialog(false)
-      setProjectSkills([])
-    },
-    [projectSkills, skillsStore]
-  )
-
-  const handleProjectSkillsSkip = useCallback(() => {
-    setShowProjectSkillsDialog(false)
-    setProjectSkills([])
   }, [])
 
   // Phase 4: Initialize theme system on mount
@@ -266,18 +233,28 @@ export function WorkspaceLayout({
   // Initialize skills on mount
   useEffect(() => {
     if (!skillsLoaded) {
-      skillsStore.loadSkills()
+      void loadSkills()
     }
-  }, [skillsLoaded, skillsStore])
+  }, [skillsLoaded, loadSkills])
 
   // Scan project skills when directoryHandle changes
   // Must wait for skillsLoaded to be true, otherwise cannot properly filter loaded skills
   useEffect(() => {
-    if (!directoryHandle) return
+    const manager = getSkillManager()
+
+    if (!directoryHandle) {
+      manager.clearProjectSkills()
+      void loadSkills()
+      return
+    }
     if (!skillsLoaded) return
 
     const scanForSkills = async () => {
       try {
+        // Prevent stale cross-project visibility while switching projects.
+        manager.clearProjectSkills()
+        await loadSkills()
+
         console.log('[WorkspaceLayout] Scanning project skills...')
         const result = await scanProjectSkills(directoryHandle)
         console.log('[WorkspaceLayout] Scan result:', result.skills.length, 'skills found')
@@ -286,41 +263,12 @@ export function WorkspaceLayout({
         }
 
         if (result.skills.length > 0) {
-          // Capture existing IDs BEFORE saving, so we can detect brand-new skills later
-          const preExistingIds = new Set(skillsStore.skills.map((s) => s.id))
-
-          // Sync all scanned skills to SQLite (upsert keeps disk → DB in sync)
-          const manager = getSkillManager()
-          for (const skill of result.skills) {
-            const existing = await skillStorage.getSkillById(skill.id)
-            await skillStorage.saveSkill(skill, '')
-            if (!existing) {
-              console.log(`[WorkspaceLayout] Imported skill: ${skill.name} (${skill.id})`)
-            } else {
-              console.log(`[WorkspaceLayout] Updated skill: ${skill.name} (${skill.id})`)
-            }
-          }
-
-          // Refresh resources for scanned skills
-          for (const skill of result.skills) {
-            await skillStorage.deleteSkillResources(skill.id)
-          }
-          for (const resource of result.resources) {
-            await skillStorage.saveSkillResource(resource)
-          }
-
-          // Refresh SkillManager in-memory cache + UI store
-          await manager.refreshCache()
-          await skillsStore.loadSkills()
-
-          // Only show dialog for brand-new skills the user hasn't seen yet
-          const newSkills = result.skills.filter((s) => !preExistingIds.has(s.id))
-
-          if (newSkills.length > 0) {
-            setProjectSkills(newSkills)
-            setShowProjectSkillsDialog(true)
-          }
+          // Keep project skills runtime-scoped (do not persist in SQLite).
+          manager.setProjectSkills(result.skills, result.resources, activeProjectId)
+          await loadSkills()
         } else {
+          manager.clearProjectSkills()
+          await loadSkills()
           console.log(
             '[WorkspaceLayout] No project skills found (checked .claude/skills/ and .skills/)'
           )
@@ -335,11 +283,8 @@ export function WorkspaceLayout({
       }
     }
 
-    scanForSkills()
-    // NOTE: Do NOT add skillsStore.skills to deps — loadSkills() inside this effect
-    // updates skills state, which would re-trigger the effect and cause an infinite loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directoryHandle, skillsLoaded])
+    void scanForSkills()
+  }, [directoryHandle, skillsLoaded, loadSkills, activeProjectId])
 
   // Sync .skills/ to OPFS when workspace changes (new workspace created or switched)
   useEffect(() => {
@@ -689,14 +634,6 @@ export function WorkspaceLayout({
         isOpen={quickActionsOpen}
         onClose={() => setQuickActionsOpen(false)}
         onStartConversation={handleStartConversation}
-      />
-
-      {/* Project Skills Discovery Dialog */}
-      <ProjectSkillsDialog
-        open={showProjectSkillsDialog}
-        skills={projectSkills}
-        onConfirm={handleProjectSkillsConfirm}
-        onSkip={handleProjectSkillsSkip}
       />
 
       {/* Phase 4: Command Palette */}

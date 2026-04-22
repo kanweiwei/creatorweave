@@ -29,25 +29,33 @@ async function ensureInitialized(): Promise<void> {
 export async function getAllSkills(): Promise<StoredSkill[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return await repo.findAll()
+  const skills = await repo.findAll()
+  return skills.filter((skill) => skill.source !== 'project')
 }
 
 /** Get all skill metadata (lightweight, no instruction/examples/templates content) */
 export async function getAllSkillMetadata(): Promise<SkillMetadata[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return await repo.findAllMetadata()
+  const metadata = await repo.findAllMetadata()
+  return metadata.filter((skill) => skill.source !== 'project')
 }
 
 /** Get a single skill by ID */
 export async function getSkillById(id: string): Promise<StoredSkill | undefined> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return (await repo.findById(id)) || undefined
+  const skill = await repo.findById(id)
+  if (!skill || skill.source === 'project') return undefined
+  return skill
 }
 
 /** Save a skill (insert or update) */
 export async function saveSkill(skill: Skill, rawContent: string): Promise<void> {
+  if (skill.source === 'project') {
+    console.warn('[SkillStorage] Ignoring attempt to persist project skill to SQLite:', skill.id)
+    return
+  }
   await ensureInitialized()
   const repo = getSkillRepository()
   const stored: StoredSkill = {
@@ -76,21 +84,24 @@ export async function toggleSkill(id: string, enabled: boolean): Promise<void> {
 export async function getSkillsByCategory(category: string): Promise<StoredSkill[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return await repo.findByCategory(category)
+  const skills = await repo.findByCategory(category)
+  return skills.filter((skill) => skill.source !== 'project')
 }
 
 /** Get enabled skills only */
 export async function getEnabledSkills(): Promise<StoredSkill[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return await repo.findEnabled()
+  const skills = await repo.findEnabled()
+  return skills.filter((skill) => skill.source !== 'project')
 }
 
 /** Search skills by keyword */
 export async function searchSkills(keyword: string): Promise<StoredSkill[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return await repo.search(keyword)
+  const skills = await repo.search(keyword)
+  return skills.filter((skill) => skill.source !== 'project')
 }
 
 /** Clear all skills (for testing/reset) */
@@ -155,6 +166,13 @@ export async function getResourceById(resourceId: string): Promise<SkillResource
 
 /** Save a resource (insert or update) */
 export async function saveSkillResource(resource: SkillResource): Promise<void> {
+  if (resource.skillId.startsWith('project:')) {
+    console.warn(
+      '[SkillStorage] Ignoring attempt to persist project skill resource to SQLite:',
+      resource.id
+    )
+    return
+  }
   await ensureInitialized()
   const repo = getSkillRepository()
   await repo.saveResource(resource)
@@ -192,7 +210,9 @@ export async function getSkillResourceTotalSize(skillId: string): Promise<number
 export async function getSkillByName(name: string): Promise<StoredSkill | undefined> {
   await ensureInitialized()
   const repo = getSkillRepository()
-  return (await repo.findByName(name)) || undefined
+  const skill = await repo.findByName(name)
+  if (!skill || skill.source === 'project') return undefined
+  return skill
 }
 
 /** Get all enabled skill names - for tool enum generation */
@@ -200,4 +220,27 @@ export async function getAllEnabledSkillNames(): Promise<string[]> {
   await ensureInitialized()
   const repo = getSkillRepository()
   return await repo.getEnabledSkillNames()
+}
+
+/**
+ * Remove legacy persisted project skills/resources from SQLite.
+ * Project skills are runtime-only and scoped to the active project.
+ */
+export async function purgeProjectSkillsFromStorage(): Promise<number> {
+  await ensureInitialized()
+  const repo = getSkillRepository()
+  const legacyProjectSkills = await repo.findBySource('project')
+
+  for (const skill of legacyProjectSkills) {
+    await repo.deleteResourcesForSkill(skill.id)
+    await repo.delete(skill.id)
+  }
+
+  if (legacyProjectSkills.length > 0) {
+    console.log(
+      `[SkillStorage] Purged ${legacyProjectSkills.length} legacy project skill(s) from SQLite`
+    )
+  }
+
+  return legacyProjectSkills.length
 }

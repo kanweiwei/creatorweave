@@ -9,6 +9,7 @@ import type { Skill, SkillMetadata, SkillCategory } from '@/skills/skill-types'
 import * as storage from '@/skills/skill-storage'
 import { parseSkillMd, serializeSkillMd } from '@/skills/skill-parser'
 import { getSkillManager } from '@/skills/skill-manager'
+import { useProjectStore } from '@/store/project.store'
 
 /** Refresh SkillManager cache to keep it in sync with store */
 async function refreshSkillManagerCache() {
@@ -73,8 +74,8 @@ export const useSkillsStore = create<SkillsStateWithImmer>()(
         console.log('[SkillsStore] manager.initialize() complete')
         await refreshSkillManagerCache()
 
-        // Now load metadata from IndexedDB (includes builtin skills)
-        const metadata = await storage.getAllSkillMetadata()
+        // Load metadata from SkillManager cache (persistent + active project runtime skills)
+        const metadata = manager.getSkillMetadata()
         console.log('[SkillsStore] getAllSkillMetadata() returned:', metadata.length, 'skills')
         console.log(
           '[SkillsStore] Skill IDs:',
@@ -99,13 +100,14 @@ export const useSkillsStore = create<SkillsStateWithImmer>()(
       const raw = rawContent || serializeSkillMd(skill)
       await storage.saveSkill(skill, raw)
       // Refresh metadata list
-      const metadata = await storage.getAllSkillMetadata()
+      const manager = getSkillManager()
+      await refreshSkillManagerCache()
+      const metadata = manager.getSkillMetadata()
       console.log(
         '[SkillsStore] Metadata after save:',
         metadata.map((s) => ({ id: s.id, name: s.name }))
       )
       set({ skills: metadata })
-      await refreshSkillManagerCache()
       console.log(
         '[SkillsStore] Store skills after update:',
         get().skills.map((s) => ({ id: s.id, name: s.name }))
@@ -126,9 +128,10 @@ export const useSkillsStore = create<SkillsStateWithImmer>()(
       }
 
       await storage.saveSkill(result.skill, content)
-      const metadata = await storage.getAllSkillMetadata()
-      set({ skills: metadata })
+      const manager = getSkillManager()
       await refreshSkillManagerCache()
+      const metadata = manager.getSkillMetadata()
+      set({ skills: metadata })
       return { success: true }
     },
 
@@ -141,27 +144,47 @@ export const useSkillsStore = create<SkillsStateWithImmer>()(
     },
 
     toggleSkill: async (id, enabled) => {
+      const manager = getSkillManager()
+      const skill = get().skills.find((s) => s.id === id)
+
+      if (skill?.source === 'project') {
+        const activeProjectId = useProjectStore.getState().activeProjectId || null
+        manager.setProjectSkillEnabled(id, enabled, activeProjectId)
+        set((state) => {
+          const target = state.skills.find((s) => s.id === id)
+          if (target) {
+            target.enabled = enabled
+          }
+        })
+        return
+      }
+
       await storage.toggleSkill(id, enabled)
       set((state) => {
-        const skill = state.skills.find((s) => s.id === id)
-        if (skill) {
-          skill.enabled = enabled
+        const target = state.skills.find((s) => s.id === id)
+        if (target) {
+          target.enabled = enabled
         }
       })
       await refreshSkillManagerCache()
     },
 
     getFullSkill: async (id) => {
+      const manager = getSkillManager()
+      const cached = manager.getSkillById(id)
+      if (cached) return cached
       const stored = await storage.getSkillById(id)
       return stored || null
     },
 
     getEnabledSkills: async () => {
-      return storage.getEnabledSkills()
+      const manager = getSkillManager()
+      return manager.getSkills().filter((skill) => skill.enabled)
     },
 
     getSkillsByCategory: async (category) => {
-      return storage.getSkillsByCategory(category)
+      const manager = getSkillManager()
+      return manager.getSkills().filter((skill) => skill.category === category)
     },
 
     clearError: () => {
