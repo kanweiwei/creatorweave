@@ -4,11 +4,13 @@
  * Enhanced rendering for spawn_subagent / batch_spawn with subagent progress.
  */
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { ChevronDown, ChevronRight, Wrench, CheckCircle2, XCircle, Loader2, Bot } from 'lucide-react'
 import type { ToolCall } from '@/agent/message-types'
 import { CopyIconButton } from './CopyIconButton'
 import { MarkdownContent } from './MarkdownContent'
+import { QuestionCard } from './QuestionCard'
+import { getPendingQuestion, removePendingQuestion } from '@/store/pending-question.store'
 import { useT } from '@/i18n'
 
 interface SubagentEvent {
@@ -26,6 +28,8 @@ interface ToolCallDisplayProps {
   streamingArgs?: string
   /** SubAgent progress events for spawn_subagent / batch_spawn */
   subagentEvents?: SubagentEvent[]
+  /** Conversation ID — needed for ask_user_question to bridge UI answer back to executor */
+  conversationId?: string
 }
 
 const SUBAGENT_TOOLS = new Set(['spawn_subagent', 'batch_spawn'])
@@ -108,6 +112,7 @@ export function ToolCallDisplay({
   isExecuting,
   streamingArgs,
   subagentEvents,
+  conversationId,
 }: ToolCallDisplayProps) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
@@ -146,6 +151,49 @@ export function ToolCallDisplay({
   // Subagent-specific display
   const subagentDesc = isSubagentTool ? extractSubagentDescription(parsedArgs) : undefined
   const spawnResult = isSubagentTool ? parseSpawnResult(result) : null
+
+  // ask_user_question: render as interactive QuestionCard
+  const isAskQuestion = toolCall.function.name === 'ask_user_question'
+  if (isAskQuestion) {
+    // Extract the answer from result for the "answered" state
+    let resultAnswer: string | undefined
+    if (result) {
+      try {
+        const parsed = JSON.parse(result) as Record<string, unknown>
+        const data = parsed.data as Record<string, unknown> | undefined
+        if (data && typeof data.answer === 'string') {
+          resultAnswer = data.answer
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Bridge: find the pending question resolver so the UI can answer it
+    const toolCallId = toolCall.id
+    const handleAnswer = conversationId
+      ? (answer: string) => {
+          const q = getPendingQuestion(conversationId, toolCallId)
+          if (q) {
+            q.resolve({ answer, confirmed: true, timed_out: false })
+            removePendingQuestion(conversationId, toolCallId)
+          }
+        }
+      : undefined
+
+    return (
+      <QuestionCard
+        question={typeof parsedArgs.question === 'string' ? parsedArgs.question : ''}
+        type={(parsedArgs.type as 'yes_no' | 'single_choice' | 'multi_choice' | 'free_text') ?? 'yes_no'}
+        options={Array.isArray(parsedArgs.options) ? parsedArgs.options as string[] : undefined}
+        defaultAnswer={typeof parsedArgs.default_answer === 'string' ? parsedArgs.default_answer : undefined}
+        context={parsedArgs.context as { affected_files?: string[]; preview?: string } | undefined}
+        answered={!!result}
+        resultAnswer={resultAnswer}
+        onAnswer={handleAnswer}
+      />
+    )
+  }
 
   return (
     <div className="my-1 rounded border border-neutral-200 bg-neutral-50 text-sm dark:border-neutral-700 dark:bg-neutral-800">

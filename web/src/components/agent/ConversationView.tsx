@@ -119,6 +119,7 @@ export function ConversationView({
               }
               onCancel={handleCancel}
               messagesEndRef={messagesEndRef}
+              conversationId={convId}
             />
           )}
         </div>

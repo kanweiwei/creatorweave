@@ -1915,6 +1915,44 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             agentMode,
             subagentRuntime,
             workflowProgress: workflowProgressHooks,
+            askUserQuestion: async (params) => {
+              const { setPendingQuestion, removePendingQuestion } = await import('@/store/pending-question.store')
+              // Use the actual toolCallId from the LLM's tool_calls response.
+              // This correlates the pending question with the UI's ToolCallDisplay.
+              const toolCallId = params.toolCallId ?? `ask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+              return new Promise<{ answer: string; confirmed: boolean; timed_out: boolean }>((resolve) => {
+                setPendingQuestion({
+                  conversationId,
+                  toolCallId,
+                  question: params.question,
+                  type: params.type,
+                  options: params.options,
+                  defaultAnswer: params.defaultAnswer,
+                  context: params.context,
+                  resolve: (result) => {
+                    removePendingQuestion(conversationId, toolCallId)
+                    resolve(result)
+                  },
+                })
+
+                // Listen for abort signal to unblock the promise on cancellation
+                if (params.signal) {
+                  const onAbort = () => {
+                    removePendingQuestion(conversationId, toolCallId)
+                    resolve({
+                      answer: params.defaultAnswer ?? 'cancelled',
+                      confirmed: false,
+                      timed_out: false,
+                    })
+                  }
+                  if (params.signal.aborted) {
+                    onAbort()
+                  } else {
+                    params.signal.addEventListener('abort', onAbort, { once: true })
+                  }
+                }
+              })
+            },
           },
           maxIterations,
           initialConvertCallCount: conv.compressionConvertCallCount ?? 0,
@@ -2655,6 +2693,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
     },
 
     cancelAgent: (conversationId: string) => {
+      // Clear any pending ask_user_question entries to unblock executor promises
+      import('@/store/pending-question.store').then(({ clearPendingQuestions }) => {
+        clearPendingQuestions(conversationId)
+      }).catch(() => {})
+
       const workflowAbortController = get().workflowAbortControllers.get(conversationId)
       if (workflowAbortController) {
         workflowAbortController.abort()
@@ -2861,6 +2904,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
     },
 
     resetConversationState: (id: string) => {
+      // Clear any pending ask_user_question entries
+      import('@/store/pending-question.store').then(({ clearPendingQuestions }) => {
+        clearPendingQuestions(id)
+      }).catch(() => {})
+
       set((state) => {
         const workflowAbortController = state.workflowAbortControllers.get(id)
         if (workflowAbortController) {

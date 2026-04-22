@@ -101,6 +101,7 @@ export function buildAgentTools(input: BuildAgentToolsInput): AgentTool[] {
               input.toolRegistry.execute(toolDef.function.name, args, {
                 ...toolContextWithUsage,
                 abortSignal,
+                currentToolCallId: toolCallId,
               }),
           })
         } finally {

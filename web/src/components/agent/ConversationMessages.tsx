@@ -38,6 +38,8 @@ type ConversationMessagesProps = {
   onRegenerate: ((userMessageId: string) => void) | undefined
   onCancel: () => void
   messagesEndRef: React.RefObject<HTMLDivElement>
+  /** Conversation ID for bridging ask_user_question UI back to executor */
+  conversationId?: string | null
 }
 
 /** Build runtime props for an AssistantTurnBubble. Returns undefined values when not active. */
@@ -78,6 +80,7 @@ export function ConversationMessages({
   onRegenerate,
   onCancel,
   messagesEndRef,
+  conversationId,
 }: ConversationMessagesProps) {
   const turns = useMemo(() => groupMessagesIntoTurns(activeMessages), [activeMessages])
   const lastTurn = turns[turns.length - 1]
@@ -136,6 +139,7 @@ export function ConversationMessages({
                 streamingToolArgsByCallId={runtime.streamingToolArgsByCallId}
                 runtimeToolCalls={runtime.runtimeToolCalls}
                 runtimeSteps={runtime.runtimeSteps}
+                conversationId={conversationId}
                 workflowProgress={
                   activeWorkflowExecution && idx === anchorIndex ? (
                     <WorkflowExecutionProgress execution={activeWorkflowExecution} onStop={onCancel} />
@@ -155,6 +159,7 @@ export function ConversationMessages({
               toolResults={toolResults}
               showAvatar={!draftHasCompressionOnly}
               isProcessing={true}
+              conversationId={conversationId}
               {...getRuntimeProps(
                 shouldAttachRuntimeToDraft, isWaitingForModel, activeDraftAssistant,
                 activeStreamingState, streamingState, streamingContentMessage, status,

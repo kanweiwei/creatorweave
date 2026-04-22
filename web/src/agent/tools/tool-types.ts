@@ -249,7 +249,38 @@ export interface ToolContext {
   subagentRuntime?: SubagentRuntime
   /** Per-run cache of file content that was read by tools, keyed by normalized target path */
   readFileState?: Map<string, ReadFileStateEntry>
+  /**
+   * Ask user question handler. When provided, the ask_user_question tool will
+   * call this to show a question card in the UI and wait for the user's response.
+   * If not provided (e.g. in subagent contexts), the tool falls back to default_answer.
+   */
+  askUserQuestion?: (params: {
+    question: string
+    type: AskQuestionType
+    options?: string[]
+    defaultAnswer?: string
+    context?: {
+      affected_files?: string[]
+      preview?: string
+    }
+    signal?: AbortSignal
+    /** The tool call ID from the LLM response — used to correlate UI with pending question */
+    toolCallId?: string
+  }) => Promise<{
+    answer: string
+    confirmed: boolean
+    timed_out: boolean
+  }>
+  /**
+   * The current tool call ID from the LLM's tool_calls response.
+   * Available during tool execution so tools like ask_user_question
+   * can correlate their pending question with the UI's toolCall display.
+   */
+  currentToolCallId?: string
 }
+
+/** Ask user question type */
+export type AskQuestionType = 'yes_no' | 'single_choice' | 'multi_choice' | 'free_text'
 
 /** Tool executor function signature */
 export type ToolExecutor = (args: Record<string, unknown>, context: ToolContext) => Promise<string>

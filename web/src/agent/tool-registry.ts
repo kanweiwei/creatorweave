@@ -49,6 +49,13 @@ import { syncToOPFSDefinition, syncToOPFSExecutor } from './tools/sync-opfs.tool
 
 // Switch mode tool
 import { switchAgentModeDefinition, createSwitchModeExecutor } from './tools/switch-mode.tool'
+
+// Ask user question tool
+import {
+  askUserQuestionDefinition,
+  askUserQuestionExecutor,
+} from './tools/ask-user-question.tool'
+
 import {
   batchSpawnDefinition,
   batchSpawnExecutor,
@@ -105,6 +112,7 @@ const BUILTIN_TOOLS: Array<{ definition: ToolDefinition; executor: ToolExecutor 
   { definition: detectConflictsDefinition, executor: detectConflictsExecutor },
   // Meta tools
   { definition: switchAgentModeDefinition, executor: createSwitchModeExecutor() },
+  { definition: askUserQuestionDefinition, executor: askUserQuestionExecutor },
   { definition: spawnSubagentDefinition, executor: spawnSubagentExecutor },
   { definition: batchSpawnDefinition, executor: batchSpawnExecutor },
   { definition: sendMessageToSubagentDefinition, executor: sendMessageToSubagentExecutor },

@@ -61,6 +61,8 @@ interface AssistantTurnBubbleProps {
   runtimeSteps?: DraftAssistantStep[]
   /** Optional workflow progress block rendered at the bottom of the bubble */
   workflowProgress?: ReactNode
+  /** Conversation ID — needed for ask_user_question to bridge UI answer back to executor */
+  conversationId?: string | null
 }
 
 export const AssistantTurnBubble = memo(function AssistantTurnBubble({
@@ -77,6 +79,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
   runtimeToolCalls,
   runtimeSteps,
   workflowProgress,
+  conversationId,
 }: AssistantTurnBubbleProps) {
   const t = useT()
   const isStreamingReasoning = streamingState?.reasoning ?? false
@@ -182,6 +185,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                     toolResults={toolResults}
                     showDivider={false}
                     suppressExecutingToolCallIds={suppressExecutingToolCallIds}
+                    conversationId={conversationId ?? undefined}
                   />
                 </div>
               )
@@ -252,6 +256,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                       : undefined
                   }
                   subagentEvents={step.subagentEvents}
+                  conversationId={conversationId}
                 />
               </div>
             )
@@ -266,6 +271,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
               toolResults={toolResults}
               showDivider={idx > 0}
               suppressExecutingToolCallIds={suppressExecutingToolCallIds}
+              conversationId={conversationId ?? undefined}
             />
           ))}
 
@@ -322,6 +328,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
                     : undefined
                 }
                 subagentEvents={step.subagentEvents}
+                conversationId={conversationId}
               />
             )
           })}
@@ -336,6 +343,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
               toolCall={tc}
               result={toolResults.get(tc.id)}
               isExecuting={true}
+              conversationId={conversationId}
               streamingArgs={
                 streamingToolArgsByCallId?.[tc.id] ||
                 (currentToolCall?.id === tc.id ? streamingToolArgs || undefined : undefined)
@@ -363,6 +371,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
             <ToolCallDisplay
               toolCall={currentToolCall}
               isExecuting={true}
+              conversationId={conversationId}
               streamingArgs={
                 streamingToolArgsByCallId?.[currentToolCall.id] || streamingToolArgs || undefined
               }
@@ -468,11 +477,13 @@ const AssistantStep = memo(function AssistantStep({
   toolResults,
   showDivider,
   suppressExecutingToolCallIds,
+  conversationId,
 }: {
   message: Message
   toolResults: Map<string, string>
   showDivider: boolean
   suppressExecutingToolCallIds?: Set<string>
+  conversationId?: string
 }) {
   const t = useT()
   const hasReasoning = !!message.reasoning
@@ -543,7 +554,7 @@ const AssistantStep = memo(function AssistantStep({
           {hasToolCalls && (
             <div className="space-y-1">
               {visibleToolCalls.map((tc) => (
-                <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults.get(tc.id)} />
+                <ToolCallDisplay key={tc.id} toolCall={tc} result={toolResults.get(tc.id)} conversationId={conversationId} />
               ))}
             </div>
           )}
