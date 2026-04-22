@@ -55,64 +55,6 @@ Provide feedback in this format:
   },
 
   {
-    id: 'builtin:test-generation',
-    name: 'Test Generation',
-    version: '1.0.0',
-    description: 'Generate comprehensive tests with edge cases and proper assertions',
-    author: 'Core Team',
-    category: 'testing',
-    tags: ['test', 'unit-test', 'coverage', 'tdd'],
-    source: 'builtin',
-    triggers: {
-      keywords: ['test', 'unit test', 'write test', 'add test', 'test coverage', 'spec'],
-    },
-    enabled: true,
-    createdAt: now,
-    updatedAt: now,
-    instruction: `When generating tests, follow these principles:
-
-1. **Test Structure**: Use Arrange-Act-Assert (AAA) pattern
-2. **Naming**: Use descriptive names: \`should [expected behavior] when [condition]\`
-3. **Coverage**: Include:
-   - Happy path (normal operation)
-   - Edge cases (empty, null, boundary values)
-   - Error cases (invalid input, failures)
-   - Integration points (API calls, DB operations)
-
-4. **Best Practices**:
-   - Each test should test ONE thing
-   - Tests should be independent (no shared mutable state)
-   - Use meaningful assertions (not just \`toBeTruthy\`)
-   - Mock external dependencies, not internal implementation
-   - Avoid testing implementation details
-
-5. **File Organization**:
-   - Place tests next to source: \`foo.ts\` → \`foo.test.ts\`
-   - Group related tests with \`describe\` blocks
-   - Use \`beforeEach\`/\`afterEach\` for common setup/teardown`,
-    examples: `\`\`\`typescript
-describe('calculateDiscount', () => {
-  it('should return 10% discount when order exceeds $100', () => {
-    const order = { total: 150 }
-    const result = calculateDiscount(order)
-    expect(result).toBe(15)
-  })
-
-  it('should return 0 discount when order is under $100', () => {
-    const order = { total: 50 }
-    const result = calculateDiscount(order)
-    expect(result).toBe(0)
-  })
-
-  it('should throw when order total is negative', () => {
-    const order = { total: -10 }
-    expect(() => calculateDiscount(order)).toThrow('Invalid order total')
-  })
-})
-\`\`\``,
-  },
-
-  {
     id: 'builtin:debugging',
     name: 'Systematic Debugging',
     version: '1.0.0',
