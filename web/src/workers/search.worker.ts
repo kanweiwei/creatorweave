@@ -197,7 +197,7 @@ async function handleSearch(payload: SearchMessage['payload']): Promise<void> {
       } else {
         // Try to read the file from disk
         try {
-          const fileHandle = await directoryHandle.getFileHandle(searchSingleFile)
+          const fileHandle = await resolveSubfile(directoryHandle, searchSingleFile)
           const file = await fileHandle.getFile()
           if (file.size > Math.max(1, maxFileSize)) {
             sendError({
@@ -438,6 +438,21 @@ async function resolveSubdir(root: FileSystemDirectoryHandle, cleanPath: string)
     current = await current.getDirectoryHandle(part)
   }
   return current
+}
+
+async function resolveSubfile(root: FileSystemDirectoryHandle, cleanPath: string): Promise<FileSystemFileHandle> {
+  const parts = cleanPath.split('/').filter(Boolean)
+  if (parts.length === 0) throw new DOMException('File path is empty', 'NotFoundError')
+  const fileName = parts.pop()!
+  if (fileName === '..') throw new Error('path cannot include ".."')
+
+  let current = root
+  for (const part of parts) {
+    if (part === '..') throw new Error('path cannot include ".."')
+    current = await current.getDirectoryHandle(part)
+  }
+
+  return await current.getFileHandle(fileName)
 }
 
 function isNotFoundError(error: unknown): boolean {
