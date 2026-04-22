@@ -1,8 +1,13 @@
 /**
  * MarkdownContent - renders markdown text with syntax highlighting.
  * Used by both MessageBubble (final messages) and streaming display.
+ *
+ * Memoized: avoids re-parsing markdown when content hasn't changed.
+ * This is critical during streaming — every delta triggers a parent
+ * re-render, but already-committed text blocks stay stable.
  */
 
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -10,7 +15,7 @@ interface MarkdownContentProps {
   content: string
 }
 
-export function MarkdownContent({ content }: MarkdownContentProps) {
+export const MarkdownContent = memo(function MarkdownContent({ content }: MarkdownContentProps) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -113,4 +118,4 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
       {content}
     </ReactMarkdown>
   )
-}
+})

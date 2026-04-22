@@ -419,7 +419,7 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
 })
 
 /** Renders streaming content section within the turn */
-function StreamingContentSection({
+const StreamingContentSection = memo(function StreamingContentSection({
   reasoning,
   content,
   isStreamingReasoning,
@@ -460,7 +460,7 @@ function StreamingContentSection({
       )}
     </>
   )
-}
+})
 
 /** Renders one assistant message step inside a turn */
 const AssistantStep = memo(function AssistantStep({
