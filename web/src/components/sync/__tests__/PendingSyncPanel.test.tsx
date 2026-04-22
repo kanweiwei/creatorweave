@@ -219,7 +219,7 @@ describe('PendingSyncPanel', () => {
     await waitFor(() => {
       expect(storeMock.discardPendingPath).toHaveBeenCalledWith('broken.txt')
     })
+    expect(storeMock.showPreviewPanelForPath).not.toHaveBeenCalled()
     expect(toastMock.error).toHaveBeenCalledWith('Cannot discard changes to "broken.txt": missing local file baseline')
   })
 })
-

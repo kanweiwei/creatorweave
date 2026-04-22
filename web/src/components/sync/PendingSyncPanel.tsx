@@ -689,9 +689,13 @@ export function PendingSyncPanel() {
 
                 {/* Remove Button */}
                 <button
-                  onClick={() => handleRemoveFile(change.path)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void handleRemoveFile(change.path)
+                  }}
                   className="p-0.5 text-tertiary hover:text-danger transition-colors rounded hover:bg-danger/10 active:bg-danger/20 flex-shrink-0"
                   title={t('settings.pendingSyncPanel.removeFromList')}
+                  type="button"
                 >
                   <X className="w-3 h-3" />
                 </button>
