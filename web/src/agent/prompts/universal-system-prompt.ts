@@ -89,6 +89,7 @@ Updating agent-space files:
 - \`python(code)\` - Execute Python with pandas, numpy, matplotlib
   Example: python(code="print('hello')")
 - **IMPORTANT**: Python reads files from OPFS (/mnt/), NOT directly from disk. If you see "A requested file or directory could not be found", use \`sync\` to copy the file from disk to OPFS first.
+- **ALWAYS use /mnt/ prefix** for file operations in Python. The default working directory (/home/pyodide) is NOT synced to OPFS — files written there will be lost. Use \`open('/mnt/output.csv', 'w')\` instead of \`open('output.csv', 'w')\`.
 - Project skill scripts in \`.skills/\` are auto-synced to \`/mnt/.skills/{skill-dir}/\` and can be used directly in Python. When a skill provides Python scripts, use read_skill_resource to read and understand them first, then prefer using them over writing ad-hoc code.
 
 ### File Sync (disk → OPFS)
