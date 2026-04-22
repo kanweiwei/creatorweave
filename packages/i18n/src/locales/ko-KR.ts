@@ -275,22 +275,6 @@ export const koKR = {
         syncFailedCount: "{failed}개 파일 승인 적용 실패{conflicts}",
       },
 
-      // Sync Progress Dialog
-      syncProgress: {
-        syncingFile: "파일 동기화",
-        syncCompleted: "동기화 완료",
-        syncFailed: "동기화 실패",
-        syncing: "동기화 중...",
-        totalProgress: "전체 진행률",
-        filesProgress: "{completed} / {total} 파일",
-        estimatedTime: "예상 남은 시간",
-        remaining: "남은",
-        syncSuccess: "동기화 성공",
-        preparing: "동기화 준비 중...",
-        close: "닫기",
-        cancel: "취소",
-      },
-
       // File Change List
       fileChangeList: {
         noFileChanges: "파일 변경 없음",
@@ -306,78 +290,6 @@ export const koKR = {
         viewChange: "{path} 변경 보기",
       },
 
-      // File Diff Viewer
-      fileDiffViewer: {
-        selectFile: "세부 정보를 보려면 파일을 선택하세요",
-        selectFileHint:
-          "왼쪽 목록에서 파일을 선택하여 버전과 현재 파일의 차이를 확인하세요",
-        loadingFile: "파일 내용을 불러오는 중...",
-        loadFailed: "불러오기 실패",
-        afterSnapshot: "스냅샷 후",
-        beforeSnapshot: "스냅샷 전",
-        currentFile: "현재 파일",
-        changedVersion: "변경된 버전",
-        binarySnapshot: "바이너리 스냅샷 비교",
-        binaryContent:
-          "바이너리 내용은 텍스트 레벨 차이를 지원하지 않습니다. 파일을 다운로드하거나 전용 바이너리 비교 도구를 사용하세요.",
-        noImageContent: "이미지 내용 없음",
-        fileDeleted: "파일 삭제됨 (변경된 버전에 내용 없음)",
-        cannotReadChangedVersion: "변경된 버전을 읽을 수 없습니다",
-        loadingMonaco: "Monaco 에디터를 불러오는 중...",
-        modified: "변경",
-        current: "현재",
-        addComment: "댓글 추가...",
-        send: "보내기",
-        commentsCount: "{count}개 댓글",
-        snapshotTitle: "{title} · {time}",
-        reviewElements: "요소 검토",
-        previewHTMLNewTab: "새 탭에서 HTML 미리보기 및 요소 검토",
-        mergeView: "병합 보기",
-        splitView: "분할 보기",
-        template: "템플릿",
-        comments: "댓글",
-        deleteWarning: "(삭제 예정)",
-        previewHTML: "HTML 미리보기",
-        cannotReadNativeImage: "네이티브 이미지를 읽을 수 없습니다",
-        cannotReadChangedImage: "변경된 버전의 이미지를 읽을 수 없습니다",
-        imageWillBeDeleted: "이미지가 삭제됩니다 (변경된 버전에 내용 없음)",
-        currentFileComments: "현재 파일 댓글",
-        close: "닫기",
-        // AI review prompt
-        reviewPromptIntro:
-          "다음 파일 스냅샷을 검토하고 수정 제안을 제공해 주세요:",
-        file: "파일",
-        changeType: "변경 유형",
-        snapshot: "스냅샷",
-        recordedAt: "기록 시간",
-        reviewOutput: "다음을 출력해 주세요:",
-        issueList: "문제 목록 (심각도순)",
-        actionableSuggestions: "직접 실행 가능한 수정 제안",
-        codePatch: "코드 변경이 필요한 경우 최소 패치를 제공하세요",
-        noWorkspace: "활성 워크스페이스 없음",
-        noChangesToReview: "검토할 변경 사항 없음",
-        configureApiKey: "먼저 API Key를 구성하세요",
-        conversationRunning:
-          "현재 대화 실행 중입니다. 나중에 다시 시도해 주세요",
-        reviewConversation: "변경 검토",
-        // Error messages
-        loadFailedError: "파일 불러오기 실패",
-        cannotReadNativeContent:
-          "네이티브 파일 내용을 보려면 프로젝트 디렉토리를 선택하세요",
-        readNativeFileFailed: "네이티브 파일 읽기 실패",
-        // Snapshot comparison
-        beforeSnapshotLabel: "스냅샷 전",
-        afterSnapshotLabel: "스냅샷 후",
-        binary: "바이너리",
-        text: "텍스트",
-        none: "없음",
-        size: "크기",
-      },
-
-      // Monaco Diff Editor
-      monacoDiffEditor: {
-        lineHasComment: "이 줄에는 댓글이 있습니다",
-      },
     },
 
     // Pending Sync Panel
@@ -1870,6 +1782,88 @@ export const koKR = {
     deletePartial: "{success}개 삭제, {failed}개 실패",
     clearing: "지우는 중...",
     dragToResizeWidth: "드래그하여 너비 조정",
+
+    // Sync Progress Dialog
+    syncProgress: {
+      syncingFile: "파일 동기화",
+      syncCompleted: "동기화 완료",
+      syncFailed: "동기화 실패",
+      syncing: "동기화 중...",
+      totalProgress: "전체 진행률",
+      filesProgress: "{completed} / {total} 파일",
+      estimatedTime: "예상 남은 시간",
+      remaining: "남은",
+      syncSuccess: "동기화 성공",
+      preparing: "동기화 준비 중...",
+      close: "닫기",
+      cancel: "취소",
+    },
+
+    // File Diff Viewer
+    fileDiffViewer: {
+      selectFile: "세부 정보를 보려면 파일을 선택하세요",
+      selectFileHint:
+        "왼쪽 목록에서 파일을 선택하여 버전과 현재 파일의 차이를 확인하세요",
+      loadingFile: "파일 내용을 불러오는 중...",
+      loadFailed: "불러오기 실패",
+      afterSnapshot: "스냅샷 후",
+      beforeSnapshot: "스냅샷 전",
+      currentFile: "현재 파일",
+      changedVersion: "변경된 버전",
+      binarySnapshot: "바이너리 스냅샷 비교",
+      binaryContent:
+        "바이너리 내용은 텍스트 레벨 차이를 지원하지 않습니다. 파일을 다운로드하거나 전용 바이너리 비교 도구를 사용하세요.",
+      noImageContent: "이미지 내용 없음",
+      fileDeleted: "파일 삭제됨 (변경된 버전에 내용 없음)",
+      cannotReadChangedVersion: "변경된 버전을 읽을 수 없습니다",
+      loadingMonaco: "Monaco 에디터를 불러오는 중...",
+      modified: "변경",
+      current: "현재",
+      addComment: "댓글 추가...",
+      send: "보내기",
+      commentsCount: "{count}개 댓글",
+      reviewElements: "요소 검토",
+      previewHTMLNewTab: "새 탭에서 HTML 미리보기 및 요소 검토",
+      mergeView: "병합 보기",
+      splitView: "분할 보기",
+      template: "템플릿",
+      comments: "댓글",
+      deleteWarning: "(삭제 예정)",
+      cannotReadNativeImage: "네이티브 이미지를 읽을 수 없습니다",
+      cannotReadChangedImage: "변경된 버전의 이미지를 읽을 수 없습니다",
+      imageWillBeDeleted: "이미지가 삭제됩니다 (변경된 버전에 내용 없음)",
+      currentFileComments: "현재 파일 댓글",
+      close: "닫기",
+      // AI review prompt
+      reviewPromptIntro:
+        "다음 파일 스냅샷을 검토하고 수정 제안을 제공해 주세요:",
+      file: "파일",
+      changeType: "변경 유형",
+      snapshot: "스냅샷",
+      recordedAt: "기록 시간",
+      reviewOutput: "다음을 출력해 주세요:",
+      issueList: "문제 목록 (심각도순)",
+      actionableSuggestions: "직접 실행 가능한 수정 제안",
+      codePatch: "코드 변경이 필요한 경우 최소 패치를 제공하세요",
+      noWorkspace: "활성 워크스페이스 없음",
+      // Error messages
+      loadFailedError: "파일 불러오기 실패",
+      cannotReadNativeContent:
+        "네이티브 파일 내용을 보려면 프로젝트 디렉토리를 선택하세요",
+      readNativeFileFailed: "네이티브 파일 읽기 실패",
+      // Snapshot comparison
+      beforeSnapshotLabel: "스냅샷 전",
+      afterSnapshotLabel: "스냅샷 후",
+      binary: "바이너리",
+      text: "텍스트",
+      none: "없음",
+      size: "크기",
+    },
+
+    // Monaco Diff Editor
+    monacoDiffEditor: {
+      lineHasComment: "이 줄에는 댓글이 있습니다",
+    },
   },
 
   // Workflow

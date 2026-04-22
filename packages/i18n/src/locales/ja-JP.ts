@@ -279,22 +279,6 @@ export const jaJP = {
         syncFailedCount: "{failed} ファイルの承認適用に失敗{conflicts}",
       },
 
-      // Sync Progress Dialog
-      syncProgress: {
-        syncingFile: "ファイルを同期",
-        syncCompleted: "同期完了",
-        syncFailed: "同期失敗",
-        syncing: "同期中...",
-        totalProgress: "全体の進行状況",
-        filesProgress: "{completed} / {total} ファイル",
-        estimatedTime: "推定残り時間",
-        remaining: "残り",
-        syncSuccess: "同期成功",
-        preparing: "同期準備中...",
-        close: "閉じる",
-        cancel: "キャンセル",
-      },
-
       // File Change List
       fileChangeList: {
         noFileChanges: "ファイル変更なし",
@@ -310,78 +294,6 @@ export const jaJP = {
         viewChange: "{path} の変更を表示",
       },
 
-      // File Diff Viewer
-      fileDiffViewer: {
-        selectFile: "ファイルを選択して詳細を表示",
-        selectFileHint:
-          "左側のリストからファイルを選択して、バージョンと現在のファイルの差分を表示",
-        loadingFile: "ファイル内容を読み込み中...",
-        loadFailed: "読み込み失敗",
-        afterSnapshot: "スナップショット後",
-        beforeSnapshot: "スナップショット前",
-        currentFile: "現在のファイル",
-        changedVersion: "変更バージョン",
-        binarySnapshot: "バイナリスナップショット比較",
-        binaryContent:
-          "バイナリ内容はテキストレベルの差分をサポートしていません。ファイルをダウンロードするか、専用バイナリ比較ツールを使用してください。",
-        noImageContent: "画像コンテンツなし",
-        fileDeleted: "ファイル削除済み（変更バージョンに内容なし）",
-        cannotReadChangedVersion: "変更バージョンの内容を読み込めません",
-        loadingMonaco: "Monacoエディタを読み込み中...",
-        modified: "変更",
-        current: "現在",
-        addComment: "コメントを追加...",
-        send: "送信",
-        commentsCount: "{count} 件のコメント",
-        snapshotTitle: "{title} · {time}",
-        reviewElements: "要素をレビュー",
-        previewHTMLNewTab: "新しいタブでHTMLをプレビューして要素をレビュー",
-        mergeView: "マージビュー",
-        splitView: "スプリットビュー",
-        template: "テンプレート",
-        comments: "コメント",
-        deleteWarning: "（削除予定）",
-        previewHTML: "HTMLをプレビュー",
-        cannotReadNativeImage: "ネイティブ画像を読み込めません",
-        cannotReadChangedImage: "変更バージョンの画像を読み込めません",
-        imageWillBeDeleted: "画像は削除されます（変更バージョンに内容なし）",
-        currentFileComments: "現在のファイルコメント",
-        close: "閉じる",
-        // AI review prompt
-        reviewPromptIntro:
-          "以下のファイルスナップショットをレビューして修正提案をください：",
-        file: "ファイル",
-        changeType: "変更タイプ",
-        snapshot: "スナップショット",
-        recordedAt: "記録時間",
-        reviewOutput: "以下を出力してください：",
-        issueList: "問題リスト（重大度順）",
-        actionableSuggestions: "直接実行可能な修正提案",
-        codePatch: "コード変更が必要な場合は、最小限のパッチを提供してください",
-        noWorkspace: "アクティブなワークスペースがありません",
-        noChangesToReview: "レビューする変更がありません",
-        configureApiKey: "まずAPI Keyを設定してください",
-        conversationRunning:
-          "現在の会話は実行中です。後でもう一度お試しください",
-        reviewConversation: "変更レビュー",
-        // Error messages
-        loadFailedError: "ファイルの読み込みに失敗しました",
-        cannotReadNativeContent:
-          "ネイティブファイル内容を表示するにはプロジェクトディレクトリを選択してください",
-        readNativeFileFailed: "ネイティブファイルの読み込みに失敗しました",
-        // Snapshot comparison
-        beforeSnapshotLabel: "スナップショット前",
-        afterSnapshotLabel: "スナップショット後",
-        binary: "バイナリ",
-        text: "テキスト",
-        none: "なし",
-        size: "サイズ",
-      },
-
-      // Monaco Diff Editor
-      monacoDiffEditor: {
-        lineHasComment: "この行にはコメントがあります",
-      },
     },
 
     // Pending Sync Panel
@@ -1888,6 +1800,88 @@ export const jaJP = {
     deletePartial: "{success}件削除、{failed}件失敗",
     clearing: "クリア中...",
     dragToResizeWidth: "ドラッグして幅を調整",
+
+    // Sync Progress Dialog
+    syncProgress: {
+      syncingFile: "ファイルを同期",
+      syncCompleted: "同期完了",
+      syncFailed: "同期失敗",
+      syncing: "同期中...",
+      totalProgress: "全体の進行状況",
+      filesProgress: "{completed} / {total} ファイル",
+      estimatedTime: "推定残り時間",
+      remaining: "残り",
+      syncSuccess: "同期成功",
+      preparing: "同期準備中...",
+      close: "閉じる",
+      cancel: "キャンセル",
+    },
+
+    // File Diff Viewer
+    fileDiffViewer: {
+      selectFile: "ファイルを選択して詳細を表示",
+      selectFileHint:
+        "左側のリストからファイルを選択して、バージョンと現在のファイルの差分を表示",
+      loadingFile: "ファイル内容を読み込み中...",
+      loadFailed: "読み込み失敗",
+      afterSnapshot: "スナップショット後",
+      beforeSnapshot: "スナップショット前",
+      currentFile: "現在のファイル",
+      changedVersion: "変更バージョン",
+      binarySnapshot: "バイナリスナップショット比較",
+      binaryContent:
+        "バイナリ内容はテキストレベルの差分をサポートしていません。ファイルをダウンロードするか、専用バイナリ比較ツールを使用してください。",
+      noImageContent: "画像コンテンツなし",
+      fileDeleted: "ファイル削除済み（変更バージョンに内容なし）",
+      cannotReadChangedVersion: "変更バージョンの内容を読み込めません",
+      loadingMonaco: "Monacoエディタを読み込み中...",
+      modified: "変更",
+      current: "現在",
+      addComment: "コメントを追加...",
+      send: "送信",
+      commentsCount: "{count} 件のコメント",
+      reviewElements: "要素をレビュー",
+      previewHTMLNewTab: "新しいタブでHTMLをプレビューして要素をレビュー",
+      mergeView: "マージビュー",
+      splitView: "スプリットビュー",
+      template: "テンプレート",
+      comments: "コメント",
+      deleteWarning: "（削除予定）",
+      cannotReadNativeImage: "ネイティブ画像を読み込めません",
+      cannotReadChangedImage: "変更バージョンの画像を読み込めません",
+      imageWillBeDeleted: "画像は削除されます（変更バージョンに内容なし）",
+      currentFileComments: "現在のファイルコメント",
+      close: "閉じる",
+      // AI review prompt
+      reviewPromptIntro:
+        "以下のファイルスナップショットをレビューして修正提案をください：",
+      file: "ファイル",
+      changeType: "変更タイプ",
+      snapshot: "スナップショット",
+      recordedAt: "記録時間",
+      reviewOutput: "以下を出力してください：",
+      issueList: "問題リスト（重大度順）",
+      actionableSuggestions: "直接実行可能な修正提案",
+      codePatch: "コード変更が必要な場合は、最小限のパッチを提供してください",
+      noWorkspace: "アクティブなワークスペースがありません",
+      // Error messages
+      loadFailedError: "ファイルの読み込みに失敗しました",
+      cannotReadNativeContent:
+        "ネイティブファイル内容を表示するにはプロジェクトディレクトリを選択してください",
+      readNativeFileFailed: "ネイティブファイルの読み込みに失敗しました",
+      // Snapshot comparison
+      beforeSnapshotLabel: "スナップショット前",
+      afterSnapshotLabel: "スナップショット後",
+      binary: "バイナリ",
+      text: "テキスト",
+      none: "なし",
+      size: "サイズ",
+    },
+
+    // Monaco Diff Editor
+    monacoDiffEditor: {
+      lineHasComment: "この行にはコメントがあります",
+    },
   },
 
   // Workflow

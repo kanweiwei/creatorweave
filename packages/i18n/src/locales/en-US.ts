@@ -282,22 +282,6 @@ export const enUS = {
         syncFailedCount: "{failed} files failed to apply approval{conflicts}",
       },
 
-      // Sync Progress Dialog
-      syncProgress: {
-        syncingFile: "Syncing File",
-        syncCompleted: "Sync Completed",
-        syncFailed: "Sync Failed",
-        syncing: "Syncing...",
-        totalProgress: "Total Progress",
-        filesProgress: "{completed} / {total} files",
-        estimatedTime: "Estimated time remaining",
-        remaining: "Remaining",
-        syncSuccess: "Sync Success",
-        preparing: "Preparing...",
-        close: "Close",
-        cancel: "Cancel",
-      },
-
       // File Change List
       fileChangeList: {
         noFileChanges: "No file changes",
@@ -313,79 +297,6 @@ export const enUS = {
         viewChange: "View change for {path}",
       },
 
-      // File Diff Viewer
-      fileDiffViewer: {
-        selectFile: "Select a file to view details",
-        selectFileHint:
-          "Select a file from the list on the left to view diff between version and current file",
-        loadingFile: "Loading file content...",
-        loadFailed: "Load Failed",
-        afterSnapshot: "After Snapshot",
-        beforeSnapshot: "Before Snapshot",
-        currentFile: "Current File",
-        changedVersion: "Changed Version",
-        binarySnapshot: "Binary Snapshot Comparison",
-        binaryContent:
-          "Binary content does not support text-level diff. Download the file or use a dedicated binary comparison tool.",
-        noImageContent: "No image content",
-        fileDeleted: "File deleted (no content in changed version)",
-        cannotReadChangedVersion: "Cannot read changed version content",
-        loadingMonaco: "Loading Monaco editor...",
-        modified: "Modified",
-        current: "Current",
-        addComment: "Add comment...",
-        send: "Send",
-        commentsCount: "{count} comments",
-        snapshotTitle: "{title} · {time}",
-        reviewElements: "Review Elements",
-        previewHTMLNewTab: "Preview HTML in new tab",
-        mergeView: "Merge View",
-        splitView: "Split View",
-        template: "Template",
-        comments: "Comments",
-        deleteWarning: "(will be deleted)",
-        previewHTML: "Preview HTML",
-        cannotReadNativeImage: "Cannot read native image",
-        cannotReadChangedImage: "Cannot read changed version image",
-        imageWillBeDeleted:
-          "Image will be deleted (no content in changed version)",
-        currentFileComments: "Current file comments",
-        close: "Close",
-        // AI review prompt
-        reviewPromptIntro:
-          "Please review the following file snapshot and provide modification suggestions:",
-        file: "File",
-        changeType: "Change Type",
-        snapshot: "Snapshot",
-        recordedAt: "Recorded at",
-        reviewOutput: "Please output:",
-        issueList: "Issue list (by severity)",
-        actionableSuggestions: "Directly actionable modification suggestions",
-        codePatch: "If code changes are needed, provide minimal patch",
-        noWorkspace: "No active workspace",
-        noChangesToReview: "No changes to review",
-        configureApiKey: "Please configure API Key first",
-        conversationRunning:
-          "Current conversation is running, please try again later",
-        reviewConversation: "Change Review",
-        // Error messages
-        loadFailedError: "Failed to load file",
-        cannotReadNativeContent:
-          "Cannot read native file content. Please select a project directory first.",
-        readNativeFileFailed: "Failed to read native file",
-        // Snapshot comparison
-        beforeSnapshotLabel: "Before Snapshot",
-        afterSnapshotLabel: "After Snapshot",
-        binary: "Binary",
-        text: "Text",
-        none: "None",
-        size: "Size",
-      },
-
-      // Monaco Diff Editor
-      monacoDiffEditor: {
-        lineHasComment: "This line has a comment",
-      },
     },
 
     // Pending Sync Panel
@@ -1909,6 +1820,89 @@ export const enUS = {
     deletePartial: "Deleted {success}, failed {failed}",
     clearing: "Clearing...",
     dragToResizeWidth: "Drag to resize width",
+
+    // Sync Progress Dialog
+    syncProgress: {
+      syncingFile: "Syncing File",
+      syncCompleted: "Sync Completed",
+      syncFailed: "Sync Failed",
+      syncing: "Syncing...",
+      totalProgress: "Total Progress",
+      filesProgress: "{completed} / {total} files",
+      estimatedTime: "Estimated time remaining",
+      remaining: "Remaining",
+      syncSuccess: "Sync Success",
+      preparing: "Preparing...",
+      close: "Close",
+      cancel: "Cancel",
+    },
+
+    // File Diff Viewer
+    fileDiffViewer: {
+      selectFile: "Select a file to view details",
+      selectFileHint:
+        "Select a file from the list on the left to view diff between version and current file",
+      loadingFile: "Loading file content...",
+      loadFailed: "Load Failed",
+      afterSnapshot: "After Snapshot",
+      beforeSnapshot: "Before Snapshot",
+      currentFile: "Current File",
+      changedVersion: "Changed Version",
+      binarySnapshot: "Binary Snapshot Comparison",
+      binaryContent:
+        "Binary content does not support text-level diff. Download the file or use a dedicated binary comparison tool.",
+      noImageContent: "No image content",
+      fileDeleted: "File deleted (no content in changed version)",
+      cannotReadChangedVersion: "Cannot read changed version content",
+      loadingMonaco: "Loading Monaco editor...",
+      modified: "Modified",
+      current: "Current",
+      addComment: "Add comment...",
+      send: "Send",
+      commentsCount: "{count} comments",
+      reviewElements: "Review Elements",
+      previewHTMLNewTab: "Preview HTML in new tab",
+      mergeView: "Merge View",
+      splitView: "Split View",
+      template: "Template",
+      comments: "Comments",
+      deleteWarning: "(will be deleted)",
+      cannotReadNativeImage: "Cannot read native image",
+      cannotReadChangedImage: "Cannot read changed version image",
+      imageWillBeDeleted:
+        "Image will be deleted (no content in changed version)",
+      currentFileComments: "Current file comments",
+      close: "Close",
+      // AI review prompt
+      reviewPromptIntro:
+        "Please review the following file snapshot and provide modification suggestions:",
+      file: "File",
+      changeType: "Change Type",
+      snapshot: "Snapshot",
+      recordedAt: "Recorded at",
+      reviewOutput: "Please output:",
+      issueList: "Issue list (by severity)",
+      actionableSuggestions: "Directly actionable modification suggestions",
+      codePatch: "If code changes are needed, provide minimal patch",
+      noWorkspace: "No active workspace",
+      // Error messages
+      loadFailedError: "Failed to load file",
+      cannotReadNativeContent:
+        "Cannot read native file content. Please select a project directory first.",
+      readNativeFileFailed: "Failed to read native file",
+      // Snapshot comparison
+      beforeSnapshotLabel: "Before Snapshot",
+      afterSnapshotLabel: "After Snapshot",
+      binary: "Binary",
+      text: "Text",
+      none: "None",
+      size: "Size",
+    },
+
+    // Monaco Diff Editor
+    monacoDiffEditor: {
+      lineHasComment: "This line has a comment",
+    },
   },
 
   // Workflow
