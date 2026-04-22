@@ -196,8 +196,16 @@ export default function MonacoDiffEditor({
       modifiedMouseDisposableRef.current?.dispose()
       const diffEditor = diffEditorRef.current
       if (diffEditor) {
+        // Clear decorations before model cleanup
         diffEditor.getOriginalEditor().deltaDecorations(originalDecorationIdsRef.current, [])
         diffEditor.getModifiedEditor().deltaDecorations(modifiedDecorationIdsRef.current, [])
+        // Disconnect models from DiffEditorWidget BEFORE @monaco-editor/react disposes them,
+        // to avoid "TextModel got disposed before DiffEditorWidget model got reset" error.
+        try {
+          diffEditor.setModel(null)
+        } catch {
+          // setModel may not exist in all monaco-editor versions; ignore if unavailable
+        }
       }
     }
   }, [])
