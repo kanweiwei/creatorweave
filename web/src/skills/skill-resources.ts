@@ -12,6 +12,41 @@ import { RESOURCE_LIMITS } from './skill-types'
 // Resource Type Detection
 // ============================================================================
 
+// Pre-built whitelist of known text file extensions (from 'text-extensions' package).
+// Using a whitelist is safer than a binary blacklist — anything not listed is treated as binary.
+const TEXT_EXTENSIONS = new Set([
+  'ada', 'adb', 'ads', 'applescript', 'as', 'asc', 'ascii', 'asm', 'asp', 'aspx',
+  'atom', 'bas', 'bash', 'bat', 'bbcolors', 'bib', 'bison', 'c', 'c++', 'capnp',
+  'cbl', 'cc', 'cfc', 'cfm', 'clj', 'cljs', 'cls', 'cmake', 'cmd', 'cnf', 'cob',
+  'coffee', 'conf', 'cpp', 'cr', 'crt', 'cs', 'cson', 'css', 'csv', 'cxx', 'd',
+  'dart', 'diff', 'dtd', 'el', 'elm', 'emacs', 'eml', 'ent', 'erb', 'erl', 'ex',
+  'exs', 'f', 'f90', 'fish', 'for', 'fs', 'ftl', 'gemspec', 'gitattributes',
+  'gitconfig', 'gitignore', 'go', 'gql', 'gradle', 'graphql', 'groovy', 'gvimrc',
+  'h', 'haml', 'hpp', 'hs', 'htm', 'html', 'hx', 'iced', 'iml', 'inc', 'info',
+  'ini', 'ino', 'inputrc', 'j2', 'jade', 'java', 'js', 'json', 'json5', 'jsonl',
+  'jsp', 'jsx', 'kt', 'latex', 'less', 'lhs', 'lisp', 'log', 'ls', 'lua', 'm',
+  'mak', 'man', 'markdown', 'md', 'mdown', 'mdx', 'meson', 'mjs', 'mk', 'ml',
+  'mli', 'mm', 'mtx', 'mustache', 'nfo', 'nix', 'njk', 'numpy', 'obj', 'objc',
+  'odin', 'org', 'p12', 'patch', 'php', 'pkg', 'pl', 'plantuml', 'pm', 'po',
+  'postcss', 'pp', 'properties', 'proto', 'ps1', 'psd1', 'psm1', 'pug', 'purs',
+  'py', 'pyx', 'r', 'rabl', 'rake', 'rb', 'rdoc', 'rkt', 'rlib', 'ron', 'rs',
+  'rst', 'rx', 'sass', 'scala', 'scm', 'scss', 'sh', 'sln', 'sls', 'sml', 'soy',
+  'sql', 'srt', 'sty', 'sub', 'sublime-build', 'sublime-commands', 'sublime-completions',
+  'sublime-keymap', 'sublime-macro', 'sublime-menu', 'sublime-project',
+  'sublime-settings', 'sublime-snippet', 'svg', 'swift', 'tcl', 'tex', 'tf',
+  'tfvars', 'toml', 'tpl', 'travis', 'ts', 'tsx', 'ttl', 'twig', 'txt', 'v',
+  'vala', 'vapi', 'vash', 'vb', 'vbs', 'vhd', 'vhdl', 'vim', 'vimrc', 'vm',
+  'vue', 'webmanifest', 'wsgi', 'x-html', 'x-java', 'x-js', 'x-latex', 'x-markdown',
+  'x-objc', 'x-php', 'x-ruby', 'x-rust', 'x-sh', 'x-yaml', 'xml', 'xsd', 'xsl',
+  'yaml', 'yaml-tmlanguage', 'yml', 'zig', 'zsh',
+])
+
+/** Check if a file is a text file (safe to read as UTF-8 string) */
+export function isTextFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  return TEXT_EXTENSIONS.has(ext)
+}
+
 /** Get resource type from directory name */
 export function getResourceType(dirName: string): ResourceType {
   if (dirName === 'references') return 'reference'

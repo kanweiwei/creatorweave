@@ -16,7 +16,7 @@
 
 import type { Skill, SkillResource } from './skill-types'
 import { parseSkillMd } from './skill-parser'
-import { getResourceType, getMimeType, generateResourceId } from './skill-resources'
+import { getResourceType, getMimeType, generateResourceId, isTextFile } from './skill-resources'
 import { RESOURCE_LIMITS } from './skill-types'
 
 /**
@@ -195,6 +195,13 @@ async function scanSkillDirectoryResources(
           break
         }
 
+        // Only process known text files — binary resources are synced to OPFS
+        // separately by syncSkillsDirToOPFS() and must not be read as UTF-8 text.
+        if (!isTextFile(name)) {
+          console.log(`[SkillScanner] Skipping binary resource: ${resourcePath}`)
+          continue
+        }
+
         const content = await file.text()
         const contentType = getMimeType(name)
         const topLevelDir = resourcePath.split('/')[0] || ''
@@ -309,10 +316,11 @@ export async function syncSkillsDirToOPFS(
           const file = await entry.getFile()
           if (file.size > RESOURCE_LIMITS.MAX_FILE_SIZE) continue
 
-          const content = await file.text()
+          // Write File object directly — preserves binary content for
+          // .docx, .png, .wasm, etc. (was previously broken by file.text())
           const fileHandle = await destDir.getFileHandle(name, { create: true })
           const writable = await fileHandle.createWritable()
-          await writable.write(content)
+          await writable.write(file)
           await writable.close()
           count++
         }
