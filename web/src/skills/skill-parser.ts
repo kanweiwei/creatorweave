@@ -26,6 +26,7 @@
  * ```
  */
 
+import yaml from 'js-yaml'
 import type { Skill, SkillCategory, SkillSource, SkillTrigger } from './skill-types'
 
 /** Parse result */
@@ -51,8 +52,8 @@ export function parseSkillMd(content: string, source: SkillSource = 'import'): P
   const yamlBlock = trimmed.substring(3, endIndex).trim()
   const body = trimmed.substring(endIndex + 3).trim()
 
-  // Parse YAML frontmatter (lightweight parser, no external dependency)
-  const meta = parseSimpleYaml(yamlBlock)
+  // Parse YAML frontmatter
+  const meta = yaml.load(yamlBlock) as Record<string, unknown>
   if (!meta.name) {
     return { skill: null, error: 'Missing required field: name' }
   }
@@ -142,91 +143,6 @@ export function serializeSkillMd(skill: Skill): string {
 // ============================================================================
 // Internal Helpers
 // ============================================================================
-
-/** Lightweight YAML parser - handles flat key-value pairs and simple nested objects */
-function parseSimpleYaml(yaml: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  const lines = yaml.split('\n')
-  let currentKey = ''
-  let currentIndentObj: Record<string, unknown> | null = null
-
-  for (const line of lines) {
-    // Skip empty lines and comments
-    if (!line.trim() || line.trim().startsWith('#')) continue
-
-    const indent = line.length - line.trimStart().length
-    const trimmedLine = line.trim()
-
-    // Nested key (indented under a parent)
-    if (indent >= 2 && currentKey && currentIndentObj) {
-      const colonIdx = trimmedLine.indexOf(':')
-      if (colonIdx > 0) {
-        const key = trimmedLine.substring(0, colonIdx).trim()
-        const value = trimmedLine.substring(colonIdx + 1).trim()
-        currentIndentObj[key] = parseYamlValue(value)
-      }
-      continue
-    }
-
-    // Top-level key
-    const colonIdx = trimmedLine.indexOf(':')
-    if (colonIdx > 0) {
-      const key = trimmedLine.substring(0, colonIdx).trim()
-      const value = trimmedLine.substring(colonIdx + 1).trim()
-
-      if (!value) {
-        // Object start (e.g. "triggers:")
-        currentKey = key
-        currentIndentObj = {}
-        result[key] = currentIndentObj
-      } else {
-        currentKey = ''
-        currentIndentObj = null
-        result[key] = parseYamlValue(value)
-      }
-    }
-  }
-
-  return result
-}
-
-/** Parse a single YAML value (string, number, boolean, array) */
-function parseYamlValue(value: string): unknown {
-  // Array: [item1, item2]
-  if (value.startsWith('[') && value.endsWith(']')) {
-    const inner = value.slice(1, -1).trim()
-    if (!inner) return []
-    return inner.split(',').map((item) => {
-      const trimmed = item.trim()
-      // Remove quotes
-      if (
-        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-        (trimmed.startsWith("'") && trimmed.endsWith("'"))
-      ) {
-        return trimmed.slice(1, -1)
-      }
-      return trimmed
-    })
-  }
-
-  // Quoted string
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1)
-  }
-
-  // Boolean
-  if (value === 'true') return true
-  if (value === 'false') return false
-
-  // Number
-  const num = Number(value)
-  if (!isNaN(num) && value !== '') return num
-
-  return value
-}
 
 /** Parse Markdown into named sections by H1 headings */
 function parseMarkdownSections(body: string): Record<string, string> {
