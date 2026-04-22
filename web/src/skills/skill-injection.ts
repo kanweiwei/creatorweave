@@ -113,11 +113,12 @@ export function buildAvailableSkillsBlock(
 ## Available Skills
 
 <usage>
-When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively.
+Before handling a task, check if any skill below matches it. If one does, call read_skill to load its instructions and follow its approach — skill methods and scripts are pre-validated for this workspace and should be your first choice. Fall back to your own approach only if the skill cannot fully handle the task.
 
 How to use skills:
 - Use the read_skill tool with the <name> value to load the full skill content
-- The skill content will provide detailed instructions on how to complete the task
+- The skill content will provide detailed instructions, scripts, and workflows
+- For skill scripts, use read_skill_resource to read and understand the script first, then use it in Python via /mnt/.skills/{skill-dir}/
 - Only use skills listed in <available_skills> below
 - Do not invoke a skill that is already loaded in your context
 - Do NOT pass category names to read_skill; only use the exact <name> value from a <skill> entry
@@ -192,11 +193,12 @@ export function buildAvailableSkillsBlockWithRecommendations(
 ## Available Skills
 
 <usage>
-When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively.
+Before handling a task, check if any skill below matches it. If one does, call read_skill to load its instructions and follow its approach — skill methods and scripts are pre-validated for this workspace and should be your first choice. Fall back to your own approach only if the skill cannot fully handle the task.
 
 How to use skills:
 - Use the read_skill tool with the <name> value to load the full skill content
-- The skill content will provide detailed instructions on how to complete the task
+- The skill content will provide detailed instructions, scripts, and workflows
+- For skill scripts, use read_skill_resource to read and understand the script first, then use it in Python via /mnt/.skills/{skill-dir}/
 - Only use skills listed in <available_skills> below
 - Do not invoke a skill that is already loaded in your context
 - Do NOT pass category names to read_skill; only use the exact <name> value from a <skill> entry
