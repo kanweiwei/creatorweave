@@ -10,6 +10,7 @@ import type { ToolContext, ToolDefinition, ToolExecutor } from './tool-types'
 import { resolveVfsTarget, withVfsAgentIdHint } from './vfs-resolver'
 import { ensureReadFileState, getReadStateKey } from './read-state'
 import { toolErrorJson, toolOkJson } from './tool-envelope'
+import { resolveNativeDirectoryHandle } from './tool-utils'
 
 // ── Fuzzy matching helpers ──────────────────────────────────────────
 
@@ -278,6 +279,10 @@ async function executeSingleEdit(
     }
 
     let fileContent: string
+    const workspaceDirectoryHandle =
+      target.kind === 'workspace'
+        ? await resolveNativeDirectoryHandle(context.directoryHandle, context.workspaceId)
+        : null
 
     if (target.kind === 'workspace') {
       const readPolicy: ReadPolicy | undefined =
@@ -287,8 +292,8 @@ async function executeSingleEdit(
             ? 'prefer_native'
             : undefined
       const result = readPolicy
-        ? await readFile(target.path, context.directoryHandle, context.workspaceId, readPolicy)
-        : await readFile(target.path, context.directoryHandle, context.workspaceId)
+        ? await readFile(target.path, workspaceDirectoryHandle, context.workspaceId, readPolicy)
+        : await readFile(target.path, workspaceDirectoryHandle, context.workspaceId)
       const { content } = result
       if (typeof content !== 'string') {
         return toolErrorJson(
@@ -353,7 +358,7 @@ async function executeSingleEdit(
         : fileContent.replace(actualOldText, actualNewText)
 
     if (target.kind === 'workspace') {
-      await writeFile(target.path, updatedFile, context.directoryHandle, context.workspaceId)
+      await writeFile(target.path, updatedFile, workspaceDirectoryHandle, context.workspaceId)
     } else {
       await target.agentManager.writePath(target.agentId, target.path, updatedFile)
     }

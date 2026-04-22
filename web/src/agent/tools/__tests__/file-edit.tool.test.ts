@@ -6,6 +6,7 @@ const readFileMock = vi.fn()
 const writeFileMock = vi.fn()
 const getPendingChangesMock = vi.fn(() => [])
 const resolveVfsTargetMock = vi.fn()
+const resolveNativeDirectoryHandleMock = vi.fn()
 const readPathMock = vi.fn()
 const writePathMock = vi.fn()
 
@@ -30,6 +31,10 @@ vi.mock('@/store/remote.store', () => ({
 vi.mock('../vfs-resolver', () => ({
   resolveVfsTarget: (...args: unknown[]) => resolveVfsTargetMock(...args),
   isVfsPath: (path: string) => path.startsWith('vfs://'),
+}))
+
+vi.mock('../tool-utils', () => ({
+  resolveNativeDirectoryHandle: (...args: unknown[]) => resolveNativeDirectoryHandleMock(...args),
 }))
 
 function makeContext(overrides?: Partial<ToolContext>): ToolContext {
@@ -60,6 +65,7 @@ function unwrapError(result: string) {
 describe('file edit tool', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resolveNativeDirectoryHandleMock.mockResolvedValue(null)
   })
 
   it('requires file to be read before edit', async () => {
@@ -103,6 +109,38 @@ describe('file edit tool', () => {
     unwrapOk(result)
     expect(readFileMock).toHaveBeenCalledWith('src/a.ts', null, 'ws-1', 'prefer_opfs')
     expect(writeFileMock).toHaveBeenCalledWith('src/a.ts', 'const a = 2\n', null, 'ws-1')
+  })
+
+  it('resolves native handle fallback for workspace edit when context handle is missing', async () => {
+    const nativeHandle = {} as FileSystemDirectoryHandle
+    resolveNativeDirectoryHandleMock.mockResolvedValueOnce(nativeHandle)
+    resolveVfsTargetMock.mockResolvedValueOnce({ kind: 'workspace', path: 'src/a.ts' })
+    readFileMock.mockResolvedValueOnce({
+      content: 'const a = 1\n',
+      metadata: { size: 12, contentType: 'text/plain' },
+      source: 'native',
+    })
+    const readFileState = new Map([
+      [
+        'workspace:src/a.ts',
+        {
+          content: 'const a = 1\n',
+          timestamp: Date.now(),
+          isPartialView: false,
+          source: 'native',
+        },
+      ],
+    ])
+
+    const result = await editExecutor(
+      { path: 'src/a.ts', old_text: '1', new_text: '2' },
+      makeContext({ directoryHandle: null, readFileState })
+    )
+
+    unwrapOk(result)
+    expect(resolveNativeDirectoryHandleMock).toHaveBeenCalledWith(null, 'ws-1')
+    expect(readFileMock).toHaveBeenCalledWith('src/a.ts', nativeHandle, 'ws-1', 'prefer_native')
+    expect(writeFileMock).toHaveBeenCalledWith('src/a.ts', 'const a = 2\n', nativeHandle, 'ws-1')
   })
 
   it('rejects multiple matches when replace_all is false', async () => {
