@@ -466,7 +466,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
           <BrandButton
             variant="primary"
             onClick={() => onSync?.(Array.from(selectedItems))}
-            disabled={isSyncing}
+            disabled={isSyncing || !hasSelection}
           >
             {isSyncing ? (
               <>
@@ -476,9 +476,7 @@ export const PendingFileList: React.FC<PendingFileListProps> = ({
             ) : (
               <>
                 <RefreshCw className="h-4 w-4" />
-                {hasSelection
-                  ? t('settings.pendingSyncPanel.approveSelectedCount', { count: selectedCount })
-                  : t('settings.pendingSyncPanel.approveAll')}
+                {t('settings.pendingSyncPanel.approveSelectedCount', { count: selectedCount })}
               </>
             )}
           </BrandButton>

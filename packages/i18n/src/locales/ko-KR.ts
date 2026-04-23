@@ -310,7 +310,7 @@ export const koKR = {
       approveSelected: "선택 항목 승인",
       approvingInProgress: "승인 중...",
       syncComplete: "완료!",
-      approveSelectedCount: "선택 항목 승인 ({count})",
+      approveSelectedCount: "승인 ({count})",
       approveAll: "모두 승인",
       totalSize: "총: {size}",
       confirmRejectTitle: "거부 확인",

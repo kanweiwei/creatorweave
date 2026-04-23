@@ -307,7 +307,7 @@ export const zhCN = {
       approveSelected: "审批通过所选变更",
       approvingInProgress: "审批中...",
       syncComplete: "完成!",
-      approveSelectedCount: "审批选中 ({count})",
+      approveSelectedCount: "审批 ({count})",
       approveAll: "审批全部",
       totalSize: "总计 {size}",
       confirmRejectTitle: "确认拒绝",

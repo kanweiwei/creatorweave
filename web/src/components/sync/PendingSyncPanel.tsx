@@ -55,6 +55,7 @@ export function PendingSyncPanel() {
   const [conflictIndex, setConflictIndex] = useState(0)
   const [forceOverwritePaths, setForceOverwritePaths] = useState<Set<string>>(new Set())
   const [skippedConflictPaths, setSkippedConflictPaths] = useState<Set<string>>(new Set())
+  const summaryAbortRef = React.useRef<AbortController | null>(null)
   const listRef = React.useRef<HTMLDivElement>(null)
   const activeConflict = conflictQueue[conflictIndex] ?? null
 
@@ -69,7 +70,9 @@ export function PendingSyncPanel() {
       // Ctrl/Cmd + Enter: Approve
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
-        handleSync()
+        if (selectedItems.size > 0) {
+          handleSync()
+        }
       }
     }
 
@@ -243,12 +246,14 @@ export function PendingSyncPanel() {
     conflicts: [...a.conflicts, ...b.conflicts],
   }), [])
 
-  const generateSummaryWithLLM = useCallback(async (paths: string[]): Promise<string | null> => {
+  const generateSummaryWithLLM = useCallback(async (paths: string[], signal?: AbortSignal): Promise<string | null> => {
     try {
       const activeConversation = await getActiveConversation()
+      signal?.throwIfAborted()
       if (!activeConversation) return null
       const { conversation, conversationId } = activeConversation
       const nativeDir = await conversation.getNativeDirectoryHandle()
+      signal?.throwIfAborted()
 
       const settingsState = useSettingsStore.getState()
       const providerType = settingsState.providerType
@@ -278,6 +283,7 @@ export function PendingSyncPanel() {
         isBinary?: boolean
       }> = []
       for (const change of selectedChanges.slice(0, 8)) {
+        signal?.throwIfAborted()
         if (isImageFile(change.path)) {
           diffInputs.push({
             path: change.path,
@@ -317,16 +323,19 @@ export function PendingSyncPanel() {
         diffSections = []
       }
 
+      signal?.throwIfAborted()
       const prompt = buildSnapshotSummaryPrompt(selectedChanges.length, changesText, diffSections)
 
       const response = await provider.chat({
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 220,
-      })
+      }, signal)
+      signal?.throwIfAborted()
       const content = response.choices[0]?.message?.content?.trim()
       if (!content) return null
       return content.slice(0, 3000)
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return null
       return null
     }
   }, [pendingChanges])
@@ -425,9 +434,8 @@ export function PendingSyncPanel() {
   // Handle approve button click: show dialog first
   const handleSync = useCallback(async () => {
     if (!pendingChanges || pendingChanges.changes.length === 0 || isSyncing) return
-    const filesToSync = selectedItems.size > 0
-      ? pendingChanges.changes.filter((c) => selectedItems.has(c.path))
-      : pendingChanges.changes
+    if (selectedItems.size === 0) return
+    const filesToSync = pendingChanges.changes.filter((c) => selectedItems.has(c.path))
     const paths = filesToSync.map((c) => c.path)
     if (paths.length === 0) return
 
@@ -750,7 +758,7 @@ export function PendingSyncPanel() {
             variant="primary"
             className="h-8 px-4 py-1.5 text-xs"
             onClick={handleSync}
-            disabled={isSyncing || isReviewing}
+            disabled={isSyncing || isReviewing || selectedCount === 0}
             aria-label={t('settings.pendingSyncPanel.approveSelected')}
           >
             {isSyncing ? (
@@ -761,7 +769,7 @@ export function PendingSyncPanel() {
             ) : (
               <>
                 <RefreshCw className="w-4 h-4" />
-                {showSyncSuccess ? t('settings.pendingSyncPanel.syncComplete') : selectedCount > 0 ? t('settings.pendingSyncPanel.approveSelectedCount', { count: selectedCount }) : t('settings.pendingSyncPanel.approveAll')}
+                {showSyncSuccess ? t('settings.pendingSyncPanel.syncComplete') : t('settings.pendingSyncPanel.approveSelectedCount', { count: selectedCount })}
               </>
             )}
           </BrandButton>
@@ -813,18 +821,33 @@ export function PendingSyncPanel() {
         summaryError={summaryError}
         generatingSummary={generatingSummary}
         isSyncing={isSyncing}
-        onOpenChange={setApproveDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && generatingSummary) {
+            summaryAbortRef.current?.abort()
+            summaryAbortRef.current = null
+          }
+          setApproveDialogOpen(nextOpen)
+        }}
         onSummaryChange={setSnapshotSummary}
         onGenerateSummary={async () => {
+          summaryAbortRef.current?.abort()
+          const controller = new AbortController()
+          summaryAbortRef.current = controller
           setGeneratingSummary(true)
-          const aiSummary = await generateSummaryWithLLM(pendingApprovePaths)
-          if (aiSummary && aiSummary.trim().length > 0) {
+          const aiSummary = await generateSummaryWithLLM(pendingApprovePaths, controller.signal)
+          // Only update state if this controller is still the active one
+          // (prevents a cancelled first call from resetting spinner during a second call)
+          if (summaryAbortRef.current !== controller) return
+          if (controller.signal.aborted) {
+            // Cancelled — don't update summary/error
+          } else if (aiSummary && aiSummary.trim().length > 0) {
             setSnapshotSummary(aiSummary.trim())
             setSummaryError(null)
           } else {
             setSummaryError(t('settings.pendingSyncPanel.aiSummaryFailed'))
           }
           setGeneratingSummary(false)
+          summaryAbortRef.current = null
         }}
         onConfirm={async () => {
           const ok = await runSync(pendingApprovePaths, snapshotSummary, forceOverwritePaths)

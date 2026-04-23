@@ -317,7 +317,7 @@ export const enUS = {
       approveSelected: "Approve Selected",
       approvingInProgress: "Approving...",
       syncComplete: "Done!",
-      approveSelectedCount: "Approve Selected ({count})",
+      approveSelectedCount: "Approve ({count})",
       approveAll: "Approve All",
       totalSize: "Total: {size}",
       confirmRejectTitle: "Confirm Rejection",
