@@ -170,6 +170,13 @@ export const useProjectStore = create<ProjectState>()(
             await repo.clearActiveProject()
             normalizedActiveProjectId = ''
           }
+          // Delete OPFS directory for legacy default project
+          try {
+            const pm = await ProjectManager.create()
+            await pm.deleteProject(DEFAULT_PROJECT_ID)
+          } catch (err) {
+            console.warn('[ProjectStore] Failed to delete legacy OPFS project directory:', err)
+          }
           await repo.deleteProject(DEFAULT_PROJECT_ID)
           normalizedProjects = normalizedProjects.filter((project) => project.id !== DEFAULT_PROJECT_ID)
           normalizedStats = normalizedStats.filter((entry) => entry.projectId !== DEFAULT_PROJECT_ID)
@@ -409,6 +416,15 @@ export const useProjectStore = create<ProjectState>()(
       try {
         const repo = getProjectRepository()
         const activeProjectId = get().activeProjectId
+
+        // Delete OPFS project directory (workspaces, agents, etc.)
+        try {
+          const pm = await ProjectManager.create()
+          await pm.deleteProject(projectId)
+        } catch (err) {
+          console.warn('[ProjectStore] Failed to delete OPFS project directory:', err)
+        }
+
         await repo.deleteProject(projectId)
         await get().refreshProjects()
 
