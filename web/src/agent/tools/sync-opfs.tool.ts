@@ -10,6 +10,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
+import type { WorkspaceRuntime } from '@/opfs/workspace/workspace-runtime'
 import { resolveNativeDirectoryHandle } from './tool-utils'
 import { toolErrorJson, toolOkJson } from './tool-envelope'
 
@@ -57,11 +58,12 @@ export const syncToOPFSExecutor: ToolExecutor = async (args, context) => {
     return toolErrorJson('sync', 'no_native_fs', 'No native filesystem access available')
   }
 
-  // Resolve workspace OPFS files/ dir
-  const filesDir = await getOPFSFilesDir(context.workspaceId)
-  if (!filesDir) {
+  // Resolve workspace runtime and files/ dir
+  const runtime = await getWorkspaceRuntime(context.workspaceId)
+  if (!runtime) {
     return toolErrorJson('sync', 'no_opfs', 'No active workspace OPFS available')
   }
+  const filesDir = await runtime.getFilesDir()
 
   // Expand globs and collect actual file paths
   const resolvedPaths = await resolvePaths(nativeHandle, paths as string[])
@@ -115,6 +117,15 @@ export const syncToOPFSExecutor: ToolExecutor = async (args, context) => {
       errors.push(
         `${filePath}: ${e instanceof Error ? e.message : String(e)}`
       )
+    }
+  }
+
+  // Rebuild filesIndex so workspace-runtime sees the newly synced files
+  if (synced > 0) {
+    try {
+      await runtime.rebuildFilesIndex()
+    } catch {
+      // Non-critical: the files are on disk but index may be stale until next init
     }
   }
 
@@ -348,11 +359,11 @@ async function syncSingleFile(
 }
 
 /**
- * Get OPFS files/ directory handle for the active workspace.
+ * Get the WorkspaceRuntime for the active workspace.
  */
-async function getOPFSFilesDir(
+async function getWorkspaceRuntime(
   workspaceId?: string | null
-): Promise<FileSystemDirectoryHandle | null> {
+): Promise<WorkspaceRuntime | null> {
   try {
     const { getWorkspaceManager } = await import('@/opfs')
     const manager = await getWorkspaceManager()
@@ -366,9 +377,7 @@ async function getOPFSFilesDir(
       const active = await getActiveWorkspace()
       workspace = active?.workspace
     }
-    if (!workspace) return null
-
-    return await workspace.getFilesDir()
+    return workspace ?? null
   } catch {
     return null
   }

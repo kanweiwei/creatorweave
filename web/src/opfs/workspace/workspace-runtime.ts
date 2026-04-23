@@ -170,13 +170,14 @@ export class WorkspaceRuntime {
    * Build in-memory index of files in files/ directory
    */
   private async buildFilesIndex(): Promise<void> {
-    this.filesIndex.clear()
+    const newIndex = new Set<string>()
     try {
       const filesDir = await this.getFilesDir()
-      await this.scanDirRecursive(filesDir, '', this.filesIndex)
+      await this.scanDirRecursive(filesDir, '', newIndex)
     } catch {
       // files/ directory doesn't exist yet
     }
+    this.filesIndex = newIndex
   }
 
   /**
@@ -440,6 +441,19 @@ export class WorkspaceRuntime {
         await this.deleteFromBaselineDirIfExists(path)
       }
     }
+  }
+
+  /**
+   * Rebuild the in-memory files index from the files/ directory.
+   * Called after external tools (e.g. sync) write files directly to OPFS
+   * without going through the runtime's writeFile path.
+   *
+   * Note: This performs a full rescan of the files/ directory. The index is
+   * rebuilt atomically (new Set swap) so there is no empty-window during the scan.
+   */
+  async rebuildFilesIndex(): Promise<void> {
+    if (!this.initialized) await this.initialize()
+    await this.buildFilesIndex()
   }
 
   /**
