@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
 import HardBreak from '@tiptap/extension-hard-break'
+import Mention from '@tiptap/extension-mention'
 import { Plus, Trash2, Check } from 'lucide-react'
 import { useT } from '@/i18n'
-import {
-  extractMentionContextFromTextTail,
-  extractMentionedAgentIds as extractMentionedAgentIdsFromText,
-} from '@/agent/agent-mention'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface AgentMentionCandidate {
   id: string
@@ -42,32 +43,155 @@ interface AgentRichInputProps {
   onDeleteAgent: (id: string) => Promise<boolean>
 }
 
-interface MentionContext {
-  from: number
-  to: number
-  query: string
+// ---------------------------------------------------------------------------
+// Suggestion dropdown – imperative handle so the Mention extension can
+// drive keyboard navigation without extra React state wiring.
+// ---------------------------------------------------------------------------
+
+interface SuggestionDropdownHandle {
+  onKeyDown: (event: KeyboardEvent) => boolean
 }
 
-function extractMentionContext(editor: Editor): MentionContext | null {
-  const { state } = editor
-  const caret = state.selection.from
-  const lookbehind = state.doc.textBetween(Math.max(0, caret - 80), caret, '\n', '\0')
-  const mention = extractMentionContextFromTextTail(lookbehind)
-  if (!mention) return null
-  return {
-    from: caret - mention.mentionText.length,
-    to: caret,
-    query: mention.query,
+const MentionSuggestionDropdown = forwardRef<
+  SuggestionDropdownHandle,
+  {
+    items: AgentMentionCandidate[]
+    command: (item: { id: string }) => void
   }
+>(function MentionSuggestionDropdown({ items, command }, ref) {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const selectedRef = useRef(0)
+
+  const selectItem = useCallback(
+    (index: number) => {
+      const item = items[index]
+      if (item) command({ id: item.id })
+    },
+    [items, command]
+  )
+
+  useEffect(() => {
+    setSelectedIndex(0)
+    selectedRef.current = 0
+  }, [items])
+
+  useImperativeHandle(ref, () => ({
+    onKeyDown: (event: KeyboardEvent) => {
+      if (event.key === 'ArrowUp') {
+        setSelectedIndex((idx) => {
+          const next = Math.max(0, idx - 1)
+          selectedRef.current = next
+          return next
+        })
+        return true
+      }
+      if (event.key === 'ArrowDown') {
+        setSelectedIndex((idx) => {
+          const max = Math.max(items.length - 1, 0)
+          const next = idx >= max ? max : idx + 1
+          selectedRef.current = next
+          return next
+        })
+        return true
+      }
+      if (event.key === 'Enter') {
+        if (items.length === 0) return false
+        selectItem(selectedRef.current)
+        return true
+      }
+      return false
+    },
+  }))
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="max-h-56 overflow-y-auto py-1">
+        {items.map((candidate, idx) => {
+          const selected = idx === selectedIndex
+          return (
+            <button
+              key={candidate.id}
+              type="button"
+              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                selected
+                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
+                  : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800'
+              }`}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                selectItem(idx)
+              }}
+            >
+              <span className="font-medium">@{candidate.id}</span>
+              {candidate.name && candidate.name !== candidate.id && (
+                <span className="truncate pl-3 text-xs text-neutral-500 dark:text-neutral-400">
+                  {candidate.name}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Helpers – extract plain text & mention IDs from editor document
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk the ProseMirror document and produce a plain-text string where each
+ * mention node is rendered as `@<id>`.  This keeps the output compatible
+ * with the downstream `extractFirstMentionedAgentId` / regex-based consumers.
+ */
+function getPlainText(editor: Editor): string {
+  const { doc } = editor.state
+  const lines: string[] = []
+  let lineBuf = ''
+
+  doc.descendants((node) => {
+    if (node.isText) {
+      lineBuf += node.text ?? ''
+    } else if (node.type.name === 'mention') {
+      const id = node.attrs.id ?? ''
+      // Downstream regex `extractFirstMentionedAgentId` requires a space or
+      // line-start before `@`.  Ensure we never produce bare `foo@bar`.
+      if (id && lineBuf.length > 0 && !/[\s\n]$/.test(lineBuf)) {
+        lineBuf += ' '
+      }
+      lineBuf += `@${id}`
+    } else if (node.type.name === 'hardBreak') {
+      lineBuf += '\n'
+    } else if (node.type.isBlock && lineBuf) {
+      lines.push(lineBuf)
+      lineBuf = ''
+    }
+  })
+  if (lineBuf) lines.push(lineBuf)
+  return lines.join('\n')
 }
 
-function extractMentionedAgentIds(text: string, agents: AgentMentionCandidate[]): string[] {
-  return extractMentionedAgentIdsFromText(
-    text,
-    agents.map((agent) => agent.id),
-    { excludeDefault: true }
-  )
+function getMentionedAgentIds(editor: Editor): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'mention') {
+      const id: string | undefined = node.attrs.id
+      if (id && id !== 'default' && !seen.has(id)) {
+        seen.add(id)
+        ids.push(id)
+      }
+    }
+  })
+  return ids
 }
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function AgentRichInput({
   ariaLabel,
@@ -85,91 +209,116 @@ export function AgentRichInput({
 }: AgentRichInputProps) {
   const t = useT()
   const [isFocused, setIsFocused] = useState(false)
-  const [mentionContext, setMentionContext] = useState<MentionContext | null>(null)
-  const [mentionSelection, setMentionSelection] = useState(0)
   // Agent selector state
   const [showAgentSelector, setShowAgentSelector] = useState(false)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [newAgentInput, setNewAgentInput] = useState('')
   const [agentSelection, setAgentSelection] = useState(0)
 
-  const mentionContextRef = useRef<MentionContext | null>(null)
-  const mentionSelectionRef = useRef(0)
+  // Suggestion state – driven by tiptap Mention/Suggestion
+  const [suggestionItems, setSuggestionItems] = useState<AgentMentionCandidate[]>([])
+  const [suggestionCommand, setSuggestionCommand] = useState<((item: { id: string }) => void) | null>(null)
+  const suggestionDropdownRef = useRef<SuggestionDropdownHandle>(null)
+
   const disabledRef = useRef(disabled)
   const onSubmitRef = useRef(onSubmit)
   const onChangeRef = useRef(onChange)
-  const agentsRef = useRef(agents)
   const showAgentSelectorRef = useRef(showAgentSelector)
   const agentSelectionRef = useRef(agentSelection)
   const allAgentsRef = useRef(allAgents)
+  const agentsRef = useRef(agents)
 
+  // ---- emit value --------------------------------------------------------
   const emitValue = useCallback(
     (editor: Editor) => {
-      const text = editor.getText({ blockSeparator: '\n' })
-      const mentionedAgentIds = extractMentionedAgentIds(text, agentsRef.current)
+      const text = getPlainText(editor)
+      const mentionedAgentIds = getMentionedAgentIds(editor)
       onChangeRef.current({ text, mentionedAgentIds })
     },
     []
   )
 
-  const mentionCandidates = useMemo(() => {
-    if (!mentionContext) return []
-    const query = mentionContext.query.trim().toLowerCase()
-    return agents
-      .filter((agent) => agent.id !== 'default')
-      .filter((agent) => {
-        if (!query) return true
-        const haystack = `${agent.id} ${agent.name || ''}`.toLowerCase()
-        return haystack.includes(query)
-      })
-      .slice(0, 8)
-  }, [agents, mentionContext])
-  const mentionCandidatesRef = useRef<AgentMentionCandidate[]>([])
+  // ---- ref sync ----------------------------------------------------------
+  useEffect(() => { disabledRef.current = disabled }, [disabled])
+  useEffect(() => { onSubmitRef.current = onSubmit }, [onSubmit])
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
+  useEffect(() => { agentsRef.current = agents }, [agents])
+  useEffect(() => { showAgentSelectorRef.current = showAgentSelector }, [showAgentSelector])
+  useEffect(() => { agentSelectionRef.current = agentSelection }, [agentSelection])
+  useEffect(() => { allAgentsRef.current = allAgents }, [allAgents])
 
-  useEffect(() => {
-    mentionContextRef.current = mentionContext
-  }, [mentionContext])
-
-  useEffect(() => {
-    mentionSelectionRef.current = mentionSelection
-  }, [mentionSelection])
-
-  useEffect(() => {
-    mentionCandidatesRef.current = mentionCandidates
-  }, [mentionCandidates])
-
-  useEffect(() => {
-    disabledRef.current = disabled
-  }, [disabled])
-
-  useEffect(() => {
-    onSubmitRef.current = onSubmit
-  }, [onSubmit])
-
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
-
-  useEffect(() => {
-    agentsRef.current = agents
-  }, [agents])
-
-  useEffect(() => {
-    showAgentSelectorRef.current = showAgentSelector
-  }, [showAgentSelector])
-
-  useEffect(() => {
-    agentSelectionRef.current = agentSelection
-  }, [agentSelection])
-
-  useEffect(() => {
-    allAgentsRef.current = allAgents
-  }, [allAgents])
-
+  // ---- editor -------------------------------------------------------------
   const editor = useEditor({
     immediatelyRender: false,
     editable: !disabled,
-    extensions: [Document, Paragraph, Text, HardBreak],
+    extensions: [
+      Document,
+      Paragraph,
+      Text,
+      HardBreak,
+      Mention.configure({
+        HTMLAttributes: {
+          class:
+            'inline-flex items-center rounded px-1.5 py-0.5 bg-primary-100 text-primary-800 text-sm font-medium dark:bg-primary-900/60 dark:text-primary-200',
+        },
+        suggestion: {
+          char: '@',
+          items: ({ query }) => {
+            const q = query.toLowerCase().trim()
+            return agentsRef.current
+              .filter((a) => a.id !== 'default')
+              .filter((a) => {
+                if (!q) return true
+                const haystack = `${a.id} ${a.name || ''}`.toLowerCase()
+                return haystack.includes(q)
+              })
+              .slice(0, 8)
+          },
+          render: () => {
+            return {
+              onStart: (props) => {
+                setSuggestionItems(props.items as AgentMentionCandidate[])
+                setSuggestionCommand(() => props.command)
+              },
+              onUpdate: (props) => {
+                setSuggestionItems(props.items as AgentMentionCandidate[])
+              },
+              onKeyDown: (props) => {
+                if (props.event.key === 'Escape') {
+                  setSuggestionItems([])
+                  setSuggestionCommand(null)
+                  return true
+                }
+                return suggestionDropdownRef.current?.onKeyDown(props.event) ?? false
+              },
+              onExit: () => {
+                setSuggestionItems([])
+                setSuggestionCommand(null)
+              },
+            }
+          },
+          command: ({ editor: e, range, props }) => {
+            // Insert the mention node at the @trigger range.
+            // We explicitly add a trailing space so the user can keep typing
+            // after the mention without the cursor sticking to the chip.
+            e
+              .chain()
+              .focus()
+              .insertContentAt(range, [
+                {
+                  type: 'mention',
+                  attrs: { id: props.id },
+                },
+                {
+                  type: 'text',
+                  text: ' ',
+                },
+              ])
+              .run()
+          },
+        },
+      }),
+    ],
     editorProps: {
       attributes: {
         'aria-label': ariaLabel || placeholder,
@@ -180,50 +329,9 @@ export function AgentRichInput({
         if (disabledRef.current) return false
         if (event.isComposing) return false
 
-        const currentMentionContext = mentionContextRef.current
-        const currentMentionCandidates = mentionCandidatesRef.current
-
-        if (currentMentionContext) {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault()
-            setMentionSelection((idx) => {
-              const max = Math.max(mentionCandidatesRef.current.length - 1, 0)
-              return idx >= max ? max : idx + 1
-            })
-            return true
-          }
-          if (event.key === 'ArrowUp') {
-            event.preventDefault()
-            setMentionSelection((idx) => Math.max(0, idx - 1))
-            return true
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            setMentionContext(null)
-            return true
-          }
-          if (event.key === 'Enter' && !event.shiftKey && currentMentionCandidates.length > 0) {
-            event.preventDefault()
-            const index = Math.min(
-              Math.max(mentionSelectionRef.current, 0),
-              currentMentionCandidates.length - 1
-            )
-            const picked = currentMentionCandidates[index]
-            if (picked) {
-              _view.dispatch(
-                _view.state.tr.insertText(
-                  `@${picked.id} `,
-                  currentMentionContext.from,
-                  currentMentionContext.to
-                )
-              )
-              setMentionContext(null)
-              setMentionSelection(0)
-            }
-            return true
-          }
-        }
-
+        // Enter (without Shift) submits the message.
+        // Suggestion handles its own Enter, so this only fires when the
+        // suggestion popup is closed.
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault()
           onSubmitRef.current()
@@ -234,14 +342,9 @@ export function AgentRichInput({
     },
     onCreate: ({ editor: created }) => {
       emitValue(created)
-      setMentionContext(extractMentionContext(created))
     },
     onUpdate: ({ editor: updated }) => {
       emitValue(updated)
-      setMentionContext(extractMentionContext(updated))
-    },
-    onSelectionUpdate: ({ editor: updated }) => {
-      setMentionContext(extractMentionContext(updated))
     },
     onFocus: () => setIsFocused(true),
     onBlur: () => setIsFocused(false),
@@ -256,39 +359,9 @@ export function AgentRichInput({
     if (!editor) return
     editor.commands.clearContent()
     emitValue(editor)
-    setMentionContext(null)
-    setMentionSelection(0)
   }, [editor, emitValue, resetToken])
 
-  useEffect(() => {
-    if (!mentionCandidates.length) {
-      setMentionSelection(0)
-      return
-    }
-    setMentionSelection((idx) =>
-      idx < 0 ? 0 : idx >= mentionCandidates.length ? mentionCandidates.length - 1 : idx
-    )
-  }, [mentionCandidates])
-
-  const commitMention = useCallback(
-    (agentId: string) => {
-      if (!editor || !mentionContext) return
-      editor
-        .chain()
-        .focus()
-        .insertContentAt(
-          { from: mentionContext.from, to: mentionContext.to },
-          `@${agentId} `
-        )
-        .run()
-      setMentionContext(null)
-      setMentionSelection(0)
-      emitValue(editor)
-    },
-    [editor, emitValue, mentionContext]
-  )
-
-  // Agent selector handlers
+  // ---- Agent selector handlers -------------------------------------------
   const handleCreateAgent = useCallback(async () => {
     const id = newAgentInput.trim()
     if (!id) return
@@ -307,7 +380,6 @@ export function AgentRichInput({
       if (!window.confirm(`Delete agent "${agentId}"?`)) return
       const success = await onDeleteAgent(agentId)
       if (success) {
-        // Adjust selection if needed
         const newAgents = allAgentsRef.current.filter((a) => a.id !== agentId)
         if (agentSelectionRef.current >= newAgents.length) {
           setAgentSelection(Math.max(0, newAgents.length - 1))
@@ -376,7 +448,7 @@ export function AgentRichInput({
   }, [showAgentSelector])
 
   const isEmpty = editor ? editor.isEmpty : true
-  const showMentionSuggestions = !disabled && !!mentionContext
+  const showSuggestion = !disabled && suggestionItems.length > 0 && !!suggestionCommand
 
   return (
     <div className="relative">
@@ -486,43 +558,13 @@ export function AgentRichInput({
         </div>
       )}
 
-      {/* Mention suggestions dropdown - expands upward */}
-      {showMentionSuggestions && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-          {mentionCandidates.length > 0 ? (
-            <div className="max-h-56 overflow-y-auto py-1">
-              {mentionCandidates.map((candidate, idx) => {
-                const selected = idx === mentionSelection
-                return (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      commitMention(candidate.id)
-                    }}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
-                      selected
-                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
-                        : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800'
-                    }`}
-                  >
-                    <span className="font-medium">@{candidate.id}</span>
-                    {candidate.name && candidate.name !== candidate.id && (
-                      <span className="truncate pl-3 text-xs text-neutral-500 dark:text-neutral-400">
-                        {candidate.name}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
-              {t('agent.noAgents')}
-            </div>
-          )}
-        </div>
+      {/* Mention suggestions dropdown – rendered by tiptap suggestion plugin */}
+      {showSuggestion && suggestionCommand && (
+        <MentionSuggestionDropdown
+          ref={suggestionDropdownRef}
+          items={suggestionItems}
+          command={suggestionCommand}
+        />
       )}
     </div>
   )
