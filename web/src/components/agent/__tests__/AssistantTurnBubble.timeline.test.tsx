@@ -29,7 +29,7 @@ describe('AssistantTurnBubble timeline ordering', () => {
         id: 'compression-1',
         timestamp: 250,
         type: 'compression',
-        content: '上下文已压缩并生成摘要',
+        content: 'Context compressed and summary generated',
         streaming: false,
       },
     ]
@@ -42,7 +42,7 @@ describe('AssistantTurnBubble timeline ordering', () => {
             {
               id: 'summary-1',
               role: 'assistant',
-              content: 'Earlier conversation summary:\n这是压缩摘要',
+              content: 'Earlier conversation summary:\nCompressed summary content',
               kind: 'context_summary',
               timestamp: 200,
               toolCalls: [],
@@ -58,8 +58,8 @@ describe('AssistantTurnBubble timeline ordering', () => {
     )
 
     const text = container.textContent || ''
-    const summaryIndex = text.indexOf('这是压缩摘要')
-    const compressionIndex = text.indexOf('上下文已压缩并生成摘要')
+    const summaryIndex = text.indexOf('Compressed summary content')
+    const compressionIndex = text.indexOf('Context compressed and summary generated')
     const toolIndex = text.indexOf('run_workflow')
 
     expect(summaryIndex).toBeGreaterThanOrEqual(0)
@@ -79,7 +79,7 @@ describe('AssistantTurnBubble timeline ordering', () => {
             id: 'compression-1',
             timestamp: Date.now(),
             type: 'compression',
-            content: '上下文已压缩并生成摘要',
+            content: 'Context compressed and summary generated',
             streaming: false,
           },
         ]}
@@ -107,7 +107,7 @@ describe('AssistantTurnBubble timeline ordering', () => {
             {
               id: 'assistant-1',
               role: 'assistant',
-              content: '正在准备派发任务',
+              content: 'Preparing to dispatch tasks',
               toolCalls: [toolCall],
               timestamp: 100,
             },
@@ -165,5 +165,94 @@ describe('AssistantTurnBubble timeline ordering', () => {
     const text = container.textContent || ''
     const count = text.split('batch_spawn').length - 1
     expect(count).toBe(1)
+  })
+
+  it('hides stale compression step from a previous loop iteration', () => {
+    const runtimeSteps: DraftAssistantStep[] = [
+      {
+        id: 'compression-1',
+        timestamp: 200,
+        type: 'compression',
+        content: 'Context compressed and summary generated',
+        streaming: false,
+      },
+      {
+        id: 'tool-1',
+        timestamp: 400,
+        type: 'tool_call',
+        toolCall: {
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'read', arguments: '{}' },
+        },
+        args: '{}',
+        streaming: true,
+      },
+    ]
+
+    // A committed message with timestamp after the compression means the loop
+    // has moved past that iteration — the compression card should be hidden.
+    const { container } = render(
+      <AssistantTurnBubble
+        turn={{
+          type: 'assistant',
+          messages: [
+            {
+              id: 'msg-1',
+              role: 'assistant',
+              content: 'I will read the file.',
+              toolCalls: [],
+              timestamp: 300,
+            },
+          ],
+          timestamp: 300,
+          totalUsage: null,
+        }}
+        toolResults={new Map()}
+        isProcessing={true}
+        runtimeSteps={runtimeSteps}
+      />
+    )
+
+    const text = container.textContent || ''
+    expect(text).not.toContain('Context compressed and summary generated')
+    expect(text).toContain('read')
+  })
+
+  it('shows compression step when no committed messages are newer', () => {
+    const runtimeSteps: DraftAssistantStep[] = [
+      {
+        id: 'compression-1',
+        timestamp: 300,
+        type: 'compression',
+        content: 'Context compressed and summary generated',
+        streaming: false,
+      },
+    ]
+
+    const { container } = render(
+      <AssistantTurnBubble
+        turn={{
+          type: 'assistant',
+          messages: [
+            {
+              id: 'msg-1',
+              role: 'assistant',
+              content: 'Thinking...',
+              toolCalls: [],
+              timestamp: 200,
+            },
+          ],
+          timestamp: 200,
+          totalUsage: null,
+        }}
+        toolResults={new Map()}
+        isProcessing={true}
+        runtimeSteps={runtimeSteps}
+      />
+    )
+
+    const text = container.textContent || ''
+    expect(text).toContain('Context compressed and summary generated')
   })
 })

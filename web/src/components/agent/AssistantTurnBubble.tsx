@@ -94,6 +94,12 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
     turn.messages.map((msg) => msg.content || '').filter((x): x is string => !!x)
   )
   const draftToolCalls = (runtimeToolCalls || []).filter((tc) => !committedToolCallIds.has(tc.id))
+  // Find the latest committed message timestamp to filter stale compression steps.
+  // When the loop iterates, new assistant messages are committed; any compression
+  // step from a previous iteration should no longer appear in the runtime timeline.
+  const lastCommittedTimestamp = turn.messages.length > 0
+    ? Math.max(...turn.messages.map((msg) => msg.timestamp ?? 0))
+    : 0
   const orderedRuntimeSteps = (runtimeSteps || []).filter((step) => {
     if (step.type === 'reasoning') {
       return step.streaming || !committedReasoningSet.has(step.content)
@@ -103,6 +109,11 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
     }
     if (step.type === 'tool_call') {
       return step.streaming || !committedToolCallIds.has(step.toolCall.id)
+    }
+    // Compression steps: hide once a newer committed message exists,
+    // meaning the loop has moved past the iteration where compression occurred.
+    if (step.type === 'compression') {
+      return step.streaming || (typeof step.timestamp === 'number' && step.timestamp >= lastCommittedTimestamp)
     }
     return true
   })
@@ -343,11 +354,11 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
               toolCall={tc}
               result={toolResults.get(tc.id)}
               isExecuting={true}
-              conversationId={conversationId}
               streamingArgs={
                 streamingToolArgsByCallId?.[tc.id] ||
                 (currentToolCall?.id === tc.id ? streamingToolArgs || undefined : undefined)
               }
+              conversationId={conversationId}
             />
           ))}
 
@@ -371,10 +382,10 @@ export const AssistantTurnBubble = memo(function AssistantTurnBubble({
             <ToolCallDisplay
               toolCall={currentToolCall}
               isExecuting={true}
-              conversationId={conversationId}
               streamingArgs={
                 streamingToolArgsByCallId?.[currentToolCall.id] || streamingToolArgs || undefined
               }
+              conversationId={conversationId}
             />
           )}
 
