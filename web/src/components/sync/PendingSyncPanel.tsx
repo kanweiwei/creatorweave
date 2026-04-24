@@ -201,31 +201,22 @@ export function PendingSyncPanel() {
       return
     }
 
-    // In OPFS-only scenario, modify may lack local baseline; rejecting item by item avoids total batch failure.
-    let successCount = 0
-    let failedCount = 0
-    for (const change of pendingChanges.changes) {
-      try {
-        await discardPendingPath(change.path)
-        successCount++
-      } catch {
-        failedCount++
-      }
-    }
+    const paths = pendingChanges.changes.map((c) => c.path)
+    const { discardPendingPaths } = useConversationContextStore.getState()
+    const result = await discardPendingPaths(paths)
 
-    await useConversationContextStore.getState().refreshPendingChanges(true)
     setSelectedItems(new Set())
     setSelectAll(false)
     setConflictPaths(new Set())
     setShowClearConfirm(false)
 
-    if (failedCount > 0) {
-      toast.warning(t('settings.pendingSyncPanel.rejectedCountWithFailure', { successCount, failedCount }))
+    if (result.failedCount > 0) {
+      toast.warning(t('settings.pendingSyncPanel.rejectedCountWithFailure', { successCount: result.successCount, failedCount: result.failedCount }))
       return
     }
 
     toast.success(t('settings.pendingSyncPanel.rejectedAllSuccess'))
-  }, [discardPendingPath, pendingChanges, t])
+  }, [pendingChanges, t])
 
   const toConflictDetail = useCallback((conflict: ConflictInfo): ConflictDetail => ({
     path: conflict.path,

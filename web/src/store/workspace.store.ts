@@ -220,6 +220,9 @@ interface WorkspaceState {
   /** Discard one pending path without syncing */
   discardPendingPath: (path: string) => Promise<void>
 
+  /** Discard multiple pending paths at once (batch, more efficient than one-by-one) */
+  discardPendingPaths: (paths: string[]) => Promise<{ successCount: number; failedCount: number }>
+
   /** Show the sync preview panel */
   showPreviewPanel: () => void
   /** Show preview panel and preselect a file path */
@@ -881,6 +884,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           // Refresh pending list from source-of-truth ledger.
           await get().refreshPendingChanges(true)
+        },
+
+        discardPendingPaths: async (paths: string[]) => {
+          const activeWorkspace = await getActiveWorkspace()
+          if (!activeWorkspace) return { successCount: 0, failedCount: paths.length }
+
+          const result = await activeWorkspace.workspace.discardPendingPaths(paths)
+          await get().updateCurrentCounts()
+
+          // Refresh pending list from source-of-truth ledger (once, not per-file).
+          await get().refreshPendingChanges(true)
+
+          return { successCount: result.successCount, failedCount: result.failedCount }
         },
 
         showPreviewPanel: () => {

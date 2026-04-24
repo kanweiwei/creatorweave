@@ -1165,6 +1165,51 @@ export class WorkspaceRuntime {
   }
 
   /**
+   * Discard multiple pending paths at once without syncing to native filesystem.
+   * This is more efficient than calling discardPendingPath in a loop because
+   * it only saves metadata once at the end.
+   * @returns Object with success/failed counts and failed paths
+   */
+  async discardPendingPaths(paths: string[]): Promise<{ successCount: number; failedCount: number; failedPaths: string[] }> {
+    if (!this.initialized) await this.initialize()
+    const pending = this.pendingManager.getAll()
+    const pathSet = new Set(paths.map((p) => this.normalizeWorkspacePath(p)))
+    let successCount = 0
+    const failedPaths: string[] = []
+
+    for (const change of pending) {
+      const normalizedPath = this.normalizeWorkspacePath(change.path)
+      if (!pathSet.has(normalizedPath)) continue
+
+      try {
+        if (change.type === 'create') {
+          await this.deleteFromFilesDirIfExists(normalizedPath)
+          await this.deleteFromBaselineDirIfExists(normalizedPath)
+        } else if (change.type === 'modify' || change.type === 'delete') {
+          let restored = await this.restorePendingModifyFromNative(normalizedPath)
+          if (!restored) {
+            restored = await this.restorePendingModifyFromBaseline(normalizedPath)
+          }
+          if (!restored) {
+            failedPaths.push(change.path)
+            continue
+          }
+          await this.deleteFromBaselineDirIfExists(normalizedPath)
+        }
+        await this.pendingManager.removeByPath(change.path)
+        successCount++
+      } catch {
+        failedPaths.push(change.path)
+      }
+    }
+
+    this.metadata.lastAccessedAt = Date.now()
+    await this.saveMetadata()
+
+    return { successCount, failedCount: failedPaths.length, failedPaths }
+  }
+
+  /**
    * Discard one pending path without syncing to native filesystem.
    * If the pending op is a newly created file, remove it from OPFS files/.
    * If the pending op is a modify, restore content from native filesystem baseline.
