@@ -27,6 +27,47 @@ import {
 } from '@/native-fs'
 import { toast } from 'sonner'
 
+// ---------------------------------------------------------------------------
+// Promise-based switch notification (replaces setInterval busy-wait polling).
+// When a workspace switch completes, all waiters for that workspace ID are
+// resolved immediately — zero CPU overhead compared to 100ms polling.
+// ---------------------------------------------------------------------------
+const switchWaiters = new Map<string, Array<() => void>>()
+
+function notifySwitchComplete(workspaceId: string): void {
+  const waiters = switchWaiters.get(workspaceId)
+  if (waiters) {
+    switchWaiters.delete(workspaceId)
+    waiters.forEach((resolve) => resolve())
+  }
+}
+
+function waitForSwitchComplete(workspaceId: string, timeoutMs = 30000): Promise<void> {
+  return new Promise<void>((resolve) => {
+    // Timeout guard: if notifySwitchComplete is never called (e.g. unexpected
+    // error path), we still resolve so callers don't hang forever.
+    const timer = setTimeout(() => {
+      const waiters = switchWaiters.get(workspaceId)
+      if (waiters) {
+        const idx = waiters.indexOf(wrappedResolve)
+        if (idx >= 0) waiters.splice(idx, 1)
+        if (waiters.length === 0) switchWaiters.delete(workspaceId)
+      }
+      resolve()
+    }, timeoutMs)
+
+    const wrappedResolve = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+
+    if (!switchWaiters.has(workspaceId)) {
+      switchWaiters.set(workspaceId, [])
+    }
+    switchWaiters.get(workspaceId)!.push(wrappedResolve)
+  })
+}
+
 // De-duplicate concurrent pending-change scans across UI/tool triggers.
 let refreshPendingChangesInFlight: Promise<void> | null = null
 let refreshPendingChangesNeedsRerun = false
@@ -382,19 +423,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             return
           }
 
-          // Prevent concurrent switch operations
+          // Prevent concurrent switch operations using promise-based waiting
+          // instead of setInterval busy-wait polling.
           const switchingId = get().switchingWorkspaceId
           if (switchingId === id) {
             // Another switch to the same workspace is already in-flight.
-            // Wait for it to finish and reuse its result.
-            await new Promise<void>((resolve) => {
-              const checkInterval = setInterval(() => {
-                if (get().switchingWorkspaceId !== id) {
-                  clearInterval(checkInterval)
-                  resolve()
-                }
-              }, 100)
-            })
+            // Wait for it to finish via the promise-based notification system.
+            await waitForSwitchComplete(id)
             if (get().activeWorkspaceId === id) {
               return
             }
@@ -410,15 +445,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
           if (switchingId && switchingId !== id) {
             console.warn(`[WorkspaceStore] Switching to ${id} while already switching to ${switchingId}, waiting...`)
-            // Wait for the current switch to complete, then check if we need to switch again
-            await new Promise<void>((resolve) => {
-              const checkInterval = setInterval(() => {
-                if (get().switchingWorkspaceId !== switchingId) {
-                  clearInterval(checkInterval)
-                  resolve()
-                }
-              }, 100)
-            })
+            // Wait for the current switch to complete via promise-based notification
+            await waitForSwitchComplete(switchingId)
             // After waiting, check if we're now on the desired workspace
             if (get().activeWorkspaceId === id) {
               return
@@ -619,6 +647,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 isLoading: false,
               })
             }
+            // Notify any waiters that this switch has completed (replaces busy-wait polling).
+            notifySwitchComplete(id)
           }
         },
 
@@ -873,7 +903,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             } catch (e) {
               console.warn('[WorkspaceStore] Failed to refresh OPFS store:', e)
             }
-
 
           })()
 
