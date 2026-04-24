@@ -382,6 +382,14 @@ export const useOPFSStore = create<OPFSState>()(
         const { useWorkspaceStore } = await import('./workspace.store')
         const requestedWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
         if (!requestedWorkspaceId) {
+          // No active workspace — clear stale cached data so FileTreePanel
+          // doesn't display leftover files from a previous project/workspace.
+          set((state) => {
+            state.workspaceId = null
+            state.pendingChanges = []
+            state.approvedNotSyncedPaths = new Set()
+            state.cachedPaths = []
+          })
           return
         }
         const workspace = await getWorkspaceById(requestedWorkspaceId)

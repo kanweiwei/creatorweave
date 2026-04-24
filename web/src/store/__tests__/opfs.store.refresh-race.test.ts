@@ -73,4 +73,26 @@ describe('useOPFSStore refresh race', () => {
     expect(Array.from(state.approvedNotSyncedPaths)).toEqual(['b.txt'])
     expect(state.pendingChanges.map((item) => item.path)).toEqual(['b.txt'])
   })
+
+  it('clears stale cached data when activeWorkspaceId becomes null', async () => {
+    // Simulate: user had an active workspace with cached data
+    useOPFSStore.setState({
+      workspaceId: 'ws-old',
+      pendingChanges: [{ id: '1', path: 'old.txt', type: 'modify', fsMtime: 1, timestamp: 1 }],
+      approvedNotSyncedPaths: new Set(['old.txt']),
+      cachedPaths: ['old.txt', 'other.txt'],
+    })
+    useWorkspaceStore.setState({ activeWorkspaceId: 'ws-old' })
+
+    // Now switch to a new project with no workspace
+    useWorkspaceStore.setState({ activeWorkspaceId: null })
+
+    await useOPFSStore.getState().refresh()
+
+    const state = useOPFSStore.getState()
+    expect(state.workspaceId).toBeNull()
+    expect(state.pendingChanges).toEqual([])
+    expect(state.cachedPaths).toEqual([])
+    expect(state.approvedNotSyncedPaths.size).toBe(0)
+  })
 })

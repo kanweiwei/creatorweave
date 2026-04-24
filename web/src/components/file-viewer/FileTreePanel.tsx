@@ -812,27 +812,41 @@ export function FileTreePanel({
     [onFileSelect, onDirectorySelect, handleToggle]
   )
 
-  // Reset states when directoryHandle changes
+  // Reset states when directoryHandle changes or workspace is cleared
   useEffect(() => {
-    if (!directoryHandle) return
+    // Always reset tree state when directoryHandle changes.
+    // Also reset when there is no activeWorkspaceId (project switched /
+    // workspace cleared) so stale OPFS data doesn't leak into the tree.
+    if (!directoryHandle || !activeWorkspaceId) {
+      setLoaded(false)
+      setLoading(false)
+      setExpandedPaths(new Set())
+      setRootNodes([])
+      return
+    }
     // Reset all states to trigger fresh load
     setLoaded(false)
     setLoading(false)
     setExpandedPaths(new Set())
     setRootNodes([])
-  }, [directoryHandle])
+  }, [directoryHandle, activeWorkspaceId])
 
   // Auto-load root when not loaded and not loading
   // Pass null for directoryHandle if not available (OPFS-only mode)
+  // Skip loading when there is no active workspace to avoid showing stale OPFS cache
   useEffect(() => {
-    if (!loaded && !loading) {
+    if (!loaded && !loading && activeWorkspaceId) {
       loadRoot()
     }
-  }, [directoryHandle, loaded, loading, loadRoot])
+  }, [directoryHandle, loaded, loading, loadRoot, activeWorkspaceId])
 
   // Reuse the same refresh callback as the toolbar button when workspace changes.
-  // Use a ref to skip redundant refreshes for the same workspace ID (prevents
-  // repeated file-tree reloads when activeWorkspaceId changes rapidly).
+  // Use a ref to hold the latest loadRoot so the effect only depends on
+  // activeWorkspaceId — avoids re-triggering when loadRoot / handleRefresh
+  // rebuild due to expandedPaths or cachedPaths changes.
+  const loadRootRef = useRef(loadRoot)
+  loadRootRef.current = loadRoot
+
   const prevWorkspaceIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeWorkspaceId) {
@@ -841,8 +855,8 @@ export function FileTreePanel({
     }
     if (prevWorkspaceIdRef.current === activeWorkspaceId) return
     prevWorkspaceIdRef.current = activeWorkspaceId
-    handleRefresh()
-  }, [activeWorkspaceId, handleRefresh])
+    loadRootRef.current(true)
+  }, [activeWorkspaceId])
 
   // Show empty state only if no directoryHandle AND no pending changes AND no cached files
   const hasPendingChanges = pendingChanges.length > 0

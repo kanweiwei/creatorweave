@@ -9,8 +9,16 @@ const mockOpfsState = {
   cachedPaths: [] as string[],
 }
 
+const mockWorkspaceState = {
+  activeWorkspaceId: 'ws-test' as string | null,
+}
+
 vi.mock('@/store/opfs.store', () => ({
   useOPFSStore: (selector: (state: typeof mockOpfsState) => unknown) => selector(mockOpfsState),
+}))
+
+vi.mock('@/store/workspace.store', () => ({
+  useWorkspaceStore: (selector: (state: typeof mockWorkspaceState) => unknown) => selector(mockWorkspaceState),
 }))
 
 describe('FileTreePanel', () => {
@@ -18,6 +26,7 @@ describe('FileTreePanel', () => {
     mockOpfsState.pendingChanges = []
     mockOpfsState.approvedNotSyncedPaths = new Set()
     mockOpfsState.cachedPaths = []
+    mockWorkspaceState.activeWorkspaceId = 'ws-test'
   })
 
   it('shows directory hierarchy for cached OPFS files after pending list is empty', async () => {
@@ -41,5 +50,17 @@ describe('FileTreePanel', () => {
 
     expect(screen.getByText(/You can continue without selecting a local directory/)).toBeInTheDocument()
     expect(screen.getByText(/In pure OPFS sandbox mode, file changes will be displayed here/)).toBeInTheDocument()
+  })
+
+  it('shows empty state when activeWorkspaceId is null regardless of stale cachedPaths', () => {
+    // Simulate switching to a new project with no workspace
+    mockWorkspaceState.activeWorkspaceId = null
+    // Stale cachedPaths from previous workspace should not show
+    mockOpfsState.cachedPaths = ['stale-file.txt']
+    mockOpfsState.pendingChanges = [{ type: 'modify' as const, path: 'stale-modify.txt' }]
+
+    render(<FileTreePanel directoryHandle={null} onFileSelect={vi.fn()} />)
+
+    expect(screen.getByText(/You can continue without selecting a local directory/)).toBeInTheDocument()
   })
 })
