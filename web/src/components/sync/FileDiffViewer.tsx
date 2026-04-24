@@ -727,7 +727,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ fileChange, snap
             {fileChange.path}
           </span>
           {fileChange.size ? (
-            <span className="shrink-0 text-[11px tabular-nums text-neutral-400 dark:text-neutral-500">
+            <span className="shrink-0 text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
               {(fileChange.size / 1024).toFixed(1)}k
             </span>
           ) : null}
