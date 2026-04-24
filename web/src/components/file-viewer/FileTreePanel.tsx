@@ -266,7 +266,7 @@ function TreeNodeRow({
   const handleCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(node.path)
-      console.log('[FileTree] Copied path:', node.path)
+
     } catch (error) {
       console.error('[FileTree] Failed to copy path:', error)
     }
@@ -565,7 +565,7 @@ export function FileTreePanel({
           kind: 'file' as const,
           handle: null, // OPFS-only file
         })
-        console.log('[FileTree] Added cached file:', cachedPath)
+
       }
     },
     []
@@ -603,7 +603,7 @@ export function FileTreePanel({
           loaded: false,
         })
         existingNames.add(subdirName)
-        console.log('[FileTree] Added cached subdir:', subdirPath)
+
       }
     },
     []
@@ -623,7 +623,6 @@ export function FileTreePanel({
 
           // Skip hidden files like .DS_Store
           if (isHidden(name)) {
-            console.log('[FileTree] Skipping hidden file:', name)
             continue
           }
           const path = parentPath ? `${parentPath}/${name}` : name
@@ -651,12 +650,6 @@ export function FileTreePanel({
         }
       }
 
-      console.log(`[FileTree] Directory ${parentPath || '(root)'}:`, {
-        totalEntries: allEntries.length,
-        afterHiddenFilter: children.length,
-        allEntries: allEntries.sort(),
-        resultNames: children.map((c) => c.name).sort(),
-      })
 
       // Merge pending create files into children
       const pendingCreates = getPendingCreatesForPath(parentPath)
@@ -673,7 +666,7 @@ export function FileTreePanel({
           kind: 'file',
           handle: null, // OPFS-only file
         })
-        console.log('[FileTree] Added pending create:', pending.path)
+
       }
 
       // Add pending create subdirectories that don't exist on disk
@@ -691,7 +684,7 @@ export function FileTreePanel({
           children: [],
           loaded: false,
         })
-        console.log('[FileTree] Added pending create subdir:', subdirPath)
+
       }
 
       // Add subdirectories inferred from cached OPFS files.
@@ -838,8 +831,16 @@ export function FileTreePanel({
   }, [directoryHandle, loaded, loading, loadRoot])
 
   // Reuse the same refresh callback as the toolbar button when workspace changes.
+  // Use a ref to skip redundant refreshes for the same workspace ID (prevents
+  // repeated file-tree reloads when activeWorkspaceId changes rapidly).
+  const prevWorkspaceIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!activeWorkspaceId) return
+    if (!activeWorkspaceId) {
+      prevWorkspaceIdRef.current = null
+      return
+    }
+    if (prevWorkspaceIdRef.current === activeWorkspaceId) return
+    prevWorkspaceIdRef.current = activeWorkspaceId
     handleRefresh()
   }, [activeWorkspaceId, handleRefresh])
 
