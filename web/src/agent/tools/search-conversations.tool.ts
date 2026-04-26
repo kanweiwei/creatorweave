@@ -47,20 +47,26 @@ interface SearchResultRow {
  * Extract a short snippet around the first occurrence of the query in messages_json.
  * We scan the raw JSON string to avoid parsing the full message array.
  */
-function extractSnippet(messagesJson: string, query: string, contextChars = 80): string | null {
+function extractSnippet(messagesJson: string, query: string, contextChars = 300): string | null {
   const lowerJson = messagesJson.toLowerCase()
   const lowerQuery = query.toLowerCase()
   const idx = lowerJson.indexOf(lowerQuery)
   if (idx === -1) return null
 
-  // Find a reasonable boundary (avoid cutting in the middle of JSON syntax)
   const start = Math.max(0, idx - contextChars)
   const end = Math.min(messagesJson.length, idx + query.length + contextChars)
 
   let snippet = messagesJson.slice(start, end)
 
+  // Unescape JSON string artifacts for readability
+  snippet = snippet
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+
   // Trim partial JSON noise at boundaries
-  snippet = snippet.replace(/^[^"'\w\u4e00-\u9fff]+/, '').replace(/[^"'\w\u4e00-\u9fff]+$/, '')
+  snippet = snippet.replace(/^[^"'`\w\u4e00-\u9fff]+/, '').replace(/[^"'`\w\u4e00-\u9fff]+$/, '')
 
   if (start > 0) snippet = '...' + snippet
   if (end < messagesJson.length) snippet = snippet + '...'
