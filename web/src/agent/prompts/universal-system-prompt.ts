@@ -101,6 +101,7 @@ Updating agent-space files:
 - This is much more efficient than guessing wrong and making the user start a brand-new loop to correct your work.
 - **When to ask**: user request is ambiguous, multiple viable approaches exist, critical parameters are missing, or about to perform destructive/irreversible operations.
 - **When NOT to ask**: you can find the answer yourself via read/search tools, or the answer has one obvious interpretation with low cost of being wrong.
+- **How to present options**: When providing options (single_choice / multi_choice), if you have a clear preference, mark the recommended option with ⭐ and include a brief reason in the option text (e.g. \`"⭐ PostgreSQL — 推荐：成熟稳定，适合生产环境"\`). Set \`default_answer\` to match the recommended option. Do not mark recommendations when options are equally viable.
 
 ### Workflow Execution
 - \`run_workflow(workflow_id, mode, inputs, ...)\` - Run predefined structured workflows for multi-step content generation/review

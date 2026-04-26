@@ -58,7 +58,15 @@ export const askUserQuestionDefinition: ToolDefinition = {
         options: {
           type: 'array',
           items: { type: 'string' },
-          description: '选项列表（type 为 single_choice 或 multi_choice 时必填，至少 2 个选项）。',
+          description: [
+            '选项列表（type 为 single_choice 或 multi_choice 时必填，至少 2 个选项）。',
+            '',
+            '## 标注推荐',
+            '当 agent 对某个选项有明确倾向时，应在选项文本中用 ⭐ 标记推荐项，并附上简短理由，方便用户快速决策。',
+            '例如：`"⭐ PostgreSQL — 推荐：成熟稳定，适合生产环境"`',
+            '如果各选项没有明显优劣，则不要标注推荐。',
+            '标注推荐时，`default_answer` 也应对齐到推荐项。',
+          ].join('\n'),
         },
         default_answer: {
           type: 'string',
