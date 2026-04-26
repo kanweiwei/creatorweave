@@ -51,10 +51,10 @@ const STORAGE_STATUS_VARIANT: Record<StorageStatus, 'success' | 'warning' | 'err
 
 /** Storage status labels - translation keys */
 const STORAGE_STATUS_LABELS: Record<StorageStatus, string> = {
-  ok: 'conversationStorage.statusOk',
-  warning: 'conversationStorage.statusWarning',
-  urgent: 'conversationStorage.statusUrgent',
-  critical: 'conversationStorage.statusCritical',
+  ok: 'workspaceStorage.statusOk',
+  warning: 'workspaceStorage.statusWarning',
+  urgent: 'workspaceStorage.statusUrgent',
+  critical: 'workspaceStorage.statusCritical',
 }
 
 /** Progress color based on usage percentage */
@@ -146,13 +146,13 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
 
     try {
       await deleteConversation(conversationToDelete)
-      toast.success(t('conversationStorage.sessionDeleted'))
+      toast.success(t('workspaceStorage.sessionDeleted'))
       setDeleteDialogOpen(false)
       setConversationToDelete(null)
       await refresh()
     } catch (error) {
       console.error('[ConversationStorageBadge] Failed to delete conversation:', error)
-      toast.error(t('conversationStorage.deleteFailed'))
+      toast.error(t('workspaceStorage.deleteFailed'))
     } finally {
       setDeleteLoading(false)
     }
@@ -170,11 +170,11 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
           setCleanupPreview(preview)
           setCleanupDialogOpen(true)
         } else {
-          toast.info(scope === 'old' ? t('conversationStorage.noOldConversations') : t('conversationStorage.noCleanupNeeded'))
+          toast.info(scope === 'old' ? t('workspaceStorage.noOldConversations') : t('workspaceStorage.noCleanupNeeded'))
         }
       } catch (error) {
         console.error('[ConversationStorageBadge] Failed to get cleanup preview:', error)
-        toast.error(t('conversationStorage.getCleanupInfoFailed'))
+        toast.error(t('workspaceStorage.getCleanupInfoFailed'))
       } finally {
         setCleanupLoading(false)
       }
@@ -190,13 +190,13 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
 
     try {
       const cleaned = await executeCleanup(cleanupScope, 30)
-      toast.success(t('conversationStorage.cleanupSuccess', { count: cleaned, size: cleanupPreview.totalSizeFormatted }))
+      toast.success(t('workspaceStorage.cleanupSuccess', { count: cleaned, size: cleanupPreview.totalSizeFormatted }))
       setCleanupDialogOpen(false)
       setCleanupPreview(null)
       await refresh()
     } catch (error) {
       console.error('[ConversationStorageBadge] Failed to execute cleanup:', error)
-      toast.error(t('conversationStorage.cleanupFailed'))
+      toast.error(t('workspaceStorage.cleanupFailed'))
     } finally {
       setCleanupLoading(false)
     }
@@ -221,7 +221,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
   return (
     <TooltipProvider delayDuration={200}>
       <div className="relative" ref={containerRef}>
-        <ActionTooltip label={t('conversationStorage.storageSpace')}>
+        <ActionTooltip label={t('workspaceStorage.storageSpace')}>
           <BrandButton iconButton variant="ghost" onClick={() => setOpen(!open)}>
             <HardDrive className="h-5 w-5" />
           </BrandButton>
@@ -237,7 +237,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
       <BrandDialog open={cleanupDialogOpen} onOpenChange={setCleanupDialogOpen}>
         <BrandDialogContent>
           <BrandDialogHeader>
-            <BrandDialogTitle>{t('conversationStorage.cleanupTitle')}</BrandDialogTitle>
+            <BrandDialogTitle>{t('workspaceStorage.cleanupTitle')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             {cleanupPreview && (
@@ -246,33 +246,33 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                   <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <div className="text-[10px] text-amber-800">
-                      <span className="font-semibold">{t('conversationStorage.attention')}</span>
-                      {t('conversationStorage.willDiscard', { count: cleanupPreview.pendingCount })}
+                      <span className="font-semibold">{t('workspaceStorage.attention')}</span>
+                      {t('workspaceStorage.willDiscard', { count: cleanupPreview.pendingCount })}
                     </div>
                   </div>
                 )}
 
                 <div className="space-y-2 text-xs text-secondary">
-                  <div>{t('conversationStorage.willCleanup')}</div>
+                  <div>{t('workspaceStorage.willCleanup')}</div>
                   <div className="ml-4 space-y-1">
                     <div>
-                      • {t('conversationStorage.conversationCount', { count: cleanupPreview.conversationCount })}
-                      {cleanupScope === 'old' && ` ${t('conversationStorage.daysInactive')}`}
+                      • {t('workspaceStorage.conversationCount', { count: cleanupPreview.conversationCount })}
+                      {cleanupScope === 'old' && ` ${t('workspaceStorage.daysInactive')}`}
                     </div>
-                    <div>• {t('conversationStorage.fileCacheSize', { size: cleanupPreview.totalSizeFormatted })}</div>
+                    <div>• {t('workspaceStorage.fileCacheSize', { size: cleanupPreview.totalSizeFormatted })}</div>
                     <div
                       className={cn(
                         cleanupPreview.hasUnsavedChanges ? 'text-amber-600' : 'text-emerald-600'
                       )}
                     >
-                      • {t('conversationStorage.unsavedChanges', { count: cleanupPreview.pendingCount })}
+                      • {t('workspaceStorage.unsavedChanges', { count: cleanupPreview.pendingCount })}
                     </div>
                   </div>
                 </div>
 
                 {/* Scope Selection */}
                 <div className="mt-3 space-y-2">
-                  <div className="text-[10px] font-medium uppercase text-muted">{t('conversationStorage.selectScope')}</div>
+                  <div className="text-[10px] font-medium uppercase text-muted">{t('workspaceStorage.selectScope')}</div>
                   <div className="space-y-1">
                     <button
                       type="button"
@@ -292,7 +292,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                             : 'border-border dark:border-border'
                         )}
                       />
-                      {t('conversationStorage.cleanupOldSessions')}
+                      {t('workspaceStorage.cleanupOldSessions')}
                     </button>
                     <button
                       type="button"
@@ -312,7 +312,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                             : 'border-border dark:border-border'
                         )}
                       />
-                      {t('conversationStorage.cleanupAll')}
+                      {t('workspaceStorage.cleanupAll')}
                     </button>
                   </div>
                 </div>
@@ -320,7 +320,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                 {/* Help text */}
                 <div className="mt-3 flex items-start gap-1.5 text-[9px] leading-tight text-muted">
                   <Info className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-                  <p>{t('conversationStorage.cleanupHelpText')}</p>
+                  <p>{t('workspaceStorage.cleanupHelpText')}</p>
                 </div>
               </>
             )}
@@ -331,14 +331,14 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
               onClick={() => setCleanupDialogOpen(false)}
               disabled={cleanupLoading}
             >
-              {t('conversationStorage.canceling')}
+              {t('workspaceStorage.canceling')}
             </BrandButton>
             <BrandButton
               variant={cleanupPreview?.hasUnsavedChanges ? 'secondary' : 'danger'}
               onClick={handleExecuteCleanup}
               disabled={cleanupLoading}
             >
-              {cleanupLoading ? t('conversationStorage.cleaning') : t('conversationStorage.confirmCleanup')}
+              {cleanupLoading ? t('workspaceStorage.cleaning') : t('workspaceStorage.confirmCleanup')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
@@ -348,7 +348,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
       <BrandDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <BrandDialogContent>
           <BrandDialogHeader>
-            <BrandDialogTitle>{t('conversationStorage.deleteTitle')}</BrandDialogTitle>
+            <BrandDialogTitle>{t('workspaceStorage.deleteTitle')}</BrandDialogTitle>
           </BrandDialogHeader>
           <BrandDialogBody>
             {(() => {
@@ -359,35 +359,35 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
               return (
                 <>
                   <p className="text-sm text-secondary">
-                    {t('conversationStorage.deleteConfirm', { name: conversation?.name ?? '' })}
+                    {t('workspaceStorage.deleteConfirm', { name: conversation?.name ?? '' })}
                   </p>
 
                   {hasData && (
                     <div className="mt-3 rounded-md bg-amber-50 px-3 py-2">
                       <p className="flex items-center gap-2 text-[10px] text-amber-800">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        <span className="font-semibold">{t('conversationStorage.warningUnsaved')}</span>
+                        <span className="font-semibold">{t('workspaceStorage.warningUnsaved')}</span>
                       </p>
                       <p className="ml-5 text-[10px] text-amber-700">
-                        {hasPending && t('conversationStorage.pendingSync', { count: conversation?.pendingCount ?? 0 })}
+                        {hasPending && t('workspaceStorage.pendingSync', { count: conversation?.pendingCount ?? 0 })}
                       </p>
                     </div>
                   )}
 
                   <div className="mt-3 space-y-3 text-sm">
                     <div>
-                      <span className="font-medium text-danger">❌ {t('conversationStorage.willDelete')}</span>
+                      <span className="font-medium text-danger">❌ {t('workspaceStorage.willDelete')}</span>
                       <ul className="ml-6 mt-1 list-disc space-y-1 text-secondary">
-                        <li>{t('conversationStorage.conversationRecords')}</li>
-                        <li>{t('conversationStorage.fileCache')}</li>
-                        <li>{t('conversationStorage.unsavedCannotRecover')}</li>
+                        <li>{t('workspaceStorage.conversationRecords')}</li>
+                        <li>{t('workspaceStorage.fileCache')}</li>
+                        <li>{t('workspaceStorage.unsavedCannotRecover')}</li>
                       </ul>
                     </div>
 
                     <div className="rounded-md bg-muted dark:bg-muted px-3 py-2 dark:bg-muted">
                       <p className="flex items-center gap-2 text-[10px] text-muted">
                         <Info className="h-3.5 w-3.5 shrink-0" />
-                        <span>{t('conversationStorage.cannotRecover')}</span>
+                        <span>{t('workspaceStorage.cannotRecover')}</span>
                       </p>
                     </div>
                   </div>
@@ -401,10 +401,10 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleteLoading}
             >
-              {t('conversationStorage.canceling')}
+              {t('workspaceStorage.canceling')}
             </BrandButton>
             <BrandButton variant="danger" onClick={handleConfirmDelete} disabled={deleteLoading}>
-              {deleteLoading ? t('conversationStorage.deleting') : t('conversationStorage.confirmDelete')}
+              {deleteLoading ? t('workspaceStorage.deleting') : t('workspaceStorage.confirmDelete')}
             </BrandButton>
           </BrandDialogFooter>
         </BrandDialogContent>
@@ -421,7 +421,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
           {/* Header - Current conversation */}
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">
-              <span className="text-tertiary text-xs font-medium">{t('conversationStorage.currentConversation')}</span>
+              <span className="text-tertiary text-xs font-medium">{t('workspaceStorage.currentConversation')}</span>
               {currentConversation && (
                 <span className="text-xs font-semibold text-primary-600">
                   {currentConversation.name}
@@ -436,8 +436,8 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
           <div className="px-4 py-3">
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-secondary">
               <HardDrive className="h-3.5 w-3.5" />
-              <span>{t('conversationStorage.storageSpace')} {t('conversationStorage.browserQuota')}</span>
-              {storageLoading && <span className="text-muted">{t('conversationStorage.loading')}</span>}
+              <span>{t('workspaceStorage.storageSpace')} {t('workspaceStorage.browserQuota')}</span>
+              {storageLoading && <span className="text-muted">{t('workspaceStorage.loading')}</span>}
             </div>
 
             {storage && (
@@ -471,27 +471,27 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                     >
                       {t(STORAGE_STATUS_LABELS[storage.status])}
                     </BrandBadge>
-                    <ActionTooltip label={t('conversationStorage.calculateSize')}>
+                    <ActionTooltip label={t('workspaceStorage.calculateSize')}>
                       <button
                         type="button"
                         onClick={() => refresh(true)}
                         className="text-[10px] text-primary-600 hover:underline"
                       >
-                        {t('conversationStorage.refresh')}
+                        {t('workspaceStorage.refresh')}
                       </button>
                     </ActionTooltip>
                   </div>
                   {/* Explanatory note */}
                   <div className="flex items-start gap-1.5 text-[9px] leading-tight text-muted">
                     <Info className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-                    <p>{t('conversationStorage.quotaExplanation')}</p>
+                    <p>{t('workspaceStorage.quotaExplanation')}</p>
                   </div>
                 </div>
               </>
             )}
 
             {!storage && !storageLoading && (
-              <p className="text-[10px] text-muted">{t('conversationStorage.cannotGetStorage')}</p>
+              <p className="text-[10px] text-muted">{t('workspaceStorage.cannotGetStorage')}</p>
             )}
           </div>
 
@@ -501,12 +501,12 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
           <div className="custom-scrollbar max-h-60 overflow-y-auto">
             <div className="px-4 py-2">
               <span className="text-xs font-semibold text-secondary">
-                {t('conversationStorage.allConversations', { count: conversations.length })}
+                {t('workspaceStorage.allConversations', { count: conversations.length })}
               </span>
             </div>
 
             {storageConversations.length === 0 ? (
-              <div className="px-4 py-4 text-center text-xs text-muted">{t('conversationStorage.noSessions')}</div>
+              <div className="px-4 py-4 text-center text-xs text-muted">{t('workspaceStorage.noSessions')}</div>
             ) : (
               <ul>
                 {storageConversations.map((conversation) => {
@@ -553,13 +553,13 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                               {conversation.pendingCount}
                             </BrandBadge>
                           )}
-                          {!hasPending && <span className="text-muted">{t('conversationStorage.noChanges')}</span>}
+                          {!hasPending && <span className="text-muted">{t('workspaceStorage.noChanges')}</span>}
                         </div>
                       </button>
 
                       {/* Delete button */}
                       {!isActive && (
-                        <ActionTooltip label={t('conversationStorage.deleteConversation')}>
+                        <ActionTooltip label={t('workspaceStorage.deleteConversation')}>
                           <button
                             type="button"
                             onClick={() => handleDeleteClick(conversation.id)}
@@ -580,7 +580,7 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
 
           {/* Footer - Cleanup Action */}
           <div className="px-4 py-2">
-            <ActionTooltip label={t('conversationStorage.cleanupOldDescription')}>
+            <ActionTooltip label={t('workspaceStorage.cleanupOldDescription')}>
               <button
                 type="button"
                 onClick={() => handleOpenCleanupDialog('old')}
@@ -588,11 +588,11 @@ export const ConversationStorageBadge: React.FC<ConversationStorageBadgeProps> =
                 className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs text-secondary transition-colors hover:bg-muted dark:hover:bg-muted dark:hover:bg-neutral-800 disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                {cleanupLoading ? t('conversationStorage.loading') : t('conversationStorage.cleanupFileCache')}
+                {cleanupLoading ? t('workspaceStorage.loading') : t('workspaceStorage.cleanupFileCache')}
               </button>
             </ActionTooltip>
             <p className="px-1 pt-1.5 text-[9px] leading-tight text-muted">
-              {t('conversationStorage.cleanupFileCacheHelp')}
+              {t('workspaceStorage.cleanupFileCacheHelp')}
             </p>
           </div>
         </div>

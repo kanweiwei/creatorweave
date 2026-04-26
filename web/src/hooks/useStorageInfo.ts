@@ -283,7 +283,16 @@ export function useStorageInfo(): UseStorageInfoResult {
     const manager = await getWorkspaceManager()
     const allWorkspaces = await repo.findAllWorkspaces()
 
+    // Get real pending counts to skip workspaces with unsaved changes
+    const pendingCounts = await repo.getRealPendingCounts()
+
     for (const workspace of allWorkspaces) {
+      const pending = pendingCounts.get(workspace.id) ?? 0
+      if (pending > 0) {
+        // Skip workspaces with pending unsaved changes
+        continue
+      }
+
       try {
         const runtime = await manager.getWorkspace(workspace.id)
         if (runtime) {
@@ -307,19 +316,33 @@ export function useStorageInfo(): UseStorageInfoResult {
         return null
       }
 
+      // Get real pending counts to exclude workspaces with unsaved changes
+      const pendingCounts = await repo.getRealPendingCounts()
+
       let totalSize = 0
       let totalPending = 0
       const workspaceNames: string[] = []
+      let cleanableCount = 0
 
       for (const workspace of workspacesToClean) {
+        const pending = pendingCounts.get(workspace.id) ?? 0
+        if (pending > 0) {
+          // Skip workspaces with pending changes from size/count preview
+          totalPending += pending
+          continue
+        }
         totalSize += workspace.cacheSize || 0
-        totalPending += workspace.pendingCount || 0
         workspaceNames.push(workspace.name)
+        cleanableCount++
+      }
+
+      if (cleanableCount === 0) {
+        return null
       }
 
       return {
-        workspaceCount: workspacesToClean.length,
-        conversationCount: workspacesToClean.length,
+        workspaceCount: cleanableCount,
+        conversationCount: cleanableCount,
         totalSize,
         totalSizeFormatted: formatBytes(totalSize),
         pendingCount: totalPending,
@@ -338,9 +361,18 @@ export function useStorageInfo(): UseStorageInfoResult {
       const workspacesToClean =
         scope === 'old' ? await repo.findInactiveWorkspaces(days) : await repo.findAllWorkspaces()
 
+      // Get real pending counts to skip workspaces with unsaved changes
+      const pendingCounts = await repo.getRealPendingCounts()
+
       let cleanedCount = 0
 
       for (const workspace of workspacesToClean) {
+        const pending = pendingCounts.get(workspace.id) ?? 0
+        if (pending > 0) {
+          // Skip workspaces with pending unsaved changes
+          continue
+        }
+
         try {
           const runtime = await manager.getWorkspace(workspace.id)
           if (runtime) {
