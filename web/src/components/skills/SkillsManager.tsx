@@ -3,12 +3,12 @@
  *
  * Displays all skills grouped by source (project/user/builtin)
  * with search, filter, and management actions.
- * Phase 4: Added i18n support
- * Phase 5: Refactored to use brand components
+ * Optimized: adaptive height, empty group handling, debounced search,
+ * custom delete confirmation, separated view/edit modes.
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Plus, Search, RefreshCw, FolderOpen, User, Building, X, Inbox } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { Plus, Search, RefreshCw, FolderOpen, User, Building, X, Inbox, AlertTriangle } from 'lucide-react'
 import {
   BrandDialog,
   BrandDialogContent,
@@ -44,18 +44,41 @@ interface SkillsManagerProps {
 }
 
 type FilterType = 'all' | 'enabled' | 'disabled'
+type EditorMode = 'view' | 'edit' | undefined
 
 export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsManagerProps) {
   const skillsStore = useSkillsStore()
   const activeProjectId = useProjectStore((s) => s.activeProjectId || null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [refreshing, setRefreshing] = useState(false)
   const t = useT()
 
+  // Debounce search input (300ms)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value)
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedQuery(value)
+    }, 300)
+  }, [])
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    }
+  }, [])
+
   // Skill editor state
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<SkillMetadata | undefined>()
+  const [editorMode, setEditorMode] = useState<EditorMode>()
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   // Load skills when dialog opens
   useEffect(() => {
@@ -64,13 +87,13 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
     }
   }, [open, skillsStore])
 
-  // Group and filter skills
-  const { projectSkills, userSkills, builtinSkills } = useMemo(() => {
+  // Group and filter skills (uses debounced query)
+  const { projectSkills, userSkills, builtinSkills, totalFiltered } = useMemo(() => {
     let filtered = skillsStore.skills
 
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
+    // Apply search filter with debounced query
+    if (debouncedQuery) {
+      const query = debouncedQuery.toLowerCase()
       filtered = filtered.filter(
         (s) =>
           s.name.toLowerCase().includes(query) ||
@@ -91,8 +114,19 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
       projectSkills: filtered.filter((s) => s.source === 'project'),
       userSkills: filtered.filter((s) => s.source === 'user'),
       builtinSkills: filtered.filter((s) => s.source === 'builtin'),
+      totalFiltered: filtered.length,
     }
-  }, [skillsStore.skills, searchQuery, filterType])
+  }, [skillsStore.skills, debouncedQuery, filterType])
+
+  // Determine which accordion groups should be open by default:
+  // only groups that have skills; empty groups are collapsed
+  const defaultAccordionValues = useMemo(() => {
+    const values: string[] = []
+    if (projectSkills.length > 0) values.push('project')
+    if (userSkills.length > 0) values.push('user')
+    if (builtinSkills.length > 0) values.push('builtin')
+    return values
+  }, [projectSkills.length, userSkills.length, builtinSkills.length])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -117,34 +151,45 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
     [skillsStore]
   )
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (confirm(t('skills.deleteConfirm'))) {
-        await skillsStore.deleteSkill(id)
-      }
-    },
-    [skillsStore, t]
-  )
+  const handleDeleteConfirm = useCallback(async () => {
+    if (deleteTarget) {
+      await skillsStore.deleteSkill(deleteTarget.id)
+      setDeleteTarget(null)
+    }
+  }, [skillsStore, deleteTarget])
+
+  const handleView = useCallback((skill: SkillMetadata) => {
+    setEditingSkill(skill)
+    setEditorMode('view')
+    setEditorOpen(true)
+  }, [])
 
   const handleEdit = useCallback((skill: SkillMetadata) => {
     setEditingSkill(skill)
+    setEditorMode('edit')
     setEditorOpen(true)
   }, [])
 
   const handleCreateNew = useCallback(() => {
     setEditingSkill(undefined)
+    setEditorMode('edit')
     setEditorOpen(true)
   }, [])
 
   const handleEditorClose = useCallback(() => {
     setEditorOpen(false)
     setEditingSkill(undefined)
+    setEditorMode(undefined)
   }, [])
+
+  // Compute stats for footer
+  const enabledCount = skillsStore.skills.filter((s) => s.enabled).length
+  const totalCount = skillsStore.skills.length
 
   return (
     <>
       <BrandDialog open={open} onOpenChange={onClose}>
-        <BrandDialogContent className="flex max-h-[600px] max-w-2xl flex-col overflow-hidden p-0">
+        <BrandDialogContent className="flex max-h-[min(700px,85vh)] max-w-2xl flex-col overflow-hidden p-0">
           {/* Header */}
           <BrandDialogHeader className="h-16 px-6">
             <BrandDialogTitle className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
@@ -156,20 +201,20 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
           </BrandDialogHeader>
 
           {/* Search & Filter Bar */}
-          <div className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-6 py-4 dark:border-neutral-700">
+          <div className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-6 py-3 dark:border-neutral-700">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               <BrandInput
                 placeholder={t('skills.searchPlaceholder')}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="!h-9 !py-2 pl-9"
               />
             </div>
             <Tabs value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
               <TabsList variant="segment" className="h-9">
                 <TabsTrigger variant="segment" value="all" className="text-sm">
-                  {t('skills.filterAll')} ({skillsStore.skills.length})
+                  {t('skills.filterAll')} ({totalCount})
                 </TabsTrigger>
                 <TabsTrigger variant="segment" value="enabled" className="text-sm">
                   {t('skills.filterEnabled')}
@@ -189,118 +234,82 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
             </BrandButton>
           </div>
 
-          {/* Skills List - scrollable */}
-          <div className="custom-scrollbar min-h-[400px] flex-1 overflow-y-auto px-6 py-4">
-            <BrandAccordion type="multiple" defaultValue={['user', 'builtin', 'project']}>
-              {/* Project Skills */}
-              <BrandAccordionItem value="project">
-                <BrandAccordionTrigger className="rounded-t-lg px-4 py-3 hover:no-underline data-[state=open]:bg-neutral-50 dark:data-[state=open]:bg-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
-                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                      {t('skills.projectSkills')}
-                    </span>
-                    <span className="text-xs text-neutral-400 dark:text-neutral-500">({projectSkills.length})</span>
-                  </div>
-                </BrandAccordionTrigger>
-                <BrandAccordionContent className="pb-0 pt-0">
-                  <div className="space-y-2 rounded-b-lg bg-neutral-50/50 p-4 dark:bg-neutral-900/50">
-                    {projectSkills.length === 0 ? (
-                      <div className="flex items-center justify-center gap-2 py-2 text-neutral-400 dark:text-neutral-500">
-                        <Inbox className="h-4 w-4 opacity-50" />
-                        <p className="text-xs">{t('skills.empty')}</p>
-                      </div>
-                    ) : (
-                      projectSkills.map((skill) => (
-                        <SkillCard
-                          key={skill.id}
-                          skill={skill}
-                          isReadOnly
-                          onToggle={handleToggle}
-                          onEdit={handleEdit}
-                        />
-                      ))
-                    )}
-                  </div>
-                </BrandAccordionContent>
-              </BrandAccordionItem>
+          {/* Skills List - scrollable with adaptive height */}
+          <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-4">
+            {/* No results state */}
+            {totalFiltered === 0 && (debouncedQuery || filterType !== 'all') ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-neutral-400 dark:text-neutral-500">
+                <Inbox className="h-8 w-8 opacity-40" />
+                <p className="text-sm">{t('skills.noResults') || 'No skills match your search'}</p>
+                {debouncedQuery && (
+                  <p className="text-xs text-neutral-300 dark:text-neutral-600">
+                    &quot;{debouncedQuery}&quot;
+                  </p>
+                )}
+              </div>
+            ) : (
+              <BrandAccordion type="multiple" defaultValue={defaultAccordionValues}>
+                {/* Project Skills */}
+                <SkillGroup
+                  value="project"
+                  icon={<FolderOpen className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />}
+                  label={t('skills.projectSkills')}
+                  skills={projectSkills}
+                  emptyHidden={projectSkills.length === 0 && (debouncedQuery !== '' || filterType !== 'all')}
+                  isReadOnly
+                  onToggle={handleToggle}
+                  onView={handleView}
+                  onEdit={handleEdit}
+                  emptyText={t('skills.empty')}
+                  t={t}
+                />
 
-              {/* User Skills */}
-              <BrandAccordionItem value="user">
-                <BrandAccordionTrigger className="rounded-t-lg px-4 py-3 hover:no-underline data-[state=open]:bg-neutral-50 dark:data-[state=open]:bg-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
-                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                      {t('skills.mySkills')}
-                    </span>
-                    <span className="text-xs text-neutral-400 dark:text-neutral-500">({userSkills.length})</span>
-                  </div>
-                </BrandAccordionTrigger>
-                <BrandAccordionContent className="pb-0 pt-0">
-                  <div className="space-y-2 rounded-b-lg bg-neutral-50/50 p-4 dark:bg-neutral-900/50">
-                    {userSkills.length === 0 ? (
-                      <div className="flex items-center justify-center gap-2 py-2 text-neutral-400 dark:text-neutral-500">
-                        <Inbox className="h-4 w-4 opacity-50" />
-                        <p className="text-xs">{t('skills.empty')}</p>
-                      </div>
-                    ) : (
-                      userSkills.map((skill) => (
-                        <SkillCard
-                          key={skill.id}
-                          skill={skill}
-                          onToggle={handleToggle}
-                          onEdit={handleEdit}
-                          onDelete={handleDelete}
-                        />
-                      ))
-                    )}
-                  </div>
-                </BrandAccordionContent>
-              </BrandAccordionItem>
+                {/* User Skills */}
+                <SkillGroup
+                  value="user"
+                  icon={<User className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />}
+                  label={t('skills.mySkills')}
+                  skills={userSkills}
+                  emptyHidden={userSkills.length === 0 && (debouncedQuery !== '' || filterType !== 'all')}
+                  onToggle={handleToggle}
+                  onView={handleView}
+                  onEdit={handleEdit}
+                  onDelete={(id) => {
+                    const skill = skillsStore.skills.find((s) => s.id === id)
+                    if (skill) {
+                      setDeleteTarget({ id, name: skill.name })
+                    }
+                  }}
+                  emptyText={t('skills.empty')}
+                  t={t}
+                />
 
-              {/* Builtin Skills */}
-              <BrandAccordionItem value="builtin">
-                <BrandAccordionTrigger className="rounded-t-lg px-4 py-3 hover:no-underline data-[state=open]:bg-neutral-50 dark:data-[state=open]:bg-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <Building className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
-                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                      {t('skills.builtinSkills')}
-                    </span>
-                    <span className="text-xs text-neutral-400 dark:text-neutral-500">({builtinSkills.length})</span>
-                  </div>
-                </BrandAccordionTrigger>
-                <BrandAccordionContent className="pb-0 pt-0">
-                  <div className="space-y-2 rounded-b-lg bg-neutral-50/50 p-4 dark:bg-neutral-900/50">
-                    {builtinSkills.length === 0 ? (
-                      <div className="flex items-center justify-center gap-2 py-2 text-neutral-400 dark:text-neutral-500">
-                        <Inbox className="h-4 w-4 opacity-50" />
-                        <p className="text-xs">{t('skills.empty')}</p>
-                      </div>
-                    ) : (
-                      builtinSkills.map((skill) => (
-                        <SkillCard
-                          key={skill.id}
-                          skill={skill}
-                          isReadOnly
-                          onToggle={handleToggle}
-                          onEdit={handleEdit}
-                        />
-                      ))
-                    )}
-                  </div>
-                </BrandAccordionContent>
-              </BrandAccordionItem>
-            </BrandAccordion>
+                {/* Builtin Skills */}
+                <SkillGroup
+                  value="builtin"
+                  icon={<Building className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />}
+                  label={t('skills.builtinSkills')}
+                  skills={builtinSkills}
+                  emptyHidden={builtinSkills.length === 0 && (debouncedQuery !== '' || filterType !== 'all')}
+                  isReadOnly
+                  onToggle={handleToggle}
+                  onView={handleView}
+                  onEdit={handleEdit}
+                  emptyText={t('skills.empty')}
+                  t={t}
+                />
+              </BrandAccordion>
+            )}
           </div>
 
           {/* Footer */}
-          <div className="flex h-16 shrink-0 items-center justify-between border-t border-neutral-200 px-6 dark:border-neutral-700">
+          <div className="flex h-14 shrink-0 items-center justify-between border-t border-neutral-200 px-6 dark:border-neutral-700">
             <span className="text-sm text-neutral-500 dark:text-neutral-400">
               <span className="font-medium text-neutral-700 dark:text-neutral-200">
-                {skillsStore.skills.filter((s) => s.enabled).length}
+                {enabledCount}
               </span>
               {' / '}
-              {skillsStore.skills.length} {t('skills.enabled').toLowerCase()}
+              {totalCount} {t('skills.enabled').toLowerCase()}
             </span>
             <div className="flex items-center gap-2">
               <BrandButton variant="outline" onClick={onClose}>
@@ -316,7 +325,127 @@ export function SkillsManager({ open, onClose, directoryHandle = null }: SkillsM
       </BrandDialog>
 
       {/* Skill Editor Dialog */}
-      <SkillEditor skill={editingSkill} open={editorOpen} onClose={handleEditorClose} />
+      <SkillEditor
+        skill={editingSkill}
+        open={editorOpen}
+        onClose={handleEditorClose}
+        readOnly={editorMode === 'view'}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <BrandDialog
+        open={deleteTarget !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setDeleteTarget(null)
+        }}
+      >
+        <BrandDialogContent className="max-w-sm p-0">
+          <div className="flex flex-col items-center gap-4 p-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/30">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                {t('skills.deleteTitle') || 'Delete Skill'}
+              </h3>
+              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                {(t('skills.deleteConfirmMessage') || 'Are you sure you want to delete "{name}"? This action cannot be undone.').replace('{name}', deleteTarget?.name || '')}
+              </p>
+            </div>
+            <div className="flex w-full gap-3">
+              <BrandButton
+                variant="outline"
+                className="flex-1"
+                onClick={() => setDeleteTarget(null)}
+              >
+                {t('common.cancel') || 'Cancel'}
+              </BrandButton>
+              <BrandButton
+                variant="danger"
+                className="flex-1"
+                onClick={handleDeleteConfirm}
+              >
+                {t('skills.deleteConfirm') || 'Delete'}
+              </BrandButton>
+            </div>
+          </div>
+        </BrandDialogContent>
+      </BrandDialog>
     </>
+  )
+}
+
+// ============================================================================
+// SkillGroup - Renders a group of skills in an accordion section
+// ============================================================================
+
+interface SkillGroupProps {
+  value: string
+  icon: React.ReactNode
+  label: string
+  skills: SkillMetadata[]
+  /** Hide entire group when empty and searching/filtering */
+  emptyHidden: boolean
+  isReadOnly?: boolean
+  onToggle: (id: string, enabled: boolean) => void
+  onView: (skill: SkillMetadata) => void
+  onEdit: (skill: SkillMetadata) => void
+  onDelete?: (id: string) => void
+  emptyText: string
+  t: (key: string) => string
+}
+
+function SkillGroup({
+  value,
+  icon,
+  label,
+  skills,
+  emptyHidden,
+  isReadOnly,
+  onToggle,
+  onView,
+  onEdit,
+  onDelete,
+  emptyText,
+}: SkillGroupProps) {
+  // Hide empty groups when user is actively searching/filtering
+  if (emptyHidden && skills.length === 0) {
+    return null
+  }
+
+  return (
+    <BrandAccordionItem value={value}>
+      <BrandAccordionTrigger className="rounded-t-lg px-4 py-3 hover:no-underline data-[state=open]:bg-neutral-50 dark:data-[state=open]:bg-neutral-800">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            {label}
+          </span>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">({skills.length})</span>
+        </div>
+      </BrandAccordionTrigger>
+      <BrandAccordionContent className="pb-0 pt-0">
+        <div className="space-y-2 rounded-b-lg bg-neutral-50/50 p-4 dark:bg-neutral-900/50">
+          {skills.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-neutral-400 dark:text-neutral-500">
+              <Inbox className="h-4 w-4 opacity-50" />
+              <p className="text-xs">{emptyText}</p>
+            </div>
+          ) : (
+            skills.map((skill) => (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                isReadOnly={isReadOnly}
+                onToggle={onToggle}
+                onView={onView}
+                onEdit={isReadOnly ? onView : onEdit}
+                onDelete={onDelete}
+              />
+            ))
+          )}
+        </div>
+      </BrandAccordionContent>
+    </BrandAccordionItem>
   )
 }
