@@ -721,7 +721,7 @@ export function AgentRichInput({
           }
         }}
       />
-      <div className="focus-within:border-primary-400 focus-within:ring-primary-400/20 w-full rounded-xl border border-neutral-300 bg-white px-5 py-4 pr-14 text-sm text-neutral-900 shadow-sm transition-all hover:border-neutral-400 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-offset-1 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:border-neutral-500 dark:focus-within:bg-neutral-900 dark:focus-within:border-primary-500">
+      <div className="focus-within:border-primary-400 focus-within:ring-primary-400/20 w-full rounded-xl border border-neutral-300 bg-white pl-11 pr-14 py-4 text-sm text-neutral-900 shadow-sm transition-all hover:border-neutral-400 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-offset-1 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:border-neutral-500 dark:focus-within:bg-neutral-900 dark:focus-within:border-primary-500">
         {editor && (
           <>
             {selectedFiles.length > 0 && (
@@ -802,7 +802,7 @@ export function AgentRichInput({
         )}
         {!isFocused && isEmpty && (
           <div
-            className={`pointer-events-none absolute left-5 pr-16 text-sm text-neutral-400 dark:text-neutral-500 ${selectedFiles.length > 0 ? 'top-12' : 'top-4'}`}
+            className={`pointer-events-none absolute left-11 pr-16 text-sm text-neutral-400 dark:text-neutral-500 ${selectedFiles.length > 0 ? 'top-12' : 'top-4'}`}
           >
             {placeholder}
           </div>
