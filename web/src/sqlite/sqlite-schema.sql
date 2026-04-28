@@ -11,7 +11,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 -- ============================================================================
 -- Projects Table (top-level container for workspaces)
@@ -52,13 +52,31 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New Chat',
     title_mode TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual'
-    messages_json TEXT NOT NULL DEFAULT '[]',
+    messages_json TEXT NOT NULL DEFAULT '[]',  -- legacy rollback safety net, no longer read in normal path
     context_usage_json TEXT,               -- JSON object for context window usage
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000)
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
+
+-- ============================================================================
+-- Messages Table (independent message storage per conversation)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content_json TEXT NOT NULL DEFAULT 'null',
+    meta_json TEXT,
+    timestamp INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages(conversation_id, seq);
+CREATE INDEX IF NOT EXISTS idx_messages_conv_ts ON messages(conversation_id, timestamp);
 
 -- ============================================================================
 -- Subagent Tasks Table

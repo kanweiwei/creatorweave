@@ -48,7 +48,7 @@ function canRecoverMigrationError(migration: Migration, error: unknown): boolean
 
 
 // Base schema version
-export const BASE_SCHEMA_VERSION = 4
+export const BASE_SCHEMA_VERSION = 5
 
 // ============================================================================
 // Migration Registry
@@ -86,6 +86,28 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_custom_workflows_name_lower ON custom_workflows(lower(name));
 
       PRAGMA user_version = 4;
+    `,
+  },
+  {
+    version: 5,
+    name: 'extract_messages_to_independent_table',
+    up: `
+      CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content_json TEXT NOT NULL DEFAULT 'null',
+          meta_json TEXT,
+          timestamp INTEGER NOT NULL,
+          seq INTEGER NOT NULL,
+          created_at INTEGER NOT NULL DEFAULT (strftime('%s', 's') * 1000),
+          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages(conversation_id, seq);
+      CREATE INDEX IF NOT EXISTS idx_messages_conv_ts ON messages(conversation_id, timestamp);
+
+      PRAGMA user_version = 5;
     `,
   },
 ]

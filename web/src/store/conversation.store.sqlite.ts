@@ -460,7 +460,7 @@ import {
   runWorkflowTemplateDryRun,
 } from '@/agent/workflow/dry-run'
 import { getWorkflowTemplateBundle, listWorkflowTemplateBundles } from '@/agent/workflow/templates'
-import { getConversationRepository, initSQLiteDB } from '@/sqlite'
+import { getConversationRepository, getMessageRepository, getSQLiteDB, initSQLiteDB } from '@/sqlite'
 import { useSettingsStore } from './settings.store'
 import { getCurrentWorkspaceAgentMode } from './workspace-preferences.store'
 import type { SubagentTaskNotification } from '@/agent/tools/tool-types'
@@ -471,29 +471,48 @@ import type { SubagentTaskNotification } from '@/agent/tools/tool-types'
 // Persistence Functions (SQLite)
 //=============================================================================
 
-/** Persist a conversation to SQLite */
-async function persistConversation(conversation: Conversation): Promise<void> {
+/** Append a single new message via MessageRepository */
+async function persistNewMessage(convId: string, message: Message, seq: number): Promise<void> {
+  const msgRepo = getMessageRepository()
+  const convRepo = getConversationRepository()
+  await msgRepo.insert(convId, message, seq)
+  await convRepo.touch(convId)
+}
+
+/** Replace all messages for a conversation via MessageRepository */
+async function persistMessageReplace(convId: string, messages: Message[]): Promise<void> {
+  const msgRepo = getMessageRepository()
+  const convRepo = getConversationRepository()
+  await msgRepo.replaceAll(convId, messages)
+  await convRepo.touch(convId)
+}
+
+/** Persist only conversation metadata (title, contextUsage, etc.) — no messages */
+async function persistConversationMeta(conversation: Conversation): Promise<void> {
   const repo = getConversationRepository()
-  await repo.save({
+  await repo.saveMeta({
     id: conversation.id,
     title: conversation.title,
     titleMode: conversation.titleMode || 'manual',
-    messages: conversation.messages,
-    lastContextWindowUsage: conversation.lastContextWindowUsage || null,
+    contextUsage: conversation.lastContextWindowUsage || null,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   })
 }
 
-/** Load all conversations from SQLite */
-async function loadConversations(): Promise<Conversation[]> {
+/** Load all conversation metadata from SQLite (without messages) */
+async function loadConversationsMeta(): Promise<Conversation[]> {
   const repo = getConversationRepository()
-  const stored = await repo.findAll()
-  // Add runtime state to each stored conversation
-  return stored.map((conv) => ({
-    ...conv,
-    titleMode: conv.titleMode || 'manual',
-    messages: conv.messages as Message[],
+  const metas = await repo.findAllMeta()
+  // Create Conversation objects with empty messages (loaded on demand)
+  return metas.map((meta) => ({
+    id: meta.id,
+    title: meta.title,
+    titleMode: meta.titleMode || 'manual',
+    messages: [] as Message[], // Messages loaded lazily when conversation is opened
+    lastContextWindowUsage: meta.lastContextWindowUsage || null,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
     status: 'idle' as const,
     streamingContent: '',
     streamingReasoning: '',
@@ -509,13 +528,11 @@ async function loadConversations(): Promise<Conversation[]> {
     activeRunId: null,
     runEpoch: 0,
     draftAssistant: null,
-    contextWindowUsage: conv.lastContextWindowUsage || null,
-    lastContextWindowUsage: conv.lastContextWindowUsage || null,
+    contextWindowUsage: meta.lastContextWindowUsage || null,
     mountRefCount: 0,
     compressionConvertCallCount: 0,
     compressionLastSummaryConvertCall: Number.NEGATIVE_INFINITY,
     collectedAssets: [],
-    // Runtime state - read from workspace-preferences (workspace-level isolation)
     agentMode: getCurrentWorkspaceAgentMode(),
   }))
 }
@@ -810,8 +827,37 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       try {
         // Initialize SQLite first
         await initSQLiteDB()
+        // Force one legacy message migration pass in main thread.
+        // This repairs cases where worker-side migration was skipped in previous versions.
+        try {
+          const msgRepo = getMessageRepository()
+          const migrated = await msgRepo.migrateFromJsonBlob()
+          if (migrated.messages > 0) {
+            console.log(
+              `[conversation.store] Recovered ${migrated.messages} legacy messages across ${migrated.conversations} conversations`
+            )
+          }
+          const db = getSQLiteDB()
+          const missingConversations = await db.queryFirst<{ count: number }>(
+            `SELECT COUNT(*) as count
+             FROM conversations c
+             WHERE NOT EXISTS (
+               SELECT 1 FROM messages m WHERE m.conversation_id = c.id LIMIT 1
+             )`
+          )
+          if ((missingConversations?.count ?? 0) > 0) {
+            const recovered = await msgRepo.recoverFromAppSessions()
+            if (recovered.messages > 0) {
+              console.log(
+                `[conversation.store] Recovered ${recovered.messages} messages from AppSessions (${recovered.conversations} conversations, ${recovered.sessions} snapshots)`
+              )
+            }
+          }
+        } catch (migrationError) {
+          console.warn('[conversation.store] Legacy message migration pass failed:', migrationError)
+        }
 
-        const conversations = await loadConversations()
+        const conversations = await loadConversationsMeta()
 
         // Ensure OPFS conversations exist for all loaded conversations
         const { getWorkspaceManager } = await import('@/opfs')
@@ -886,6 +932,22 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           state.loaded = true
           state.suggestedFollowUps.clear()
         })
+
+        // Load messages for the active conversation (it's about to be displayed)
+        if (activeId) {
+          try {
+            const msgRepo = getMessageRepository()
+            const activeMessages = await msgRepo.findByConversation(activeId)
+            set((state) => {
+              const conv = state.conversations.find((c) => c.id === activeId)
+              if (conv) {
+                conv.messages = activeMessages as Message[]
+              }
+            })
+          } catch (error) {
+            console.error('[conversation.store] Failed to load messages for active conversation:', error)
+          }
+        }
       } catch (error) {
         console.error('[conversation.store] Failed to load conversations:', error)
         set((state) => {
@@ -900,7 +962,8 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         state.conversations.unshift(conversation)
         state.activeConversationId = conversation.id
       })
-      persistConversation(conversation).catch((error) => {
+      // Persist metadata (creates the conversation row) + empty messages
+      persistConversationMeta(conversation).catch((error) => {
         console.error('[conversation.store] Failed to persist new conversation:', error)
         toast.error('对话保存失败，刷新页面后可能丢失')
       })
@@ -921,6 +984,23 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       })
 
       if (id) {
+        // Lazy-load messages if not already loaded
+        const conv = get().conversations.find((c) => c.id === id)
+        if (conv && conv.messages.length === 0) {
+          try {
+            const msgRepo = getMessageRepository()
+            const messages = await msgRepo.findByConversation(id)
+            set((state) => {
+              const c = state.conversations.find((c) => c.id === id)
+              if (c && c.messages.length === 0) {
+                c.messages = messages as Message[]
+              }
+            })
+          } catch (error) {
+            console.error('[conversation.store] Failed to load messages for conversation:', error)
+          }
+        }
+
         const workspaceStore = useConversationContextStore.getState()
         if (workspaceStore.activeWorkspaceId !== id) {
           workspaceStore.switchWorkspace(id).catch((e) => {
@@ -948,11 +1028,18 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         }
       })
       const conv = get().conversations.find((c) => c.id === conversationId)
-      if (conv)
-        persistConversation(conv).catch((error) => {
+      if (conv) {
+        // Persist the new message
+        const seq = conv.messages.indexOf(message)
+        persistNewMessage(conversationId, message, seq).catch((error) => {
           console.error('[conversation.store] Failed to persist conversation on addMessage:', error)
           toast.error('消息保存失败')
         })
+        // If title was auto-generated, also persist metadata
+        if (conv.titleMode === 'auto' && message.role === 'user') {
+          persistConversationMeta(conv).catch(() => {})
+        }
+      }
     },
 
     updateMessages: (conversationId, messages) => {
@@ -980,14 +1067,19 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         }
       })
       const conv = get().conversations.find((c) => c.id === conversationId)
-      if (conv)
-        persistConversation(conv).catch((error) => {
+      if (conv) {
+        persistMessageReplace(conversationId, conv.messages).catch((error) => {
           console.error(
             '[conversation.store] Failed to persist conversation on updateMessages:',
             error
           )
           toast.error('消息更新保存失败')
         })
+        // If title was auto-updated, persist metadata too
+        if (conv.titleMode === 'auto') {
+          persistConversationMeta(conv).catch(() => {})
+        }
+      }
     },
 
     deleteUserMessage: (conversationId, userMessageId) => {
@@ -1011,14 +1103,15 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
       if (!deleted) return false
       const conv = get().conversations.find((c) => c.id === conversationId)
-      if (conv)
-        persistConversation(conv).catch((error) => {
+      if (conv) {
+        persistMessageReplace(conversationId, conv.messages).catch((error) => {
           console.error(
             '[conversation.store] Failed to persist conversation on deleteUserMessage:',
             error
           )
           toast.error('删除消息失败')
         })
+      }
       return true
     },
 
@@ -1052,14 +1145,15 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
       if (!deleted) return false
       const conv = get().conversations.find((c) => c.id === conversationId)
-      if (conv)
-        persistConversation(conv).catch((error) => {
+      if (conv) {
+        persistMessageReplace(conversationId, conv.messages).catch((error) => {
           console.error(
             '[conversation.store] Failed to persist conversation on deleteAgentLoop:',
             error
           )
           toast.error('删除对话轮次失败')
         })
+      }
       return true
     },
 
@@ -1107,7 +1201,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       // 持久化
       const updatedConv = get().conversations.find((c) => c.id === conversationId)
       if (updatedConv) {
-        persistConversation(updatedConv).catch((error) => {
+        persistMessageReplace(conversationId, updatedConv.messages).catch((error) => {
           console.error('[conversation.store] Failed to persist on regenerate:', error)
         })
       }
@@ -1174,7 +1268,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       // 持久化
       const updatedConv = get().conversations.find((c) => c.id === conversationId)
       if (updatedConv) {
-        persistConversation(updatedConv).catch((error) => {
+        persistMessageReplace(conversationId, updatedConv.messages).catch((error) => {
           console.error('[conversation.store] Failed to persist on editAndResend:', error)
         })
       }
@@ -1284,7 +1378,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
       })
       const conv = get().conversations.find((c) => c.id === id)
       if (conv)
-        persistConversation(conv).catch((error) => {
+        persistConversationMeta(conv).catch((error) => {
           console.error(
             '[conversation.store] Failed to persist conversation on updateTitle:',
             error
@@ -1394,7 +1488,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         const persistAfterBlockComplete = () => {
           const current = get().conversations.find((c) => c.id === conversationId)
           if (!current) return
-          persistConversation(current).catch((err) => {
+          persistMessageReplace(conversationId, current.messages).catch((err) => {
             console.warn('[conversation.store] Block-complete persist failed:', err)
           })
         }
@@ -1469,7 +1563,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           emitComplete()
           const finalConv = get().conversations.find((c) => c.id === conversationId)
           if (finalConv) {
-            persistConversation(finalConv).catch((err) => {
+            persistMessageReplace(conversationId, finalConv.messages).catch((err) => {
               console.error('[conversation.store] Failed to persist workflow dry-run:', err)
               toast.error('对话保存失败，部分内容可能丢失')
             })
@@ -1733,7 +1827,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               emitComplete()
               const finalConv = get().conversations.find((c) => c.id === conversationId)
               if (finalConv) {
-                persistConversation(finalConv).catch((err) => {
+                persistMessageReplace(conversationId, finalConv.messages).catch((err) => {
                   console.error('[conversation.store] Failed to persist workflow real-run:', err)
                   toast.error('对话保存失败，部分内容可能丢失')
                 })
@@ -1913,7 +2007,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             })
             const snapshot = get().conversations.find((c) => c.id === conversationId)
             if (snapshot) {
-              void persistConversation(snapshot)
+              void persistMessageReplace(conversationId, snapshot.messages)
             }
           },
         })
@@ -2067,7 +2161,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             emitComplete()
             const finalConv = get().conversations.find((c) => c.id === conversationId)
             if (finalConv)
-              persistConversation(finalConv).catch((err) => {
+              persistMessageReplace(conversationId, finalConv.messages).catch((err) => {
                 console.error(
                   '[conversation.store] Failed to persist conversation on complete:',
                   err
@@ -2778,7 +2872,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         if (committedPartial) {
           const conv = get().conversations.find((c) => c.id === conversationId)
           if (conv)
-            persistConversation(conv).catch((error) => {
+            persistMessageReplace(conversationId, conv.messages).catch((error) => {
               console.error(
                 '[conversation.store] Failed to persist conversation on cancelAgent partial commit:',
                 error

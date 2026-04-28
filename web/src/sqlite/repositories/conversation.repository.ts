@@ -1,7 +1,8 @@
 /**
  * Conversation Repository
  *
- * SQLite-based storage for conversations (chat history)
+ * SQLite-based storage for conversations (metadata only).
+ * Messages are stored in the independent `messages` table via MessageRepository.
  */
 
 import { getSQLiteDB, type ConversationRow, parseJSON, toJSON } from '../sqlite-database'
@@ -11,7 +12,17 @@ export interface StoredConversation {
   id: string
   title: string
   titleMode?: 'auto' | 'manual'
-  messages: unknown[] // Message[]
+  messages: unknown[] // Message[] — populated by MessageRepository, not this table
+  lastContextWindowUsage?: ContextWindowUsage | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** Lightweight conversation metadata without messages */
+export interface ConversationMeta {
+  id: string
+  title: string
+  titleMode?: 'auto' | 'manual'
   lastContextWindowUsage?: ContextWindowUsage | null
   createdAt: number
   updatedAt: number
@@ -23,47 +34,54 @@ export interface StoredConversation {
 
 export class ConversationRepository {
   /**
-   * Get all conversations ordered by updated_at desc
+   * Get all conversations metadata (without messages) ordered by updated_at desc.
+   * Messages must be loaded separately via MessageRepository.findByConversation().
    */
-  async findAll(): Promise<StoredConversation[]> {
+  async findAll(): Promise<ConversationMeta[]> {
     const db = getSQLiteDB()
-    const rows = await db.queryAll<ConversationRow>(
-      'SELECT id, title, title_mode, messages_json, context_usage_json, created_at, updated_at FROM conversations ORDER BY updated_at DESC'
+    const rows = await db.queryAll<Pick<ConversationRow, 'id' | 'title' | 'title_mode' | 'context_usage_json' | 'created_at' | 'updated_at'>>(
+      'SELECT id, title, title_mode, context_usage_json, created_at, updated_at FROM conversations ORDER BY updated_at DESC'
     )
-    return rows.map((row) => this.rowToConversation(row))
+    return rows.map((row) => this.rowToMeta(row))
   }
 
   /**
-   * Find conversation by ID
+   * Alias for findAll() — returns conversation metadata.
    */
-  async findById(id: string): Promise<StoredConversation | null> {
+  async findAllMeta(): Promise<ConversationMeta[]> {
+    return this.findAll()
+  }
+
+  /**
+   * Find conversation metadata by ID (without messages).
+   */
+  async findById(id: string): Promise<ConversationMeta | null> {
     const db = getSQLiteDB()
-    const row = await db.queryFirst<ConversationRow>(
-      'SELECT id, title, title_mode, messages_json, context_usage_json, created_at, updated_at FROM conversations WHERE id = ?',
+    const row = await db.queryFirst<Pick<ConversationRow, 'id' | 'title' | 'title_mode' | 'context_usage_json' | 'created_at' | 'updated_at'>>(
+      'SELECT id, title, title_mode, context_usage_json, created_at, updated_at FROM conversations WHERE id = ?',
       [id]
     )
-    return row ? this.rowToConversation(row) : null
+    return row ? this.rowToMeta(row) : null
   }
 
   /**
-   * Insert or update a conversation
+   * Insert or update conversation metadata (no messages).
+   * Messages are managed by MessageRepository.
    */
   async save(conversation: StoredConversation): Promise<void> {
     const db = getSQLiteDB()
     await db.execute(
-      `INSERT INTO conversations (id, title, title_mode, messages_json, context_usage_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO conversations (id, title, title_mode, context_usage_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          title_mode = excluded.title_mode,
-         messages_json = excluded.messages_json,
          context_usage_json = excluded.context_usage_json,
          updated_at = excluded.updated_at`,
       [
         conversation.id,
         conversation.title,
         conversation.titleMode || 'manual',
-        toJSON(conversation.messages),
         toJSON(conversation.lastContextWindowUsage || null),
         conversation.createdAt,
         conversation.updatedAt,
@@ -72,7 +90,8 @@ export class ConversationRepository {
   }
 
   /**
-   * Delete a conversation by ID
+   * Delete a conversation by ID.
+   * Messages are cascade-deleted via FOREIGN KEY ON DELETE CASCADE.
    */
   async delete(id: string): Promise<void> {
     const db = getSQLiteDB()
@@ -99,14 +118,14 @@ export class ConversationRepository {
   }
 
   /**
-   * Get most recently updated conversation
+   * Get most recently updated conversation metadata
    */
-  async findMostRecent(): Promise<StoredConversation | null> {
+  async findMostRecent(): Promise<ConversationMeta | null> {
     const db = getSQLiteDB()
-    const row = await db.queryFirst<ConversationRow>(
-      'SELECT id, title, title_mode, messages_json, context_usage_json, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT 1'
+    const row = await db.queryFirst<Pick<ConversationRow, 'id' | 'title' | 'title_mode' | 'context_usage_json' | 'created_at' | 'updated_at'>>(
+      'SELECT id, title, title_mode, context_usage_json, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT 1'
     )
-    return row ? this.rowToConversation(row) : null
+    return row ? this.rowToMeta(row) : null
   }
 
   /**
@@ -114,30 +133,60 @@ export class ConversationRepository {
    */
   async updateTitle(id: string, title: string): Promise<void> {
     const db = getSQLiteDB()
-    await db.execute('UPDATE conversations SET title = ? WHERE id = ?', [title, id])
+    await db.execute('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?', [title, Date.now(), id])
   }
 
   /**
-   * Update conversation messages
+   * Touch conversation's updated_at timestamp without changing other fields.
+   * Used after message-level operations via MessageRepository.
    */
-  async updateMessages(id: string, messages: unknown[]): Promise<void> {
+  async touch(id: string): Promise<void> {
     const db = getSQLiteDB()
-    await db.execute('UPDATE conversations SET messages_json = ?, updated_at = ? WHERE id = ?', [
-      toJSON(messages),
-      Date.now(),
-      id,
-    ])
+    await db.execute('UPDATE conversations SET updated_at = ? WHERE id = ?', [Date.now(), id])
   }
 
   /**
-   * Convert database row to domain object
+   * Save only the metadata fields (no messages).
+   * Used by persistConversationMeta().
    */
-  private rowToConversation(row: ConversationRow): StoredConversation {
+  async saveMeta(meta: {
+    id: string
+    title: string
+    titleMode?: 'auto' | 'manual'
+    contextUsage?: ContextWindowUsage | null
+    createdAt: number
+    updatedAt: number
+  }): Promise<void> {
+    const db = getSQLiteDB()
+    await db.execute(
+      `INSERT INTO conversations (id, title, title_mode, context_usage_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         title_mode = excluded.title_mode,
+         context_usage_json = excluded.context_usage_json,
+         updated_at = excluded.updated_at`,
+      [
+        meta.id,
+        meta.title,
+        meta.titleMode || 'manual',
+        toJSON(meta.contextUsage || null),
+        meta.createdAt,
+        meta.updatedAt,
+      ]
+    )
+  }
+
+  /**
+   * Convert database row to metadata (no messages)
+   */
+  private rowToMeta(
+    row: Pick<ConversationRow, 'id' | 'title' | 'title_mode' | 'context_usage_json' | 'created_at' | 'updated_at'>
+  ): ConversationMeta {
     return {
       id: row.id,
       title: row.title,
       titleMode: row.title_mode === 'auto' ? 'auto' : 'manual',
-      messages: parseJSON(row.messages_json, []),
       lastContextWindowUsage: parseJSON(row.context_usage_json || '', null),
       createdAt: row.created_at,
       updatedAt: row.updated_at,

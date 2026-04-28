@@ -41,6 +41,7 @@ export {
   getConversationRepository,
 } from './repositories/conversation.repository'
 export type { StoredConversation } from './repositories/conversation.repository'
+export { MessageRepository, getMessageRepository } from './repositories/message.repository'
 
 export { SkillRepository, getSkillRepository } from './repositories/skill.repository'
 export type { StoredSkill, SkillMetadata } from '@/skills/skill-types'

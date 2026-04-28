@@ -125,7 +125,9 @@ function hasMeaningfulData(dbHandle: any): boolean {
 }
 
 function copyTableRows(sourceDb: any, targetDb: any, tableName: string): number {
-  const columns = getTableColumns(sourceDb, tableName)
+  const sourceColumns = getTableColumns(sourceDb, tableName)
+  const targetColumns = new Set(getTableColumns(targetDb, tableName))
+  const columns = sourceColumns.filter((column) => targetColumns.has(column))
   if (columns.length === 0) return 0
 
   const quotedTable = quoteSQLiteIdentifier(tableName)
@@ -178,6 +180,156 @@ function copyAllUserTables(sourceDb: any, targetDb: any): number {
   return totalCopied
 }
 
+/**
+ * Migrate messages from conversations.messages_json to the independent messages table.
+ * This runs inside the worker thread after schema migration.
+ * Idempotent: inserts are de-duplicated by message id.
+ */
+async function migrateMessagesFromJsonBlob(dbHandle: any): Promise<void> {
+  try {
+    // Ensure messages table exists
+    try {
+      const stmt = dbHandle.prepare('SELECT COUNT(*) as count FROM messages')
+      stmt.finalize()
+    } catch {
+      console.log('[SQLite Worker] messages table not found, skipping message migration')
+      return
+    }
+
+    const legacyColumnStmt = dbHandle.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('conversations') WHERE name='messages_json'"
+    )
+    let hasLegacyColumn = false
+    if (legacyColumnStmt.step()) {
+      const row = legacyColumnStmt.get({}) as { count: number }
+      hasLegacyColumn = Number(row.count || 0) > 0
+    }
+    legacyColumnStmt.finalize()
+    if (!hasLegacyColumn) {
+      console.log('[SQLite Worker] Message migration skipped: conversations.messages_json does not exist')
+      return
+    }
+
+    // Migrate all conversations with legacy payload; per-conversation inserts are idempotent.
+    const pendingCountStmt = dbHandle.prepare(
+      `SELECT COUNT(*) as count
+       FROM conversations c
+       WHERE COALESCE(c.messages_json, '[]') != '[]'`
+    )
+    let pendingConversations = 0
+    if (pendingCountStmt.step()) {
+      const row = pendingCountStmt.get({}) as { count: number }
+      pendingConversations = Number(row.count || 0)
+    }
+    pendingCountStmt.finalize()
+    if (pendingConversations === 0) return
+
+    // Read pending conversations' messages_json
+    const rows: Array<{ id: string; messages_json: string }> = []
+    const selectStmt = dbHandle.prepare(
+      `SELECT c.id, c.messages_json
+       FROM conversations c
+       WHERE COALESCE(c.messages_json, '[]') != '[]'`
+    )
+    try {
+      while (selectStmt.step()) {
+        const row = selectStmt.get({}) as { id: string; messages_json: string }
+        rows.push(row)
+      }
+    } finally {
+      selectStmt.finalize()
+    }
+
+    if (rows.length === 0) return
+
+    let totalMessages = 0
+    let totalConversations = 0
+
+    for (const row of rows) {
+      let messages: any[]
+      try {
+        messages = JSON.parse(row.messages_json || '[]')
+      } catch {
+        console.warn(`[SQLite Worker] Skipping malformed messages_json for conversation ${row.id}`)
+        continue
+      }
+      if (!Array.isArray(messages) || messages.length === 0) continue
+
+      // Insert messages in a transaction per conversation
+      dbHandle.exec('BEGIN TRANSACTION')
+      try {
+        const beforeStmt = dbHandle.prepare(
+          'SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?'
+        )
+        beforeStmt.bind(1, row.id)
+        let beforeCount = 0
+        if (beforeStmt.step()) {
+          const before = beforeStmt.get({}) as { count: number }
+          beforeCount = Number(before.count || 0)
+        }
+        beforeStmt.finalize()
+
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i]
+          if (!msg || !msg.id) continue
+
+          const contentJson = JSON.stringify(msg.content ?? null)
+          const meta: Record<string, unknown> = {}
+          let hasMeta = false
+          const metaFields = [
+            'kind', 'workflowDryRun', 'workflowRealRun', 'reasoning',
+            'toolCalls', 'toolCallId', 'name', 'usage', 'assets',
+          ] as const
+          for (const field of metaFields) {
+            if (msg[field] !== undefined) {
+              meta[field] = msg[field]
+              hasMeta = true
+            }
+          }
+          const metaJson = hasMeta ? JSON.stringify(meta) : null
+
+          dbHandle.exec({
+            sql: `INSERT OR IGNORE INTO messages (id, conversation_id, role, content_json, meta_json, timestamp, seq, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            bind: [msg.id, row.id, msg.role, contentJson, metaJson, msg.timestamp, i, msg.timestamp || Date.now()],
+          })
+        }
+        const afterStmt = dbHandle.prepare(
+          'SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?'
+        )
+        afterStmt.bind(1, row.id)
+        let afterCount = beforeCount
+        if (afterStmt.step()) {
+          const after = afterStmt.get({}) as { count: number }
+          afterCount = Number(after.count || 0)
+        }
+        afterStmt.finalize()
+
+        dbHandle.exec('COMMIT')
+        const added = Math.max(0, afterCount - beforeCount)
+        if (added > 0) {
+          totalMessages += added
+          totalConversations++
+        }
+      } catch (error) {
+        try { dbHandle.exec('ROLLBACK') } catch { /* ignore */ }
+        console.error(`[SQLite Worker] Message migration failed for conversation ${row.id}:`, error)
+        // Continue with other conversations instead of failing completely
+      }
+    }
+
+    if (totalMessages > 0) {
+      console.log(
+        `[SQLite Worker] Message migration complete: ${totalMessages} messages from ${totalConversations} conversations`
+      )
+    }
+
+    // Keep legacy messages_json as rollback safety net (read path no longer depends on it).
+  } catch (error) {
+    console.error('[SQLite Worker] Message migration error:', error)
+  }
+}
+
 async function migrateFromLegacySahpoolIfNeeded(currentDb: any): Promise<void> {
   if (ENABLE_OPFS_SAHPOOL) return
   if (hasMeaningfulData(currentDb)) return
@@ -196,6 +348,157 @@ async function migrateFromLegacySahpoolIfNeeded(currentDb: any): Promise<void> {
     )
   } catch (error) {
     console.warn('[SQLite Worker] Legacy SAH pool migration skipped:', error)
+  } finally {
+    if (legacyDb) {
+      try {
+        legacyDb.close()
+      } catch {
+        // Ignore close errors in migration path.
+      }
+    }
+  }
+}
+
+async function backfillLegacyMessagesFromSahpoolIfNeeded(currentDb: any): Promise<void> {
+  if (ENABLE_OPFS_SAHPOOL) return
+  if (typeof sqlite3?.installOpfsSAHPoolVfs !== 'function') return
+
+  let legacyPool: any = null
+  let legacyDb: any = null
+  try {
+    legacyPool = await sqlite3.installOpfsSAHPoolVfs(POOL_CONFIG)
+    legacyDb = new legacyPool.OpfsSAHPoolDb(DB_NAME, 'c')
+    if (!hasMeaningfulData(legacyDb)) return
+
+    const legacyColumnStmt = legacyDb.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('conversations') WHERE name='messages_json'"
+    )
+    let hasLegacyMessagesColumn = false
+    if (legacyColumnStmt.step()) {
+      const row = legacyColumnStmt.get({}) as { count: number }
+      hasLegacyMessagesColumn = Number(row.count || 0) > 0
+    }
+    legacyColumnStmt.finalize()
+    if (!hasLegacyMessagesColumn) return
+
+    const rows: Array<{
+      id: string
+      title: string
+      title_mode?: string
+      context_usage_json?: string | null
+      created_at: number
+      updated_at: number
+      messages_json: string
+    }> = []
+
+    const selectStmt = legacyDb.prepare(
+      `SELECT id, title, title_mode, context_usage_json, created_at, updated_at, messages_json
+       FROM conversations
+       WHERE COALESCE(messages_json, '[]') != '[]'`
+    )
+    try {
+      while (selectStmt.step()) {
+        rows.push(selectStmt.get({}) as any)
+      }
+    } finally {
+      selectStmt.finalize()
+    }
+    if (rows.length === 0) return
+
+    let backfilledConversations = 0
+    let backfilledMessages = 0
+    for (const row of rows) {
+      let messages: any[] = []
+      try {
+        messages = JSON.parse(row.messages_json || '[]')
+      } catch {
+        continue
+      }
+      if (!Array.isArray(messages) || messages.length === 0) continue
+
+      const existingStmt = currentDb.prepare(
+        'SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?'
+      )
+      existingStmt.bind(1, row.id)
+      let existingCount = 0
+      if (existingStmt.step()) {
+        const existingRow = existingStmt.get({}) as { count: number }
+        existingCount = Number(existingRow.count || 0)
+      }
+      existingStmt.finalize()
+      if (existingCount >= messages.length) continue
+
+      currentDb.exec('BEGIN TRANSACTION')
+      try {
+        currentDb.exec({
+          sql: `INSERT INTO conversations (id, title, title_mode, context_usage_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  title = excluded.title,
+                  title_mode = excluded.title_mode,
+                  context_usage_json = excluded.context_usage_json,
+                  updated_at = excluded.updated_at`,
+          bind: [
+            row.id,
+            row.title || 'New Chat',
+            row.title_mode || 'manual',
+            row.context_usage_json || null,
+            row.created_at || Date.now(),
+            row.updated_at || Date.now(),
+          ],
+        })
+
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i]
+          if (!msg || !msg.id) continue
+
+          const contentJson = JSON.stringify(msg.content ?? null)
+          const meta: Record<string, unknown> = {}
+          let hasMeta = false
+          const metaFields = [
+            'kind', 'workflowDryRun', 'workflowRealRun', 'reasoning',
+            'toolCalls', 'toolCallId', 'name', 'usage', 'assets',
+          ] as const
+          for (const field of metaFields) {
+            if (msg[field] !== undefined) {
+              meta[field] = msg[field]
+              hasMeta = true
+            }
+          }
+          const metaJson = hasMeta ? JSON.stringify(meta) : null
+          currentDb.exec({
+            sql: `INSERT OR IGNORE INTO messages (id, conversation_id, role, content_json, meta_json, timestamp, seq, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            bind: [msg.id, row.id, msg.role, contentJson, metaJson, msg.timestamp, i, msg.timestamp || Date.now()],
+          })
+        }
+
+        const addedStmt = currentDb.prepare(
+          'SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?'
+        )
+        addedStmt.bind(1, row.id)
+        let finalCount = existingCount
+        if (addedStmt.step()) {
+          const rowCount = addedStmt.get({}) as { count: number }
+          finalCount = Number(rowCount.count || 0)
+        }
+        addedStmt.finalize()
+        backfilledMessages += Math.max(0, finalCount - existingCount)
+
+        currentDb.exec('COMMIT')
+        backfilledConversations++
+      } catch {
+        try { currentDb.exec('ROLLBACK') } catch { /* ignore */ }
+      }
+    }
+
+    if (backfilledConversations > 0) {
+      console.warn(
+        `[SQLite Worker] Backfilled ${backfilledMessages} messages from legacy SAH pool for ${backfilledConversations} conversations`
+      )
+    }
+  } catch (error) {
+    console.warn('[SQLite Worker] Legacy message backfill skipped:', error)
   } finally {
     if (legacyDb) {
       try {
@@ -552,6 +855,10 @@ async function handleInit(reportProgress = false, _id: string = 'init') {
   try {
     await initializeSchema(db, reportProgress ? createProgressReporter() : undefined)
     await migrateFromLegacySahpoolIfNeeded(db)
+    // Migrate messages from JSON blob to independent table (idempotent)
+    await migrateMessagesFromJsonBlob(db)
+    // Safety net: if metadata exists but message rows are missing, backfill from legacy SAH pool.
+    await backfillLegacyMessagesFromSahpoolIfNeeded(db)
   } catch (error) {
     console.error(`[SQLite Worker] ${initId}: Database initialization failed:`, error)
     const errorMsg = error instanceof Error ? error.message : String(error)

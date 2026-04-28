@@ -2,7 +2,7 @@
  * Search Conversations Tool
  *
  * Searches across all workspaces' chat history for a keyword/phrase.
- * Uses SQLite LIKE on messages_json — simple, no index needed.
+ * Uses SQLite LIKE on messages.content_json/meta_json.
  */
 
 import type { ToolDefinition, ToolExecutor } from './tool-types'
@@ -40,38 +40,41 @@ interface SearchResultRow {
   workspaceName: string | null
   projectName: string | null
   updatedAt: number
-  snippet: string | null
+  matchedContentJson: string
 }
 
 /**
- * Extract a short snippet around the first occurrence of the query in messages_json.
- * We scan the raw JSON string to avoid parsing the full message array.
+ * Extract a short snippet around the first occurrence of the query in plain message text.
  */
-function extractSnippet(messagesJson: string, query: string, contextChars = 300): string | null {
-  const lowerJson = messagesJson.toLowerCase()
+function extractSnippet(text: string, query: string, contextChars = 300): string | null {
+  const lowerJson = text.toLowerCase()
   const lowerQuery = query.toLowerCase()
   const idx = lowerJson.indexOf(lowerQuery)
   if (idx === -1) return null
 
   const start = Math.max(0, idx - contextChars)
-  const end = Math.min(messagesJson.length, idx + query.length + contextChars)
+  const end = Math.min(text.length, idx + query.length + contextChars)
 
-  let snippet = messagesJson.slice(start, end)
+  let snippet = text.slice(start, end)
 
-  // Unescape JSON string artifacts for readability
-  snippet = snippet
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '\t')
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\')
-
-  // Trim partial JSON noise at boundaries
+  // Trim punctuation artifacts at boundaries
   snippet = snippet.replace(/^[^"'`\w\u4e00-\u9fff]+/, '').replace(/[^"'`\w\u4e00-\u9fff]+$/, '')
 
   if (start > 0) snippet = '...' + snippet
-  if (end < messagesJson.length) snippet = snippet + '...'
+  if (end < text.length) snippet = snippet + '...'
 
   return snippet
+}
+
+function extractSnippetFromContentJson(contentJson: string, query: string): string | null {
+  try {
+    const parsed = JSON.parse(contentJson) as unknown
+    const text = typeof parsed === 'string' ? parsed : ''
+    if (!text) return null
+    return extractSnippet(text, query)
+  } catch {
+    return null
+  }
 }
 
 export const searchConversationsExecutor: ToolExecutor = async (args) => {
@@ -85,24 +88,34 @@ export const searchConversationsExecutor: ToolExecutor = async (args) => {
   try {
     const db = getSQLiteDB()
 
-    // LIKE search on messages_json, joined with workspaces and projects for display names
+    // LIKE search on messages table, then map back to conversation/project/workspace metadata
     const likePattern = `%${query}%`
 
     const rows = await db.queryAll<SearchResultRow>(
-      `SELECT 
+      `WITH matched AS (
+         SELECT
+           m.conversation_id AS conversationId,
+           MAX(m.seq) AS matchedSeq
+         FROM messages m
+         WHERE lower(m.content_json) LIKE lower(?)
+            OR lower(COALESCE(m.meta_json, '')) LIKE lower(?)
+         GROUP BY m.conversation_id
+       )
+       SELECT
          c.id as conversationId,
          c.title,
          w.name as workspaceName,
          p.name as projectName,
          c.updated_at as updatedAt,
-         c.messages_json
+         m.content_json as matchedContentJson
        FROM conversations c
+       INNER JOIN matched mt ON mt.conversationId = c.id
+       INNER JOIN messages m ON m.conversation_id = mt.conversationId AND m.seq = mt.matchedSeq
        LEFT JOIN workspaces w ON c.id = w.id
        LEFT JOIN projects p ON w.project_id = p.id
-       WHERE c.messages_json LIKE ?
        ORDER BY c.updated_at DESC
        LIMIT ?`,
-      [likePattern, limit + 1] // +1 to detect if there are more results
+      [likePattern, likePattern, limit + 1] // +1 to detect if there are more results
     )
 
     const hasMore = rows.length > limit
@@ -112,17 +125,14 @@ export const searchConversationsExecutor: ToolExecutor = async (args) => {
       workspaceName: row.workspaceName || '(未命名工作区)',
       projectName: row.projectName || '(未命名项目)',
       updatedAt: row.updatedAt,
-      snippet: extractSnippet((row as unknown as { messages_json: string }).messages_json, query),
+      snippet: extractSnippetFromContentJson(row.matchedContentJson, query),
     }))
-
-    // Strip raw messages_json from results before returning
-    const cleanResults = results.map(({ ...rest }) => rest)
 
     return toolOkJson('search_conversations', {
       query,
-      totalMatches: cleanResults.length,
+      totalMatches: results.length,
       hasMore,
-      results: cleanResults,
+      results,
     })
   } catch (error) {
     return toolErrorJson(

@@ -480,14 +480,16 @@ export async function clearAllStorage(): Promise<void> {
  */
 export async function exportStorage(): Promise<{
   conversations: unknown[]
+  messages: unknown[]
   skills: unknown[]
   plugins: unknown[]
   workspaces: unknown[]
 }> {
   const db = getSQLiteDB()
 
-  const [conversations, skills, plugins, workspaces] = await Promise.all([
+  const [conversations, messages, skills, plugins, workspaces] = await Promise.all([
     db.queryAll('SELECT * FROM conversations'),
+    db.queryAll('SELECT * FROM messages'),
     db.queryAll('SELECT * FROM skills'),
     db.queryAll('SELECT * FROM plugins'),
     db.queryAll('SELECT * FROM workspaces'),
@@ -495,6 +497,7 @@ export async function exportStorage(): Promise<{
 
   return {
     conversations,
+    messages,
     skills,
     plugins,
     workspaces,
@@ -506,6 +509,7 @@ export async function exportStorage(): Promise<{
  */
 export async function importStorage(data: {
   conversations?: unknown[]
+  messages?: unknown[]
   skills?: unknown[]
   plugins?: unknown[]
   workspaces?: unknown[]
@@ -518,14 +522,58 @@ export async function importStorage(data: {
   try {
     if (data.conversations) {
       for (const row of data.conversations) {
+        const conv = row as any
         await db.execute(
-          'INSERT OR REPLACE INTO conversations (id, title, messages_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+          'INSERT OR REPLACE INTO conversations (id, title, title_mode, context_usage_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
           [
-            (row as any).id,
-            (row as any).title,
-            (row as any).messages_json,
-            (row as any).created_at,
-            (row as any).updated_at,
+            conv.id,
+            conv.title,
+            conv.title_mode || 'manual',
+            conv.context_usage_json || null,
+            conv.created_at,
+            conv.updated_at,
+          ]
+        )
+        // Split messages from JSON blob into independent rows
+        if (conv.messages_json) {
+          try {
+            const messages = JSON.parse(conv.messages_json)
+            if (Array.isArray(messages)) {
+              for (let i = 0; i < messages.length; i++) {
+                const msg = messages[i]
+                if (!msg || !msg.id) continue
+                const contentJson = JSON.stringify(msg.content ?? null)
+                const meta: Record<string, unknown> = {}
+                let hasMeta = false
+                const metaFields = ['kind', 'workflowDryRun', 'workflowRealRun', 'reasoning', 'toolCalls', 'toolCallId', 'name', 'usage', 'assets'] as const
+                for (const field of metaFields) {
+                  if (msg[field] !== undefined) { meta[field] = msg[field]; hasMeta = true }
+                }
+                await db.execute(
+                  'INSERT OR IGNORE INTO messages (id, conversation_id, role, content_json, meta_json, timestamp, seq, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+                  [msg.id, conv.id, msg.role, contentJson, hasMeta ? JSON.stringify(meta) : null, msg.timestamp, i, msg.timestamp || Date.now()]
+                )
+              }
+            }
+          } catch { /* skip malformed messages */ }
+        }
+      }
+    }
+
+    if (data.messages) {
+      for (const row of data.messages) {
+        const msg = row as any
+        await db.execute(
+          'INSERT OR IGNORE INTO messages (id, conversation_id, role, content_json, meta_json, timestamp, seq, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+          [
+            msg.id,
+            msg.conversation_id || msg.conversationId,
+            msg.role,
+            msg.content_json || msg.contentJson || 'null',
+            msg.meta_json || msg.metaJson || null,
+            msg.timestamp,
+            msg.seq,
+            msg.created_at || msg.createdAt || Date.now(),
           ]
         )
       }
