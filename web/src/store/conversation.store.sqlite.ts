@@ -481,12 +481,109 @@ async function persistNewMessage(convId: string, message: Message, seq: number):
   await convRepo.touch(convId)
 }
 
-/** Replace all messages for a conversation via MessageRepository */
-async function persistMessageReplace(convId: string, messages: Message[]): Promise<void> {
+/**
+ * Debounced persist scheduler — coalesces rapid fire-and-forget calls into
+ * a single database write while guaranteeing immediate flush for final saves.
+ *
+ * Why: During an agent run, `persistAfterBlockComplete` and `onNotification`
+ * can fire many times per second. Each triggers a full DELETE + INSERT in a
+ * manual transaction. If two calls overlap, SQLite throws
+ * "cannot start a transaction within a transaction".
+ *
+ * How: We debounce non-critical calls (300 ms window) so only the latest
+ * messages snapshot is written. Critical calls (flush=true) skip the timer
+ * and execute immediately, chained after any in-flight write.
+ */
+const persistSchedulers = new Map<string, {
+  timer: ReturnType<typeof setTimeout> | null
+  flushInProgress: Promise<void> | null
+  // Resolve function for the currently-pending debounce Promise, so a
+  // pre-empting call can settle it immediately instead of leaving it hanging.
+  pendingResolve: (() => void) | null
+}>()
+
+const PERSIST_DEBOUNCE_MS = 300
+
+async function doPersist(convId: string, messages: Message[]): Promise<void> {
   const msgRepo = getMessageRepository()
   const convRepo = getConversationRepository()
   await msgRepo.replaceAll(convId, messages)
   await convRepo.touch(convId)
+}
+
+/**
+ * Schedule (or immediately execute) a message persist for a conversation.
+ *
+ * @param flush  `true` = skip debounce, write immediately. Use for final
+ *               saves (complete, cancel, user edits). `false` = debounce
+ *               to coalesce rapid intermediate writes (block-complete,
+ *               notifications).
+ */
+function persistMessageReplace(
+  convId: string,
+  messages: Message[],
+  flush: boolean = true,
+): Promise<void> {
+  let entry = persistSchedulers.get(convId)
+  if (!entry) {
+    entry = { timer: null, flushInProgress: null, pendingResolve: null }
+    persistSchedulers.set(convId, entry)
+  }
+
+  // Cancel any pending debounced write — settle the old Promise immediately
+  // so its caller (which uses .catch() / void) doesn't hang.
+  if (entry.timer !== null) {
+    clearTimeout(entry.timer)
+    entry.timer = null
+  }
+  if (entry.pendingResolve !== null) {
+    entry.pendingResolve() // resolve old debounce Promise harmlessly
+    entry.pendingResolve = null
+  }
+
+  // Flush: chain immediately after any in-flight write
+  if (flush) {
+    const prev = entry.flushInProgress ?? Promise.resolve()
+    const next = prev.then(() => doPersist(convId, messages))
+    entry.flushInProgress = next
+    void next.finally(() => {
+      if (entry!.flushInProgress === next) entry!.flushInProgress = null
+    })
+    return next
+  }
+
+  // Debounce: schedule a write after PERSIST_DEBOUNCE_MS.
+  // The returned Promise resolves when the actual write completes (or
+  // immediately with void if superseded by a later call).
+  let resolveDebounce!: (value: void | PromiseLike<void>) => void
+  let rejectDebounce!: (reason?: unknown) => void
+  const debouncePromise = new Promise<void>((r, j) => { resolveDebounce = r; rejectDebounce = j })
+
+  entry.timer = setTimeout(() => {
+    entry!.timer = null
+    entry!.pendingResolve = null
+
+    const prev = entry!.flushInProgress ?? Promise.resolve()
+    const next = prev.then(() => doPersist(convId, messages))
+    entry!.flushInProgress = next
+
+    // Settle the debounce Promise once the write settles
+    void next.then(
+      () => resolveDebounce(),
+      (err) => rejectDebounce(err),
+    )
+    void next.finally(() => {
+      if (entry!.flushInProgress === next) entry!.flushInProgress = null
+      if (entry!.timer === null && entry!.flushInProgress === null) {
+        persistSchedulers.delete(convId)
+      }
+    })
+  }, PERSIST_DEBOUNCE_MS)
+
+  // Store resolve so a pre-empting flush or newer debounce can settle early
+  entry.pendingResolve = resolveDebounce
+
+  return debouncePromise
 }
 
 /** Persist only conversation metadata (title, contextUsage, etc.) — no messages */
@@ -1484,13 +1581,13 @@ export const useConversationStoreSQLite = create<ConversationState>()(
           })
         }
 
-        // Persist conversation to SQLite immediately when a block completes
-        // (each assistant message end or tool result). This ensures that a page
-        // refresh does not lose any completed steps.
+        // Persist conversation to SQLite when a block completes (debounced).
+        // Rapid block boundaries are coalesced; the final complete handler
+        // will flush immediately, so at most one debounced write runs mid-stream.
         const persistAfterBlockComplete = () => {
           const current = get().conversations.find((c) => c.id === conversationId)
           if (!current) return
-          persistMessageReplace(conversationId, current.messages).catch((err) => {
+          persistMessageReplace(conversationId, current.messages, false).catch((err) => {
             console.warn('[conversation.store] Block-complete persist failed:', err)
           })
         }
@@ -2009,7 +2106,7 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             })
             const snapshot = get().conversations.find((c) => c.id === conversationId)
             if (snapshot) {
-              void persistMessageReplace(conversationId, snapshot.messages)
+              void persistMessageReplace(conversationId, snapshot.messages, false)
             }
           },
         })
