@@ -3,6 +3,9 @@ import { createAssistantMessage, createToolMessage, createUserMessage } from '@/
 
 const deleteWorkspaceMock = vi.fn(() => Promise.resolve())
 const conversationRepoDeleteMock = vi.fn(() => Promise.resolve())
+const conversationRepoSaveMetaMock = vi.fn(() => Promise.resolve())
+const messageRepoInsertMock = vi.fn(() => Promise.resolve())
+const messageRepoReplaceAllMock = vi.fn(() => Promise.resolve())
 
 vi.mock('sonner', () => ({
   toast: {
@@ -61,7 +64,21 @@ vi.mock('@/sqlite', () => ({
   getConversationRepository: vi.fn(() => ({
     findAll: vi.fn(() => Promise.resolve([])),
     save: vi.fn(() => Promise.resolve()),
+    saveMeta: conversationRepoSaveMetaMock,
+    touch: vi.fn(() => Promise.resolve()),
     delete: conversationRepoDeleteMock,
+  })),
+  getMessageRepository: vi.fn(() => ({
+    findByConversation: vi.fn(() => Promise.resolve([])),
+    insert: messageRepoInsertMock,
+    replaceAll: messageRepoReplaceAllMock,
+    migrateFromJsonBlob: vi.fn(() => Promise.resolve({ conversations: 0, messages: 0 })),
+    recoverFromAppSessions: vi.fn(() =>
+      Promise.resolve({ sessions: 0, conversations: 0, messages: 0 })
+    ),
+  })),
+  getSQLiteDB: vi.fn(() => ({
+    queryFirst: vi.fn(() => Promise.resolve({ count: 0 })),
   })),
 }))
 
@@ -120,7 +137,8 @@ vi.mock('@/agent/agent-loop', () => {
         return result
       }
 
-      ;(globalThis as any).__conversationStoreBeforeCompressionStart?.()
+      const beforeCompressionStart = (globalThis as any).__conversationStoreBeforeCompressionStart
+      beforeCompressionStart?.()
       callbacks.onContextCompressionStart?.({
         droppedGroups: 1,
         droppedContentChars: 128,
@@ -180,6 +198,12 @@ describe('conversation.store.sqlite tool-call routing', () => {
   beforeEach(() => {
     deleteWorkspaceMock.mockClear()
     conversationRepoDeleteMock.mockClear()
+    conversationRepoSaveMetaMock.mockReset()
+    conversationRepoSaveMetaMock.mockResolvedValue(undefined)
+    messageRepoInsertMock.mockReset()
+    messageRepoInsertMock.mockResolvedValue(undefined)
+    messageRepoReplaceAllMock.mockReset()
+    messageRepoReplaceAllMock.mockResolvedValue(undefined)
     useConversationStore.setState({
       conversations: [],
       activeConversationId: null,
@@ -195,6 +219,27 @@ describe('conversation.store.sqlite tool-call routing', () => {
     delete (globalThis as any).__conversationStoreCustomRun
   })
 
+  it('should wait for new conversation metadata before persisting the first message', async () => {
+    let resolveMeta!: () => void
+    const metaPersisted = new Promise<void>((resolve) => {
+      resolveMeta = resolve
+    })
+    conversationRepoSaveMetaMock.mockReturnValueOnce(metaPersisted)
+
+    const conv = useConversationStore.getState().createNew('new-chat-race')
+    useConversationStore.getState().addMessage(conv.id, createUserMessage('hello'))
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(messageRepoInsertMock).not.toHaveBeenCalled()
+
+    resolveMeta()
+    await metaPersisted
+    await vi.waitFor(() => {
+      expect(messageRepoInsertMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('should finalize non-current tool steps by toolCallId in interleaved calls', async () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('test')
@@ -208,8 +253,12 @@ describe('conversation.store.sqlite tool-call routing', () => {
 
     ;(globalThis as any).__conversationStoreTestHook = (label: string) => {
       const c = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
-      const stepA = c?.draftAssistant?.steps.find((s) => s.id === 'tool-call_A' && s.type === 'tool_call') as any
-      const stepB = c?.draftAssistant?.steps.find((s) => s.id === 'tool-call_B' && s.type === 'tool_call') as any
+      const stepA = c?.draftAssistant?.steps.find(
+        (s) => s.id === 'tool-call_A' && s.type === 'tool_call'
+      ) as any
+      const stepB = c?.draftAssistant?.steps.find(
+        (s) => s.id === 'tool-call_B' && s.type === 'tool_call'
+      ) as any
       snapshots.push({
         label,
         currentToolCallId: c?.currentToolCall?.id || null,
@@ -222,7 +271,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       })
     }
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const aComplete = snapshots.find((s) => s.label === 'after_a_complete')
     expect(aComplete).toBeDefined()
@@ -246,7 +297,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('max-iterations-prop')
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const agentLoopConfig = (globalThis as any).__lastAgentLoopConfig
     expect(agentLoopConfig?.maxIterations).toBe(37)
@@ -256,7 +309,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('compression-state-carry')
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const firstRunConfig = (globalThis as any).__lastAgentLoopConfig
     expect(firstRunConfig?.initialConvertCallCount ?? 0).toBe(0)
@@ -264,7 +319,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       Number.NEGATIVE_INFINITY
     )
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const secondRunConfig = (globalThis as any).__lastAgentLoopConfig
     expect(secondRunConfig?.initialConvertCallCount).toBe(17)
@@ -291,7 +348,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       return [...messages, liveAssistantMessage]
     }
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     expect(messagesLengthSeenInsideRun).toBe(2)
   })
@@ -478,7 +537,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       snapshots.push({ label, status: c?.status })
     }
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const compressionStart = snapshots.find((s) => s.label === 'after_compression_start')
     expect(compressionStart?.status).toBe('pending')
@@ -508,7 +569,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
   it('should support dedicated runWorkflowDryRun action', async () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('workflow-dry-run-action')
-    useConversationStore.getState().addMessage(conv.id, createUserMessage('run template from action'))
+    useConversationStore
+      .getState()
+      .addMessage(conv.id, createUserMessage('run template from action'))
 
     await useConversationStore.getState().runWorkflowDryRun(conv.id, 'novel_daily_v1')
 
@@ -527,7 +590,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
   it('should support dedicated runWorkflowDryRun action with custom rubric DSL', async () => {
     const store = useConversationStore.getState()
     const conv = store.createNew('workflow-dry-run-action-custom-rubric')
-    useConversationStore.getState().addMessage(conv.id, createUserMessage('run template with rubric'))
+    useConversationStore
+      .getState()
+      .addMessage(conv.id, createUserMessage('run template with rubric'))
 
     const rubricDsl = JSON.stringify(
       {
@@ -594,7 +659,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       .getState()
       .addMessage(conv.id, createUserMessage('/workflow novel_daily_v1'))
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const updated = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
     const lastMessage = updated?.messages[updated.messages.length - 1]
@@ -643,7 +710,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       .getState()
       .addMessage(conv.id, createUserMessage(`/workflow novel_daily_v1\n${rubricDsl}`))
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const updated = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
     const lastMessage = updated?.messages[updated.messages.length - 1]
@@ -662,7 +731,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       .getState()
       .addMessage(conv.id, createUserMessage('/workflow novel_daily_v1\n{invalid-json}'))
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const updated = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
 
@@ -811,9 +882,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
     const capture = async (label: string) => {
       await new Promise((resolve) => setTimeout(resolve, 20))
       const c = useConversationStore.getState().conversations.find((x) => x.id === conv.id)
-      const reasoningStep = c?.draftAssistant?.steps.find(
-        (s) => s.type === 'reasoning'
-      ) as { content: string; streaming: boolean } | undefined
+      const reasoningStep = c?.draftAssistant?.steps.find((s) => s.type === 'reasoning') as
+        | { content: string; streaming: boolean }
+        | undefined
 
       snapshots.push({
         label,
@@ -844,7 +915,9 @@ describe('conversation.store.sqlite tool-call routing', () => {
       ]
     }
 
-    await useConversationStore.getState().runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
+    await useConversationStore
+      .getState()
+      .runAgent(conv.id, 'openai' as any, 'mock-model', 1024, null)
 
     const openThink = snapshots.find((s) => s.label === 'after_open_think')
     expect(openThink?.reasoning).toBe('分析中')

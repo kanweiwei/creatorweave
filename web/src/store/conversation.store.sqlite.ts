@@ -72,7 +72,12 @@ function commitDraftToMessages(conv: {
 
   // Collect assets accumulated during this agent run
   const collectedAssets = conv.collectedAssets?.length ? conv.collectedAssets : undefined
-  console.log('[commitDraftToMessages] conv.collectedAssets:', conv.collectedAssets?.length, '→ passing:', collectedAssets?.length)
+  console.log(
+    '[commitDraftToMessages] conv.collectedAssets:',
+    conv.collectedAssets?.length,
+    '→ passing:',
+    collectedAssets?.length
+  )
   // Clear the accumulator after collecting
   conv.collectedAssets = []
 
@@ -233,15 +238,16 @@ function ensureDraftAssistantForMessageStart(conv: Conversation): DraftAssistant
     // but discard completed text/tool steps (they have already been
     // committed to messages and would otherwise cause duplicate renders
     // when committedContentSet hasn't caught up yet).
-    steps: previous?.steps.filter((s) => {
-      if (s.streaming) return true
-      // Completed text steps (content/reasoning) are already committed
-      if (s.type === 'content' || s.type === 'reasoning') return false
-      // Completed tool_call steps are also committed
-      if (s.type === 'tool_call') return false
-      // Keep compression steps for status continuity
-      return true
-    }) || [],
+    steps:
+      previous?.steps.filter((s) => {
+        if (s.streaming) return true
+        // Completed text steps (content/reasoning) are already committed
+        if (s.type === 'content' || s.type === 'reasoning') return false
+        // Completed tool_call steps are also committed
+        if (s.type === 'tool_call') return false
+        // Keep compression steps for status continuity
+        return true
+      }) || [],
     activeReasoningStepId: null,
     activeContentStepId: null,
     activeToolStepId: null,
@@ -462,7 +468,12 @@ import {
   runWorkflowTemplateDryRun,
 } from '@/agent/workflow/dry-run'
 import { getWorkflowTemplateBundle, listWorkflowTemplateBundles } from '@/agent/workflow/templates'
-import { getConversationRepository, getMessageRepository, getSQLiteDB, initSQLiteDB } from '@/sqlite'
+import {
+  getConversationRepository,
+  getMessageRepository,
+  getSQLiteDB,
+  initSQLiteDB,
+} from '@/sqlite'
 import { useSettingsStore } from './settings.store'
 import { getCurrentWorkspaceAgentMode } from './workspace-preferences.store'
 import type { SubagentTaskNotification } from '@/agent/tools/tool-types'
@@ -473,8 +484,18 @@ import type { SubagentTaskNotification } from '@/agent/tools/tool-types'
 // Persistence Functions (SQLite)
 //=============================================================================
 
+const pendingConversationMetaPersists = new Map<string, Promise<void>>()
+
+async function waitForConversationMetaPersist(convId: string): Promise<void> {
+  const pending = pendingConversationMetaPersists.get(convId)
+  if (pending) {
+    await pending
+  }
+}
+
 /** Append a single new message via MessageRepository */
 async function persistNewMessage(convId: string, message: Message, seq: number): Promise<void> {
+  await waitForConversationMetaPersist(convId)
   const msgRepo = getMessageRepository()
   const convRepo = getConversationRepository()
   await msgRepo.insert(convId, message, seq)
@@ -494,17 +515,21 @@ async function persistNewMessage(convId: string, message: Message, seq: number):
  * messages snapshot is written. Critical calls (flush=true) skip the timer
  * and execute immediately, chained after any in-flight write.
  */
-const persistSchedulers = new Map<string, {
-  timer: ReturnType<typeof setTimeout> | null
-  flushInProgress: Promise<void> | null
-  // Resolve function for the currently-pending debounce Promise, so a
-  // pre-empting call can settle it immediately instead of leaving it hanging.
-  pendingResolve: (() => void) | null
-}>()
+const persistSchedulers = new Map<
+  string,
+  {
+    timer: ReturnType<typeof setTimeout> | null
+    flushInProgress: Promise<void> | null
+    // Resolve function for the currently-pending debounce Promise, so a
+    // pre-empting call can settle it immediately instead of leaving it hanging.
+    pendingResolve: (() => void) | null
+  }
+>()
 
 const PERSIST_DEBOUNCE_MS = 300
 
 async function doPersist(convId: string, messages: Message[]): Promise<void> {
+  await waitForConversationMetaPersist(convId)
   const msgRepo = getMessageRepository()
   const convRepo = getConversationRepository()
   await msgRepo.replaceAll(convId, messages)
@@ -522,7 +547,7 @@ async function doPersist(convId: string, messages: Message[]): Promise<void> {
 function persistMessageReplace(
   convId: string,
   messages: Message[],
-  flush: boolean = true,
+  flush: boolean = true
 ): Promise<void> {
   let entry = persistSchedulers.get(convId)
   if (!entry) {
@@ -543,12 +568,17 @@ function persistMessageReplace(
 
   // Flush: chain immediately after any in-flight write
   if (flush) {
-    const prev = entry.flushInProgress ?? Promise.resolve()
+    const prev = entry.flushInProgress?.catch(() => undefined) ?? Promise.resolve()
     const next = prev.then(() => doPersist(convId, messages))
     entry.flushInProgress = next
-    void next.finally(() => {
-      if (entry!.flushInProgress === next) entry!.flushInProgress = null
-    })
+    void next.then(
+      () => {
+        if (entry!.flushInProgress === next) entry!.flushInProgress = null
+      },
+      () => {
+        if (entry!.flushInProgress === next) entry!.flushInProgress = null
+      }
+    )
     return next
   }
 
@@ -557,27 +587,38 @@ function persistMessageReplace(
   // immediately with void if superseded by a later call).
   let resolveDebounce!: (value: void | PromiseLike<void>) => void
   let rejectDebounce!: (reason?: unknown) => void
-  const debouncePromise = new Promise<void>((r, j) => { resolveDebounce = r; rejectDebounce = j })
+  const debouncePromise = new Promise<void>((r, j) => {
+    resolveDebounce = r
+    rejectDebounce = j
+  })
 
   entry.timer = setTimeout(() => {
     entry!.timer = null
     entry!.pendingResolve = null
 
-    const prev = entry!.flushInProgress ?? Promise.resolve()
+    const prev = entry!.flushInProgress?.catch(() => undefined) ?? Promise.resolve()
     const next = prev.then(() => doPersist(convId, messages))
     entry!.flushInProgress = next
 
     // Settle the debounce Promise once the write settles
     void next.then(
       () => resolveDebounce(),
-      (err) => rejectDebounce(err),
+      (err) => rejectDebounce(err)
     )
-    void next.finally(() => {
-      if (entry!.flushInProgress === next) entry!.flushInProgress = null
-      if (entry!.timer === null && entry!.flushInProgress === null) {
-        persistSchedulers.delete(convId)
+    void next.then(
+      () => {
+        if (entry!.flushInProgress === next) entry!.flushInProgress = null
+        if (entry!.timer === null && entry!.flushInProgress === null) {
+          persistSchedulers.delete(convId)
+        }
+      },
+      () => {
+        if (entry!.flushInProgress === next) entry!.flushInProgress = null
+        if (entry!.timer === null && entry!.flushInProgress === null) {
+          persistSchedulers.delete(convId)
+        }
       }
-    })
+    )
   }, PERSIST_DEBOUNCE_MS)
 
   // Store resolve so a pre-empting flush or newer debounce can settle early
@@ -1044,7 +1085,10 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               }
             })
           } catch (error) {
-            console.error('[conversation.store] Failed to load messages for active conversation:', error)
+            console.error(
+              '[conversation.store] Failed to load messages for active conversation:',
+              error
+            )
           }
         }
       } catch (error) {
@@ -1062,10 +1106,19 @@ export const useConversationStoreSQLite = create<ConversationState>()(
         state.activeConversationId = conversation.id
       })
       // Persist metadata (creates the conversation row) + empty messages
-      persistConversationMeta(conversation).catch((error) => {
-        console.error('[conversation.store] Failed to persist new conversation:', error)
-        toast.error('对话保存失败，刷新页面后可能丢失')
-      })
+      const metaPersist = persistConversationMeta(conversation)
+        .catch((error) => {
+          console.error('[conversation.store] Failed to persist new conversation:', error)
+          toast.error('对话保存失败，刷新页面后可能丢失')
+          throw error
+        })
+        .finally(() => {
+          if (pendingConversationMetaPersists.get(conversation.id) === metaPersist) {
+            pendingConversationMetaPersists.delete(conversation.id)
+          }
+        })
+      pendingConversationMetaPersists.set(conversation.id, metaPersist)
+      void metaPersist.catch(() => {})
 
       useConversationContextStore
         .getState()
@@ -2083,7 +2136,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               if (!c) return
               // Bridge to active tool step if spawn_subagent/batch_spawn is executing
               if (c.draftAssistant?.activeToolStepId) {
-                const step = c.draftAssistant.steps.find((s) => s.id === c.draftAssistant!.activeToolStepId)
+                const step = c.draftAssistant.steps.find(
+                  (s) => s.id === c.draftAssistant!.activeToolStepId
+                )
                 if (step && step.type === 'tool_call') {
                   const name = step.toolCall.function.name
                   if (name === 'spawn_subagent' || name === 'batch_spawn') {
@@ -2125,42 +2180,46 @@ export const useConversationStoreSQLite = create<ConversationState>()(
             subagentRuntime,
             workflowProgress: workflowProgressHooks,
             askUserQuestion: async (params) => {
-              const { setPendingQuestion, removePendingQuestion } = await import('@/store/pending-question.store')
+              const { setPendingQuestion, removePendingQuestion } =
+                await import('@/store/pending-question.store')
               // Use the actual toolCallId from the LLM's tool_calls response.
               // This correlates the pending question with the UI's ToolCallDisplay.
-              const toolCallId = params.toolCallId ?? `ask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-              return new Promise<{ answer: string; confirmed: boolean; timed_out: boolean }>((resolve) => {
-                setPendingQuestion({
-                  conversationId,
-                  toolCallId,
-                  question: params.question,
-                  type: params.type,
-                  options: params.options,
-                  defaultAnswer: params.defaultAnswer,
-                  context: params.context,
-                  resolve: (result) => {
-                    removePendingQuestion(conversationId, toolCallId)
-                    resolve(result)
-                  },
-                })
+              const toolCallId =
+                params.toolCallId ?? `ask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+              return new Promise<{ answer: string; confirmed: boolean; timed_out: boolean }>(
+                (resolve) => {
+                  setPendingQuestion({
+                    conversationId,
+                    toolCallId,
+                    question: params.question,
+                    type: params.type,
+                    options: params.options,
+                    defaultAnswer: params.defaultAnswer,
+                    context: params.context,
+                    resolve: (result) => {
+                      removePendingQuestion(conversationId, toolCallId)
+                      resolve(result)
+                    },
+                  })
 
-                // Listen for abort signal to unblock the promise on cancellation
-                if (params.signal) {
-                  const onAbort = () => {
-                    removePendingQuestion(conversationId, toolCallId)
-                    resolve({
-                      answer: params.defaultAnswer ?? 'cancelled',
-                      confirmed: false,
-                      timed_out: false,
-                    })
-                  }
-                  if (params.signal.aborted) {
-                    onAbort()
-                  } else {
-                    params.signal.addEventListener('abort', onAbort, { once: true })
+                  // Listen for abort signal to unblock the promise on cancellation
+                  if (params.signal) {
+                    const onAbort = () => {
+                      removePendingQuestion(conversationId, toolCallId)
+                      resolve({
+                        answer: params.defaultAnswer ?? 'cancelled',
+                        confirmed: false,
+                        timed_out: false,
+                      })
+                    }
+                    if (params.signal.aborted) {
+                      onAbort()
+                    } else {
+                      params.signal.addEventListener('abort', onAbort, { once: true })
+                    }
                   }
                 }
-              })
+              )
             },
           },
           maxIterations,
@@ -2222,7 +2281,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
           // Collect any assets accumulated during this agent run before overwriting messages
           const currentConv = get().conversations.find((c) => c.id === conversationId)
-          const collectedAssets = currentConv?.collectedAssets?.length ? [...currentConv.collectedAssets] : undefined
+          const collectedAssets = currentConv?.collectedAssets?.length
+            ? [...currentConv.collectedAssets]
+            : undefined
 
           set((inner) => {
             const c = inner.conversations.find((x) => x.id === conversationId)
@@ -2231,7 +2292,9 @@ export const useConversationStoreSQLite = create<ConversationState>()(
               c.messages = targetMessages
               // Attach collected assets to the last assistant message
               if (collectedAssets && collectedAssets.length > 0) {
-                const lastAssistantMsg = [...c.messages].reverse().find((m) => m.role === 'assistant')
+                const lastAssistantMsg = [...c.messages]
+                  .reverse()
+                  .find((m) => m.role === 'assistant')
                 if (lastAssistantMsg) {
                   lastAssistantMsg.assets = collectedAssets
                 }
@@ -2915,9 +2978,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
     cancelAgent: (conversationId: string) => {
       // Clear any pending ask_user_question entries to unblock executor promises
-      import('@/store/pending-question.store').then(({ clearPendingQuestions }) => {
-        clearPendingQuestions(conversationId)
-      }).catch(() => {})
+      import('@/store/pending-question.store')
+        .then(({ clearPendingQuestions }) => {
+          clearPendingQuestions(conversationId)
+        })
+        .catch(() => {})
 
       const workflowAbortController = get().workflowAbortControllers.get(conversationId)
       if (workflowAbortController) {
@@ -3126,9 +3191,11 @@ export const useConversationStoreSQLite = create<ConversationState>()(
 
     resetConversationState: (id: string) => {
       // Clear any pending ask_user_question entries
-      import('@/store/pending-question.store').then(({ clearPendingQuestions }) => {
-        clearPendingQuestions(id)
-      }).catch(() => {})
+      import('@/store/pending-question.store')
+        .then(({ clearPendingQuestions }) => {
+          clearPendingQuestions(id)
+        })
+        .catch(() => {})
 
       set((state) => {
         const workflowAbortController = state.workflowAbortControllers.get(id)

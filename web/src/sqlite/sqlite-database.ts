@@ -134,6 +134,8 @@ class SQLiteWorkerClient {
   private lastRecoveryTime = 0 // Track when last recovery occurred
   private readonly RECOVERY_COOLDOWN = 5000 // Minimum 5 seconds between recoveries
   private readonly MAX_RECOVERIES_PER_HOUR = 5 // Prevent excessive recovery attempts
+  private transactionTail: Promise<void> = Promise.resolve()
+  private manualTransactionRelease: (() => void) | null = null
   private onMigrationProgress?: (progress: {
     step: string
     details: string
@@ -156,6 +158,8 @@ class SQLiteWorkerClient {
     this.initializing = false
     this.dbMode = null
     this.recovering = false
+    this.transactionTail = Promise.resolve()
+    this.manualTransactionRelease = null
   }
 
   private terminateWorker(): void {
@@ -387,28 +391,68 @@ class SQLiteWorkerClient {
     })
   }
 
+  private async acquireTransactionSlot(): Promise<() => void> {
+    const previous = this.transactionTail.catch(() => undefined)
+    let release!: () => void
+    this.transactionTail = previous.then(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    await previous
+    return release
+  }
+
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
-    await this.sendRequest<void>({ type: 'beginTransaction', id: this.nextRequestId('txn-begin') })
+    const release = await this.acquireTransactionSlot()
+    let began = false
     try {
+      await this.sendRequest<void>({
+        type: 'beginTransaction',
+        id: this.nextRequestId('txn-begin'),
+      })
+      began = true
       const result = await callback()
       await this.sendRequest<void>({ type: 'commit', id: this.nextRequestId('txn-commit') })
       return result
     } catch (error) {
-      await this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('txn-rollback') })
+      if (began) {
+        await this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('txn-rollback') })
+      }
+      throw error
+    } finally {
+      release()
+    }
+  }
+
+  async beginTransaction(): Promise<void> {
+    const release = await this.acquireTransactionSlot()
+    try {
+      await this.sendRequest<void>({ type: 'beginTransaction', id: this.nextRequestId('begin') })
+      this.manualTransactionRelease = release
+    } catch (error) {
+      release()
       throw error
     }
   }
 
-  beginTransaction(): Promise<void> {
-    return this.sendRequest<void>({ type: 'beginTransaction', id: this.nextRequestId('begin') })
+  async commit(): Promise<void> {
+    try {
+      await this.sendRequest<void>({ type: 'commit', id: this.nextRequestId('commit') })
+    } finally {
+      this.manualTransactionRelease?.()
+      this.manualTransactionRelease = null
+    }
   }
 
-  commit(): Promise<void> {
-    return this.sendRequest<void>({ type: 'commit', id: this.nextRequestId('commit') })
-  }
-
-  rollback(): Promise<void> {
-    return this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('rollback') })
+  async rollback(): Promise<void> {
+    try {
+      await this.sendRequest<void>({ type: 'rollback', id: this.nextRequestId('rollback') })
+    } finally {
+      this.manualTransactionRelease?.()
+      this.manualTransactionRelease = null
+    }
   }
 
   async close(): Promise<void> {
@@ -756,8 +800,9 @@ function isNotFoundError(error: unknown): boolean {
 function isPoolLockError(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase()
   return (
-    message.includes('an attempt was made to modify an object where modifications are not allowed') ||
-    message.includes('nomodificationallowederror')
+    message.includes(
+      'an attempt was made to modify an object where modifications are not allowed'
+    ) || message.includes('nomodificationallowederror')
   )
 }
 
@@ -781,7 +826,9 @@ export async function clearLegacySahPoolFromOPFSRoot(): Promise<boolean> {
         `Legacy SAH pool entry ".bfosa-pool" is locked by another context: ${toErrorMessage(error)}`
       )
     }
-    throw new Error(`Failed to remove legacy SAH pool entry ".bfosa-pool": ${toErrorMessage(error)}`)
+    throw new Error(
+      `Failed to remove legacy SAH pool entry ".bfosa-pool": ${toErrorMessage(error)}`
+    )
   }
 }
 
@@ -827,7 +874,9 @@ export interface ClearAllSQLiteTablesOptions {
   allowOpfsFileResetFallback?: boolean
 }
 
-export async function clearAllSQLiteTables(options: ClearAllSQLiteTablesOptions = {}): Promise<void> {
+export async function clearAllSQLiteTables(
+  options: ClearAllSQLiteTablesOptions = {}
+): Promise<void> {
   const preserveTableSet = new Set(
     (options.preserveTables || []).map((name) => name.trim().toLowerCase()).filter(Boolean)
   )
