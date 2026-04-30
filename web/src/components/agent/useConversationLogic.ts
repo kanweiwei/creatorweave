@@ -28,6 +28,8 @@ export function useConversationLogic() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [inputResetToken, setInputResetToken] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isUserAtBottomRef = useRef(true)
 
   // ── Draft persistence (save/restore across workspace switches) ──
   const prevConvIdRef = useRef<string | null>(null)
@@ -196,9 +198,25 @@ export function useConversationLogic() {
     return () => { cancelled = true }
   }, [activeProjectId, isAgentsInitialized, isAgentsLoading, mentionAgents.length])
 
-  // ── Auto-scroll ──
+  // ── Smart auto-scroll (only scroll when user is already at the bottom) ──
   const activeMessagesLength = activeMessages.length
+
+  // Track whether user is near the bottom of the scroll container
   useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const threshold = 80 // px from bottom
+      isUserAtBottomRef.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [convId]) // re-bind on conversation switch
+
+  useEffect(() => {
+    // Don't auto-scroll if user is browsing history above
+    if (!isUserAtBottomRef.current) return
     const behavior: ScrollBehavior =
       activeMessagesLength > lastRenderedMessageCountRef.current ? 'smooth' : 'auto'
     lastRenderedMessageCountRef.current = activeMessagesLength
@@ -282,6 +300,8 @@ export function useConversationLogic() {
     // Clear any draft for this conversation (message sent) and reset restore state
     useInputDraftStore.getState().clearDraft(targetConvId)
     setDraftTextToRestore(null)
+    // User initiated send — always scroll to bottom
+    isUserAtBottomRef.current = true
     draftConvIdRef.current = null
 
     await runAgent(
@@ -345,7 +365,7 @@ export function useConversationLogic() {
 
   return {
     // Local UI state
-    input, setInput, mentionedAgentIds, setMentionedAgentIds, selectedFiles, setSelectedFiles, inputResetToken, messagesEndRef,
+    input, setInput, mentionedAgentIds, setMentionedAgentIds, selectedFiles, setSelectedFiles, inputResetToken, messagesEndRef, scrollContainerRef,
     draftTextToRestore, onDraftRestored,
     // Agent store
     allAgents, activeAgentId, setActiveAgent, createAgent, deleteAgent, mentionAgents,
